@@ -1,4 +1,5 @@
 import { getDb } from './index';
+import { chunkArray } from './states';
 
 /**
  * Persistent price-tick store for live charts and derived estimates.
@@ -79,6 +80,30 @@ export function getPrice24hAgo(poolAddress: string): number | null {
     .prepare('SELECT price FROM ticks WHERE pool_address = ? AND ts <= ? ORDER BY ts DESC LIMIT 1')
     .get(poolAddress, cutoff) as { price: number } | undefined;
   return row?.price ?? null;
+}
+
+/**
+ * Batch version of getPrice24hAgo: latest tick at or before the 24h cutoff
+ * per pool, in one query per chunk. Window function keeps it portable
+ * (SQLite + Postgres); results identical to the per-pool version.
+ */
+export function getPrices24hAgoBatch(poolAddresses: string[]): Map<string, number> {
+  const out = new Map<string, number>();
+  const cutoff = Date.now() - 24 * 3600 * 1000;
+  for (const chunk of chunkArray([...new Set(poolAddresses)], 500)) {
+    const placeholders = chunk.map(() => '?').join(',');
+    const rows = getDb()
+      .prepare(
+        `SELECT pool_address, price FROM (
+           SELECT pool_address, price,
+                  ROW_NUMBER() OVER (PARTITION BY pool_address ORDER BY ts DESC) AS rn
+           FROM ticks WHERE pool_address IN (${placeholders}) AND ts <= ?
+         ) WHERE rn = 1`,
+      )
+      .all(...chunk, cutoff) as Array<{ pool_address: string; price: number }>;
+    for (const row of rows) out.set(row.pool_address, row.price);
+  }
+  return out;
 }
 
 /**
@@ -175,4 +200,56 @@ export function getVolume24h(poolAddress: string): number | null {
     vol += Math.abs(rows[i].quote_reserve - rows[i - 1].quote_reserve);
   }
   return vol;
+}
+
+/**
+ * Batch version of getVolume24h: one ordered scan per chunk, aggregated in
+ * JS with the exact same rules (2+ ticks, 1h+ coverage). Pools with thin
+ * history are absent from the map (caller treats as null).
+ */
+export function getVolumes24hBatch(poolAddresses: string[]): Map<string, number> {
+  const out = new Map<string, number>();
+  const cutoff = Date.now() - 24 * 3600 * 1000;
+  for (const chunk of chunkArray([...new Set(poolAddresses)], 500)) {
+    const placeholders = chunk.map(() => '?').join(',');
+    const rows = getDb()
+      .prepare(
+        `SELECT pool_address, ts, quote_reserve FROM ticks
+         WHERE pool_address IN (${placeholders}) AND ts >= ? AND quote_reserve IS NOT NULL
+         ORDER BY pool_address ASC, ts ASC`,
+      )
+      .all(...chunk, cutoff) as Array<{
+      pool_address: string;
+      ts: number;
+      quote_reserve: number;
+    }>;
+    let cur: string | null = null;
+    let firstTs = 0;
+    let lastTs = 0;
+    let prev = 0;
+    let vol = 0;
+    let count = 0;
+    for (let i = 0; i <= rows.length; i++) {
+      const r = rows[i];
+      if (r && r.pool_address === cur) {
+        vol += Math.abs(r.quote_reserve - prev);
+        prev = r.quote_reserve;
+        lastTs = r.ts;
+        count++;
+        continue;
+      }
+      // Pool boundary (or end): same honesty rules as getVolume24h.
+      if (cur !== null && count >= 2 && lastTs - firstTs >= 3600 * 1000) {
+        out.set(cur, vol);
+      }
+      if (!r) break;
+      cur = r.pool_address;
+      firstTs = r.ts;
+      lastTs = r.ts;
+      prev = r.quote_reserve;
+      vol = 0;
+      count = 1;
+    }
+  }
+  return out;
 }

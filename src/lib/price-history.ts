@@ -13,7 +13,9 @@ export {
   getHistory,
   getLatestPrice,
   getPrice24hAgo,
+  getPrices24hAgoBatch,
   recordTick,
   pruneTicks,
   getVolume24h,
+  getVolumes24hBatch,
 } from './db/ticks';

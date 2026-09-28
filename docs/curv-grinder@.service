@@ -1,0 +1,49 @@
+# Curv vanity-mint grinder — systemd template unit.
+#
+# Install:
+#   sudo cp curv-grinder@.service /etc/systemd/system/
+#   sudo mkdir -p /etc/curv && sudo chmod 700 /etc/curv
+#   # put VANITY_POOL_KEY=<64 hex> in /etc/curv/vanity.env, mode 600, owned by root:curv
+#   sudo systemctl daemon-reload
+#   # start N grinder workers (one per CPU core is a good default; the
+#   # atomic claim in vanity-pool.ts makes multi-worker safe):
+#   for i in 1 2 3 4 5 6 7 8; do sudo systemctl enable --now curv-grinder@$i; done
+#
+# Throughput reference (measured 2026-09-28): ~3.2k attempts/s per worker
+# for the "...curv" suffix => ~1 keypair/hour/worker. 8 workers fill a
+# 50-keypair warm pool in roughly 6 hours. The grinder tops up to
+# VANITY_POOL_TARGET and idles; kill/restart any time.
+#
+# Monitor:
+#   sqlite3 /opt/curv/app/data/stockcurve.db \
+#     "SELECT SUM(consumed=0) AS ready, SUM(consumed=1) AS consumed FROM vanity_pool;"
+#   journalctl -u 'curv-grinder@*' -f
+
+[Unit]
+Description=Curv vanity mint grinder (worker %i)
+After=network.target
+
+[Service]
+Type=simple
+User=curv
+Group=curv
+WorkingDirectory=/opt/curv/app
+EnvironmentFile=/etc/curv/vanity.env
+# Top-up target and check interval; the grinder picks up changes on restart.
+Environment=VANITY_POOL_TARGET=50
+Environment=VANITY_GRIND_TOPUP_MS=30000
+ExecStart=/usr/bin/node /opt/curv/app/dist-grinder/scripts/grind-pool.js
+Restart=always
+RestartSec=5
+# The grind is CPU-bound; keep it from starving the API server on shared boxes.
+Nice=10
+CPUQuota=90%
+# No network needed, no new privileges, read-only except data/.
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/opt/curv/app/data
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

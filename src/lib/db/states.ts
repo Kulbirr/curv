@@ -97,6 +97,31 @@ export function getPoolState(poolAddress: string): StoredPoolState | null {
 }
 
 /**
+ * Batch version of getPoolState: one query per chunk instead of one per
+ * pool. The list endpoint serves thousands of pools; N+1 here is the
+ * difference between ~70 req/s and ~5 req/s. Results identical to calling
+ * getPoolState per address (pools with no row are absent from the map).
+ */
+export function getPoolStatesBatch(poolAddresses: string[]): Map<string, StoredPoolState> {
+  const out = new Map<string, StoredPoolState>();
+  for (const chunk of chunkArray([...new Set(poolAddresses)], 500)) {
+    const placeholders = chunk.map(() => '?').join(',');
+    const rows = getDb()
+      .prepare(`SELECT * FROM pool_states WHERE pool_address IN (${placeholders})`)
+      .all(...chunk) as unknown as StateRow[];
+    for (const row of rows) out.set(row.pool_address, rowToState(row));
+  }
+  return out;
+}
+
+/** Split an array into chunks of at most `size` (for IN (...) batching). */
+export function chunkArray<T>(arr: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) chunks.push(arr.slice(i, i + size));
+  return chunks;
+}
+
+/**
  * Record one indexer sample. Pass `sample: null` when the on-chain read
  * failed: the last good values are preserved and only the attempt
  * bookkeeping advances. Portable ON CONFLICT upsert (SQLite + Postgres).

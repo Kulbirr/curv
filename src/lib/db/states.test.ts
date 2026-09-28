@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { getPoolState, recordPoolSample, type PoolStateSample } from './states';
+import { getPoolState, getPoolStatesBatch, recordPoolSample, type PoolStateSample } from './states';
 import { randomAddress, useTempDb } from '@/test-support/db';
 
 let db: ReturnType<typeof useTempDb>;
@@ -77,5 +77,20 @@ describe('recordPoolSample', () => {
 
   it('returns null for an address never sampled', () => {
     expect(getPoolState(randomAddress())).toBeNull();
+  });
+});
+
+describe('getPoolStatesBatch', () => {
+  it('matches getPoolState per pool and skips unsampled pools', () => {
+    const a = randomAddress();
+    const b = randomAddress();
+    const c = randomAddress();
+    recordPoolSample(a, sample({ price: 0.005 }), 1000);
+    recordPoolSample(b, sample({ price: 0.007 }), 2000);
+    const batch = getPoolStatesBatch([a, b, c, a]);
+    expect(batch.size).toBe(2);
+    expect(batch.get(a)).toEqual(getPoolState(a));
+    expect(batch.get(b)).toEqual(getPoolState(b));
+    expect(batch.has(c)).toBe(false);
   });
 });

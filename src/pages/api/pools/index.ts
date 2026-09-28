@@ -1,7 +1,8 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { listTrackedPools, registerPool } from '@/lib/pool-registry';
 import type { TrackedPool } from '@/lib/pool-registry';
-import { getPoolState } from '@/lib/db/states';
+import { getPoolStatesBatch } from '@/lib/db/states';
+import type { StoredPoolState } from '@/lib/db/states';
 import { isSampleStale } from '@/lib/db/config';
 import { claimNonce, pruneNonces } from '@/lib/db/nonces';
 import {
@@ -12,7 +13,7 @@ import {
   hitRateLimit,
   pruneRateLimits,
 } from '@/lib/db/rate-limits';
-import { getPrice24hAgo, getVolume24h } from '@/lib/price-history';
+import { getPrices24hAgoBatch, getVolumes24hBatch } from '@/lib/price-history';
 import { getQuoteUsdPrice } from '@/lib/quote-prices';
 import { SOLANA_NETWORK } from '@/lib/solana';
 import {
@@ -70,8 +71,18 @@ export interface PoolSummary {
  *   never exact volume
  * - unverified pools keep verified: false
  */
-function buildSummary(tracked: TrackedPool, quoteUsd: number | null): PoolSummary | null {
-  const state = getPoolState(tracked.poolAddress);
+interface BatchReads {
+  states: Map<string, StoredPoolState>;
+  prices24hAgo: Map<string, number>;
+  volumes24h: Map<string, number>;
+}
+
+function buildSummary(
+  tracked: TrackedPool,
+  quoteUsd: number | null,
+  batch: BatchReads,
+): PoolSummary | null {
+  const state = batch.states.get(tracked.poolAddress) ?? null;
   const now = Date.now();
   // No indexed sample yet (indexer hasn't completed a pass, or every
   // sample failed): honest nulls, marked stale.
@@ -80,7 +91,7 @@ function buildSummary(tracked: TrackedPool, quoteUsd: number | null): PoolSummar
   const price = state?.price ?? null;
   const marketCap = state?.marketCap ?? null;
 
-  const price24hAgo = getPrice24hAgo(tracked.poolAddress);
+  const price24hAgo = batch.prices24hAgo.get(tracked.poolAddress) ?? null;
   const change24h =
     price !== null && price24hAgo !== null && price24hAgo > 0
       ? ((price - price24hAgo) / price24hAgo) * 100
@@ -109,13 +120,31 @@ function buildSummary(tracked: TrackedPool, quoteUsd: number | null): PoolSummar
     marketCapUsd,
     // Estimated activity only: sampled reserve movement, not exact trade
     // volume. UI must label it as an estimate, never as exact volume.
-    volume24h: getVolume24h(tracked.poolAddress),
+    volume24h: batch.volumes24h.get(tracked.poolAddress) ?? null,
     stale,
     verified: tracked.verified === true,
   };
 }
 
+/** 3s list cache (see handleGet). Module-level: shared across requests. */
+const LIST_CACHE_TTL_MS = 3_000;
+let listCache: { at: number; body: unknown } | null = null;
+
+/** A new registration must be visible immediately: drop the cached list. */
+function invalidateListCache(): void {
+  listCache = null;
+}
+
 async function handleGet(_req: NextApiRequest, res: NextApiResponse) {
+  // Short-lived cache: the Discover page polls this endpoint every 5s per
+  // client, so without a cache N clients = N full list builds per 5s.
+  // 3s is well within the page's own 5s poll rhythm and the honest-stale
+  // contract (state older than STALE_AFTER_MS is still labeled stale).
+  // Skipped under test so tests stay deterministic.
+  const now = Date.now();
+  if (process.env.NODE_ENV !== 'test' && listCache && now - listCache.at < LIST_CACHE_TTL_MS) {
+    return res.status(200).json(listCache.body);
+  }
   const pools = listTrackedPools();
   // Quote USD prices are cached 60s in memory and short-circuit to null on
   // devnet without any network call — one lookup per distinct quote mint.
@@ -126,11 +155,26 @@ async function handleGet(_req: NextApiRequest, res: NextApiResponse) {
       quoteUsdByMint.set(mint, await getQuoteUsdPrice(mint));
     }),
   );
-  const summaries = pools.map((p) => buildSummary(p, quoteUsdByMint.get(p.quoteMint) ?? null));
-  res.status(200).json({
+  // Batch the per-pool reads: 3 queries total regardless of pool count,
+  // instead of 3 per pool. This is what keeps the list fast at thousands
+  // of pools.
+  const addresses = pools.map((p) => p.poolAddress);
+  const batch: BatchReads = {
+    states: getPoolStatesBatch(addresses),
+    prices24hAgo: getPrices24hAgoBatch(addresses),
+    volumes24h: getVolumes24hBatch(addresses),
+  };
+  const summaries = pools.map((p) =>
+    buildSummary(p, quoteUsdByMint.get(p.quoteMint) ?? null, batch),
+  );
+  const body = {
     network: SOLANA_NETWORK,
     pools: summaries.filter((s): s is PoolSummary => s !== null),
-  });
+  };
+  if (process.env.NODE_ENV !== 'test') {
+    listCache = { at: Date.now(), body };
+  }
+  res.status(200).json(body);
 }
 
 async function handlePost(req: NextApiRequest, res: NextApiResponse) {
@@ -195,6 +239,7 @@ async function handlePost(req: NextApiRequest, res: NextApiResponse) {
   // 6. Transactional registry insert.
   try {
     const entry = registerPool({ ...input, verified: verification.status === 'verified' });
+    invalidateListCache();
     return res.status(201).json({ pool: entry });
   } catch (e) {
     return res.status(400).json({ error: e instanceof Error ? e.message : 'Invalid request' });

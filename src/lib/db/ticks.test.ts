@@ -3,8 +3,10 @@ import {
   getHistory,
   getLatestPrice,
   getPrice24hAgo,
+  getPrices24hAgoBatch,
   getTradeStats24h,
   getVolume24h,
+  getVolumes24hBatch,
   pruneTicks,
   recordTick,
 } from './ticks';
@@ -197,5 +199,53 @@ describe('getTradeStats24h', () => {
     recordTick(addr, now - 2 * 3600_000, 0.001, 100);
     recordTick(addr, now - 3600_000, 0.001, null);
     expect(getTradeStats24h(addr)).toBeNull();
+  });
+});
+
+describe('batch reads (parity with per-pool versions)', () => {
+  it('getPrices24hAgoBatch matches getPrice24hAgo per pool', () => {
+    const now = Date.now();
+    const addrs = [randomAddress(), randomAddress(), randomAddress()];
+    // Pool 0: ticks straddling the cutoff; pool 1: only recent ticks;
+    // pool 2: no ticks at all.
+    recordTick(addrs[0], now - 25 * 3600_000, 0.001, 100);
+    recordTick(addrs[0], now - 23 * 3600_000, 0.002, 110);
+    recordTick(addrs[0], now - 1 * 3600_000, 0.003, 120);
+    recordTick(addrs[1], now - 1 * 3600_000, 0.005, 200);
+    const batch = getPrices24hAgoBatch(addrs);
+    expect(batch.get(addrs[0])).toBe(getPrice24hAgo(addrs[0]));
+    expect(batch.get(addrs[0])).toBe(0.001);
+    expect(batch.has(addrs[1])).toBe(getPrice24hAgo(addrs[1]) !== null);
+    expect(batch.has(addrs[2])).toBe(false);
+  });
+
+  it('getVolumes24hBatch matches getVolume24h per pool', () => {
+    const now = Date.now();
+    const addrs = [randomAddress(), randomAddress(), randomAddress()];
+    // Pool 0: 2h of ticks with reserve movement.
+    for (let i = 0; i <= 12; i++) {
+      recordTick(addrs[0], now - 2 * 3600_000 + i * 600_000, 0.001, 100 + i * 5);
+    }
+    // Pool 1: under 1h coverage -> null in both.
+    recordTick(addrs[1], now - 30 * 60_000, 0.001, 100);
+    recordTick(addrs[1], now, 0.0011, 110);
+    const batch = getVolumes24hBatch(addrs);
+    expect(batch.get(addrs[0])).toBe(getVolume24h(addrs[0]));
+    expect(batch.get(addrs[0])).toBe(60);
+    expect(batch.has(addrs[1])).toBe(false);
+    expect(getVolume24h(addrs[1])).toBeNull();
+    expect(batch.has(addrs[2])).toBe(false);
+  });
+
+  it('batch reads handle >500 pools (chunking)', () => {
+    const addrs = Array.from({ length: 1200 }, () => randomAddress());
+    const now = Date.now();
+    for (const a of addrs) {
+      recordTick(a, now - 25 * 3600_000, 0.001, 100);
+      recordTick(a, now - 3600_000, 0.002, 150);
+    }
+    const batch = getPrices24hAgoBatch(addrs);
+    expect(batch.size).toBe(1200);
+    for (const a of addrs) expect(batch.get(a)).toBe(0.001);
   });
 });
