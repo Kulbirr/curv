@@ -7,7 +7,9 @@
  *
  * Every unit was verified against the Meteora DBC SDK:
  * - poolCreationFeeSol: the SDK runs convertToLamports(poolCreationFee),
- *   so the config value is denominated in SOL.
+ *   so the config value is denominated in SOL. 0 is valid (the SDK
+ *   accepts zero) and means no creation fee. This is a per-config
+ *   setting chosen by Curv, not a Meteora protocol mandate.
  * - migrationFeePercent / creatorMigrationFeePercent: the SDK divides
  *   feePercentage by 100 (percent), and creatorFeePercentage is a
  *   percent of the migration fee (max 100).
@@ -17,8 +19,10 @@
  * - migratedPoolFeeBps: basis points.
  */
 export const LAUNCH_FEE_CONFIG = {
-  /** Meteora protocol fee paid by the creator at pool creation. */
-  poolCreationFeeSol: 1,
+  /** Pool creation fee baked into Curv's DBC config (SOL). This is our
+   *  own setting, not a Meteora protocol charge: the DBC program lets it
+   *  be zero. 0 keeps launching free apart from Solana network fees. */
+  poolCreationFeeSol: 0,
   /** Exponential fee-scheduler shape (matches the DBC config). */
   feeSchedulerPeriods: 60,
   feeSchedulerTotalDuration: 60,
@@ -71,7 +75,10 @@ export function buildFeeDisclosureRows(input: FeeDisclosureInput): FeeDisclosure
     {
       label: 'Pool creation fee',
       value: `${c.poolCreationFeeSol} SOL`,
-      hint: 'Paid to the Meteora protocol when your pool is created. Curv takes no cut.',
+      hint:
+        c.poolCreationFeeSol === 0
+          ? 'There is no pool creation fee on Curv. This figure is our own config setting, not a Meteora protocol charge, and the DBC program allows it to be zero. You only pay Solana network fees for the launch transaction, a few cents.'
+          : `A ${c.poolCreationFeeSol} SOL creation fee set in Curv's own pool config, not a Meteora protocol charge. Network fees for the launch transaction are on top, a few cents.`,
     },
     {
       label: 'Trading fees',

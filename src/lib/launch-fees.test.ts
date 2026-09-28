@@ -8,7 +8,9 @@ describe('LAUNCH_FEE_CONFIG', () => {
     // migration feePercentage is divided by 100 (percent), and
     // creatorTradingFeePercentage is validated by the SDK as 0-100
     // (percent) — 0.3 means 0.3%.
-    expect(LAUNCH_FEE_CONFIG.poolCreationFeeSol).toBe(1);
+    // poolCreationFeeSol is 0: the SDK accepts zero, and the fee is a
+    // per-config Curv setting, not a Meteora protocol mandate.
+    expect(LAUNCH_FEE_CONFIG.poolCreationFeeSol).toBe(0);
     expect(LAUNCH_FEE_CONFIG.migrationFeePercent).toBe(10);
     expect(LAUNCH_FEE_CONFIG.creatorMigrationFeePercent).toBe(50);
     expect(LAUNCH_FEE_CONFIG.migratedPoolFeeBps).toBe(120);
@@ -27,8 +29,9 @@ describe('buildFeeDisclosureRows', () => {
   const rows = buildFeeDisclosureRows({ startingFeeBps: 500, endingFeeBps: 100, quoteSymbol: 'SOL' });
   const byLabel = (label: string) => rows.find((r) => r.label === label)!;
 
-  it('discloses the pool creation fee in SOL', () => {
-    expect(byLabel('Pool creation fee').value).toBe('1 SOL');
+  it('discloses that there is no pool creation fee', () => {
+    expect(byLabel('Pool creation fee').value).toBe('0 SOL');
+    expect(byLabel('Pool creation fee').hint).toContain('no pool creation fee');
   });
 
   it('renders the user-configured trading fee schedule', () => {

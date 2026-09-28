@@ -668,7 +668,7 @@ export default function CreatePool() {
     ? 'Custom'
     : CURVE_PRESETS.find((p) => p.id === preset)?.name ?? 'Custom';
   const allErrors = [...tokenErrors, ...curveErrors, ...econErrors];
-  const deployCost = feeRows.length > 0 ? feeRows[0].value : '1 SOL';
+  const deployCost = feeRows.length > 0 ? feeRows[0].value : '0 SOL';
 
   return (
     <Page>
