@@ -6,8 +6,7 @@ import bs58 from 'bs58';
 import { useUnifiedWalletContext, useWallet } from '@jup-ag/wallet-adapter';
 import Page from '@/components/ui/Page/Page';
 import { CurveChart } from '../components/Launch/CurveChart';
-import { ErrorList, Field } from '../components/Launch/ui';
-import type { ConfigParameters } from '@meteora-ag/dynamic-bonding-curve-sdk';
+import { ErrorList, Field, Toggle } from '../components/Launch/ui';
 import {
   CURVE_PRESETS,
   presetCurve,
@@ -17,7 +16,11 @@ import {
 import {
   buildCurveParams,
   buildLaunchTransaction,
+  graduationThresholdQuote,
+  resolveEcon,
+  scaleCurveToGraduationTarget,
   validateLaunchSpec,
+  type LaunchEconOverrides,
   type LaunchSpec,
 } from '@/lib/launch';
 import { getConnection, isDevnet, SOLANA_NETWORK } from '@/lib/solana';
@@ -115,6 +118,12 @@ interface LaunchDraft {
   totalSupply: string;
   startFeeBps: string;
   endFeeBps: string;
+  feePeriods: string;
+  feeDuration: string;
+  dynamicFee: boolean;
+  migrationFeePct: string;
+  dammFeeBps: string;
+  dammDynamicFee: boolean;
 }
 
 function asStringArray(v: unknown): string[] | null {
@@ -156,6 +165,15 @@ export default function CreatePool() {
   const [totalSupply, setTotalSupply] = useState('1000000000');
   const [startFeeBps, setStartFeeBps] = useState('500');
   const [endFeeBps, setEndFeeBps] = useState('100');
+  // ---- Fee schedule decay ----
+  const [feePeriods, setFeePeriods] = useState('60');
+  const [feeDuration, setFeeDuration] = useState('60');
+  const [dynamicFee, setDynamicFee] = useState(true);
+  // ---- Graduation & migration ----
+  const [migrationFeePct, setMigrationFeePct] = useState('10');
+  const [dammFeeBps, setDammFeeBps] = useState('120');
+  const [dammDynamicFee, setDammDynamicFee] = useState(true);
+  const [gradTarget, setGradTarget] = useState('');
 
   // ---- Launch ----
   const [metadataConfigured, setMetadataConfigured] = useState<boolean | null>(null);
@@ -358,8 +376,21 @@ export default function CreatePool() {
     if (!Number.isInteger(ef) || ef < 0 || ef > 10000) errs.push('Ending fee must be 0-10000 bps');
     if (Number.isInteger(sf) && Number.isInteger(ef) && ef > sf)
       errs.push('Ending fee cannot exceed the starting fee');
+    const fp = parseInt(feePeriods, 10);
+    const fd = parseInt(feeDuration, 10);
+    if (!Number.isInteger(fp) || fp < 1)
+      errs.push('Fee decay periods must be a whole number of 1 or more');
+    if (!Number.isInteger(fd) || fd < fp)
+      errs.push('Fee decay duration must be a whole number of slots, at least the number of periods');
+    const mf = parseInt(migrationFeePct, 10);
+    if (!Number.isInteger(mf) || mf < 0 || mf > 99)
+      errs.push('Migration fee must be a whole percent between 0 and 99');
+    const df = parseInt(dammFeeBps, 10);
+    if (!Number.isInteger(df) || df < 10 || df > 1000)
+      errs.push('Post-graduation pool fee must be 10-1000 bps');
     return errs;
-  }, [quoteSel, customMint, customDecimals, customSymbol, totalSupply, startFeeBps, endFeeBps]);
+  }, [quoteSel, customMint, customDecimals, customSymbol, totalSupply, startFeeBps, endFeeBps,
+      feePeriods, feeDuration, migrationFeePct, dammFeeBps]);
 
   function buildSpec(metadataUri: string): LaunchSpec {
     return {
@@ -378,6 +409,18 @@ export default function CreatePool() {
       },
       startingFeeBps: parseInt(startFeeBps, 10),
       endingFeeBps: parseInt(endFeeBps, 10),
+      econ: buildEcon(),
+    };
+  }
+
+  function buildEcon(): LaunchEconOverrides {
+    return {
+      feeSchedulerPeriods: parseInt(feePeriods, 10),
+      feeSchedulerTotalDuration: parseInt(feeDuration, 10),
+      dynamicFeeEnabled: dynamicFee,
+      migrationFeePercent: parseInt(migrationFeePct, 10),
+      migratedPoolFeeBps: parseInt(dammFeeBps, 10),
+      migratedPoolDynamicFee: dammDynamicFee,
     };
   }
 
@@ -385,25 +428,23 @@ export default function CreatePool() {
   const graduationPreview = useMemo(() => {
     try {
       const spec = buildSpec('https://placeholder.invalid/metadata.json');
-      if (validateLaunchSpec(spec).length > 0) return null;
-      // buildCurveParams returns the SDK's ConfigParameters at runtime (which
-      // carries migrationQuoteThreshold); launch.ts annotates the input type.
-      const params = buildCurveParams(spec) as unknown as ConfigParameters;
-      const raw = params.migrationQuoteThreshold; // BN, quote raw units
-      const asFloat = Number(raw.toString()) / 10 ** quoteDecimals;
-      if (!Number.isFinite(asFloat)) return null;
-      return asFloat;
+      return graduationThresholdQuote(spec);
     } catch {
       return null;
     }
-  }, [name, symbol, quoteMint, quoteDecimals, quoteSymbol, baseDecimals, totalSupply, priceNums, weights, startFeeBps, endFeeBps]); // eslint-disable-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    name, symbol, quoteMint, quoteDecimals, quoteSymbol, baseDecimals, totalSupply,
+    priceNums, weights, startFeeBps, endFeeBps,
+    feePeriods, feeDuration, dynamicFee, migrationFeePct, dammFeeBps, dammDynamicFee,
+  ]);
 
   function fmtNum(v: number): string {
     return v.toLocaleString('en-US', { maximumFractionDigits: 4 });
   }
 
-  // Fee disclosure: every number comes from LAUNCH_FEE_CONFIG (the same
-  // constants the on-chain config is built from) or the user's own
+  // Fee disclosure: every number comes from the effective economics (the
+  // same constants the on-chain config is built from) or the user's own
   // fee-schedule inputs — nothing invented.
   const feeRows = useMemo(
     () =>
@@ -411,9 +452,36 @@ export default function CreatePool() {
         startingFeeBps: parseInt(startFeeBps, 10) || 0,
         endingFeeBps: parseInt(endFeeBps, 10) || 0,
         quoteSymbol,
+        econ: resolveEcon(buildSpec('https://placeholder.invalid/metadata.json')),
       }),
-    [startFeeBps, endFeeBps, quoteSymbol],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [startFeeBps, endFeeBps, quoteSymbol, feePeriods, feeDuration, dynamicFee,
+     migrationFeePct, dammFeeBps, dammDynamicFee],
   );
+
+  /** Rescale the curve so its graduation threshold matches the target. */
+  function applyGraduationTarget() {
+    const target = parseFloat(gradTarget);
+    if (!Number.isFinite(target) || target <= 0) {
+      setNotice('Enter a positive graduation target first.');
+      return;
+    }
+    try {
+      const spec = buildSpec('https://placeholder.invalid/metadata.json');
+      const specErrors = validateLaunchSpec(spec);
+      if (specErrors.length > 0) {
+        setNotice('Fix the errors above before matching a graduation target.');
+        return;
+      }
+      const rescaled = scaleCurveToGraduationTarget(spec, target);
+      setPrices(rescaled.curve.prices.map(String));
+      setNotice(
+        `Curve rescaled to graduate at ~${target.toLocaleString('en-US', { maximumFractionDigits: 4 })} ${quoteSymbol}.`,
+      );
+    } catch {
+      setNotice('Could not match that graduation target.');
+    }
+  }
 
   // ---- image picker ----
   async function onImageFile(file: File | undefined) {
@@ -443,6 +511,8 @@ export default function CreatePool() {
       preset, startPrice, prices, weights,
       quoteSel, customMint, customDecimals, customSymbol,
       baseDecimals, totalSupply, startFeeBps, endFeeBps,
+      feePeriods, feeDuration, dynamicFee,
+      migrationFeePct, dammFeeBps, dammDynamicFee,
     };
     try {
       localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
@@ -490,6 +560,12 @@ export default function CreatePool() {
       if (typeof d.totalSupply === 'string') setTotalSupply(d.totalSupply);
       if (typeof d.startFeeBps === 'string') setStartFeeBps(d.startFeeBps);
       if (typeof d.endFeeBps === 'string') setEndFeeBps(d.endFeeBps);
+      if (typeof d.feePeriods === 'string') setFeePeriods(d.feePeriods);
+      if (typeof d.feeDuration === 'string') setFeeDuration(d.feeDuration);
+      if (typeof d.dynamicFee === 'boolean') setDynamicFee(d.dynamicFee);
+      if (typeof d.migrationFeePct === 'string') setMigrationFeePct(d.migrationFeePct);
+      if (typeof d.dammFeeBps === 'string') setDammFeeBps(d.dammFeeBps);
+      if (typeof d.dammDynamicFee === 'boolean') setDammDynamicFee(d.dammDynamicFee);
       setNotice('Restored your saved draft.');
     } catch {
       /* a corrupt draft is simply ignored */
@@ -1133,7 +1209,126 @@ export default function CreatePool() {
                 </div>
               </div>
 
+              <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                <Field
+                  label="Fee decay periods"
+                  hint="Steps the fee decays over. 1 or more."
+                >
+                  <input
+                    inputMode="numeric"
+                    value={feePeriods}
+                    onChange={(e) => setFeePeriods(e.target.value.replace(/[^0-9]/g, ''))}
+                  />
+                </Field>
+                <Field
+                  label="Fee decay duration (slots)"
+                  hint="Total decay time, at least the periods above. About 0.4s per slot."
+                >
+                  <input
+                    inputMode="numeric"
+                    value={feeDuration}
+                    onChange={(e) => setFeeDuration(e.target.value.replace(/[^0-9]/g, ''))}
+                  />
+                </Field>
+              </div>
+              <div className="mt-4">
+                <Toggle
+                  label="Dynamic fee"
+                  hint="An extra fee kicks in on volatile swaps, on top of the schedule."
+                  checked={dynamicFee}
+                  onChange={setDynamicFee}
+                />
+              </div>
+
               <ErrorList errors={econErrors} />
+            </section>
+
+            {/* ---- Graduation & migration ---- */}
+            <section className="sc-builder-section">
+              <div className="sc-builder-section-head">
+                <span className="sc-section-glyph">▲</span>
+                <div>
+                  <h2>Graduation and migration</h2>
+                  <p>When the pool leaves the bonding curve, and what it costs</p>
+                </div>
+              </div>
+              <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-4">
+                <p className="mb-2 text-xs uppercase tracking-wide text-neutral-500">
+                  Graduation threshold
+                </p>
+                {graduationPreview !== null ? (
+                  <p className="text-neutral-100">
+                    Graduates to <strong className="text-primary">DAMM v2</strong> at{' '}
+                    <strong>
+                      ~{graduationPreview.toLocaleString('en-US', { maximumFractionDigits: 4 })}{' '}
+                      {quoteSymbol}
+                    </strong>{' '}
+                    in quote reserves.
+                  </p>
+                ) : (
+                  <p className="text-neutral-500">
+                    Fix the errors above to compute the graduation threshold.
+                  </p>
+                )}
+                <p className="mt-1 text-xs text-neutral-500">
+                  Computed from your curve with the DBC SDK, not an estimate.
+                </p>
+                <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-[1fr_auto] md:items-end">
+                  <Field
+                    label={`Graduation target (${quoteSymbol})`}
+                    hint="Optional. Rescales the curve so it graduates at this level."
+                  >
+                    <input
+                      inputMode="decimal"
+                      placeholder="e.g. 85"
+                      value={gradTarget}
+                      onChange={(e) => setGradTarget(e.target.value.replace(/[^0-9.]/g, ''))}
+                    />
+                  </Field>
+                  <button
+                    type="button"
+                    onClick={applyGraduationTarget}
+                    className="sc-button sc-button-secondary"
+                  >
+                    Match curve to target
+                  </button>
+                </div>
+              </div>
+              <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                <Field
+                  label="Migration fee (%)"
+                  hint="Taken from the migrating liquidity at graduation. 0-99."
+                >
+                  <input
+                    inputMode="numeric"
+                    value={migrationFeePct}
+                    onChange={(e) => setMigrationFeePct(e.target.value.replace(/[^0-9]/g, ''))}
+                  />
+                </Field>
+                <Field
+                  label="Post-graduation pool fee (bps)"
+                  hint="Base fee on the DAMM v2 pool after graduation. 10-1000."
+                >
+                  <input
+                    inputMode="numeric"
+                    value={dammFeeBps}
+                    onChange={(e) => setDammFeeBps(e.target.value.replace(/[^0-9]/g, ''))}
+                  />
+                </Field>
+              </div>
+              <div className="mt-4">
+                <Toggle
+                  label="DAMM v2 dynamic fee"
+                  hint="Keep the dynamic fee on the post-graduation pool."
+                  checked={dammDynamicFee}
+                  onChange={setDammDynamicFee}
+                />
+              </div>
+              <p className="mt-3 text-xs text-neutral-500">
+                Locked: you keep 0.3% of every bonding-curve trade and 50% of the
+                migration fee. Launching costs no pool creation fee, only Solana
+                network fees.
+              </p>
             </section>
 
             {/* ---- Review ---- */}
@@ -1192,7 +1387,13 @@ export default function CreatePool() {
                   </p>
                   <p className="mt-1 text-neutral-400">
                     Fees: {((parseInt(startFeeBps, 10) || 0) / 100).toFixed(2)}% →{' '}
-                    {((parseInt(endFeeBps, 10) || 0) / 100).toFixed(2)}%
+                    {((parseInt(endFeeBps, 10) || 0) / 100).toFixed(2)}% over{' '}
+                    {feePeriods || '—'} periods{dynamicFee ? ' + dynamic' : ''}
+                  </p>
+                  <p className="mt-1 text-neutral-400">
+                    Migration fee: {migrationFeePct || '—'}% · DAMM v2:{' '}
+                    {((parseInt(dammFeeBps, 10) || 0) / 100).toFixed(2)}%
+                    {dammDynamicFee ? ' + dynamic' : ''}
                   </p>
                 </div>
                 <div className="rounded-lg border border-primary/40 bg-primary/5 p-4">

@@ -38,3 +38,35 @@ export function ErrorList({ errors }: { errors: string[] }) {
     </div>
   );
 }
+
+/** On/off switch for launch-form options, styled against the spec classes. */
+export function Toggle({
+  label,
+  hint,
+  checked,
+  onChange,
+}: {
+  label: string;
+  hint?: string;
+  checked: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      onClick={() => onChange(!checked)}
+      className="sc-toggle"
+      data-on={checked ? 'true' : 'false'}
+    >
+      <span className="sc-toggle-track" aria-hidden="true">
+        <span className="sc-toggle-thumb" />
+      </span>
+      <span className="sc-toggle-text">
+        <span className="sc-toggle-label">{label}</span>
+        {hint && <small className="sc-toggle-hint">{hint}</small>}
+      </span>
+    </button>
+  );
+}

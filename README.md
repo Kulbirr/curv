@@ -1,141 +1,75 @@
-# Fun Launch
+# Curv
 
-A platform for launching tokens with customizable price curves.
+**Every token launch gets its own designer bonding curve.**
 
-## Setup
+Curv is a launchpad built on Meteora's Dynamic Bonding Curve. Where pump.fun gives every launch the same fixed curve, Curv lets each creator design theirs: the shape of the price curve, the fee schedule that decays from launch, and the graduation design that carries the pool onto the open market.
 
-1. Clone the repository
+## Why designer curves
 
-```bash
-git clone https://github.com/MeteoraAg/meteora-invent.git
-cd scaffolds/fun-launch
-```
+The bonding curve is the product. A fixed curve treats a memecoin, a game token and a community treasury the same way. Curv treats the curve as a design surface: pick a preset or draw your own, set how fees start high to deter sniper bots then decay, and choose when the pool graduates to a real market.
 
-2. Install dependencies
+## Meteora DBC integration
 
-```bash
-pnpm install
-```
+Curv builds on the DBC SDK at depth, not as a thin wrapper:
 
-3. Set up environment variables Create a `.env` file in the root directory with the following
-   variables:
+* Custom sqrt price curves derived from the visual designer, with per segment liquidity weights
+* Exponential fee scheduler with creator set start and end fees, decay periods and duration
+* Dynamic fees on the bonding curve and on the post graduation DAMM v2 pool
+* Creator trading fee of 0.3 percent on every bonding curve trade, claimed with a wallet signed transaction
+* Migration to DAMM v2 at a graduation threshold computed by the SDK's own math from the curve
+* Graduation target matching: name the threshold you want and the curve rescales to hit it
+* Configurable migration fee and post graduation pool fee
+* Quote pairs in SOL, USDC or any SPL mint
 
-```bash
-cp .env.example .env
-```
+## Creator economics
 
-```env
-# Cloudflare R2 Storage
-R2_ACCESS_KEY_ID=your_r2_access_key_id
-R2_SECRET_ACCESS_KEY=your_r2_secret_access_key
-R2_ACCOUNT_ID=your_r2_account_id
-R2_BUCKET=your_r2_bucket_name
+* 0.3 percent of every bonding curve trade goes to the creator, matching pump.fun
+* At graduation, a migration fee is taken from the migrating liquidity and the creator keeps half of it
+* No pool creation fee. Launching costs only Solana network fees
+* Every figure on the launch page is computed from the same constants that build the on chain config. Nothing is estimated or mocked
 
-# Solana RPC URL
-RPC_URL=your_rpc_url
+## Launch flow
 
-# Pool Configuration
-POOL_CONFIG_KEY=your_pool_config_key
-```
+1. Design the curve, set the economics, upload art and metadata. No wallet needed
+2. Claim an instant ...curv vanity mint from the warm pool, or grind one in the browser while you design. A random mint is the final fallback
+3. Review the full fee disclosure, then connect a wallet. Launch takes exactly two signatures
+4. Trade on the pool page with live polling, quick buy and sell presets, and a price chart drawn from real indexed samples with gaps preserved
+5. At the graduation threshold the pool migrates to DAMM v2 automatically
 
-### Getting R2 Credentials
+## Verified on devnet
 
-1. Go to [Cloudflare Dashboard](https://dash.cloudflare.com)
-2. Navigate to R2
-3. Create a new bucket or select an existing one
-4. Go to "Manage R2 API Tokens"
-5. Create a new API token with the following permissions:
-   - Account R2 Storage: Edit
-   - Bucket: Your bucket name
-6. Copy the Access Key ID and Secret Access Key
-7. Your Account ID can be found in the Cloudflare dashboard URL or in the Account Home page
+The full path runs against devnet through the real app code: launch, pool registration, two buys, one sell, indexer pickup, API serving.
 
-### Getting RPC URL
+* Pool: `AcdyunXSN1dLgS8tPCRPLTauZxmi84mLLQvi2xhKQoP4`
+* Launch tx: `3GYcTgkUCxTWXHCJEkyx46oeADDQM3PmUqcVpudK6FpVDudpH11SNGWdTcMsNTXDLUfakWvXLmhnePAXqfpGBhmB`
+* Total spend for the whole run: under 0.03 SOL
 
-1. Get your RPC URL from any of 3rd party providers
+## Stack
 
-### Pool Config Key
+Next.js and TypeScript, `@meteora-ag/dynamic-bonding-curve-sdk`, SQLite registry with a REST API, Solana RPC REST polling, 358 automated tests.
 
-The pool config key is used to configure the bonding curve parameters. You'll need to:
-
-1. Deploy your own pool config program
-2. Or use an existing pool config program
-3. Get the public key of the pool config account
-
-4. Run the development server
+## Run it
 
 ```bash
-pnpm dev
+npm install
+npm run dev
 ```
 
-## Deployment
+The app targets devnet by default. Set `SOLANA_RPC_URL` to your own endpoint for heavier use. Copy `.env.example` to `.env` for object storage and RPC keys.
 
-### Deploying to Vercel
+Key scripts: `npm test`, `npm run typecheck`, `npm run indexer`, `npm run grind` (vanity mint warm pool; needs `VANITY_POOL_KEY`).
 
-1. Push your code to a GitHub repository
+## Project layout
 
-2. Go to [Vercel](https://vercel.com) and sign in with your GitHub account
+* `src/pages` — the five pages: Discover, Launch, Pool, Presets, Portfolio
+* `src/lib/launch.ts` — designer spec to DBC SDK params, validation, graduation math
+* `src/lib/launch-fees.ts` — canonical economics constants and the fee disclosure
+* `src/lib/vanity-*` — ...curv mint grinding, encrypted warm pool, atomic claims
+* `src/pages/api` — pool registry, vanity mint handout, strictly validated APIs
+* `scripts/` — indexer, grinder, seed
 
-3. Click "New Project"
+## Status
 
-4. Import your GitHub repository
+Devnet verified end to end. In progress: hosted staging, production RPC and load testing, then mainnet.
 
-5. Configure your project:
-   - Framework Preset: Next.js
-   - Root Directory: ./
-   - Build Command: `pnpm build`
-   - Output Directory: .next
-
-6. Add Environment Variables:
-   - Add all the environment variables from your `.env` file:
-     - `R2_ACCESS_KEY_ID`
-     - `R2_SECRET_ACCESS_KEY`
-     - `R2_ACCOUNT_ID`
-     - `R2_BUCKET`
-     - `RPC_URL`
-     - `POOL_CONFIG_KEY`
-
-7. Click "Deploy"
-
-8. Vercel will automatically deploy your site and provide you with a URL
-
-### Environment Variables in Vercel
-
-You can manage your environment variables in Vercel:
-
-1. Go to your project settings
-2. Click on "Environment Variables"
-3. Add each variable from your `.env` file
-4. You can set different values for Production, Preview, and Development environments
-
-### Custom Domain (Optional)
-
-1. Go to your project settings in Vercel
-2. Click on "Domains"
-3. Add your custom domain
-4. Follow Vercel's instructions to configure your DNS settings
-
-## Features
-
-- Create token pools with customizable price curves
-- Upload token metadata and logos
-- View token statistics and charts
-- Track token transactions
-- Mobile-friendly interface
-
-## Tech Stack
-
-- Next.js
-- TypeScript
-- Tailwind CSS
-- Solana Web3.js
-- Dynamic Bonding Curve SDK
-- Cloudflare R2 for storage
-
-## Contributing
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+Built for the Meteora DBC bounty on Superteam Earn.

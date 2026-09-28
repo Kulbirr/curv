@@ -16,7 +16,7 @@ import {
   deriveDbcPoolAddress,
 } from '@meteora-ag/dynamic-bonding-curve-sdk';
 import { getConnection, getDbcClient } from './solana';
-import { LAUNCH_FEE_CONFIG } from './launch-fees';
+import { LAUNCH_FEE_CONFIG, defaultEcon, type ResolvedEcon } from './launch-fees';
 
 /**
  * Designer-friendly launch spec → Meteora DBC SDK params.
@@ -51,6 +51,36 @@ export interface LaunchSpec {
   curve: CurveDesign;
   startingFeeBps: number;
   endingFeeBps: number;
+  /** Optional creator overrides for the fee schedule and migration.
+   *  Anything omitted falls back to LAUNCH_FEE_CONFIG. The creator's
+   *  own cuts (0.3% trading fee, 50% of the migration fee) are locked
+   *  and intentionally not overridable here. */
+  econ?: LaunchEconOverrides;
+}
+
+/**
+ * Creator-configurable economics. Every field is optional: omitted fields
+ * fall back to LAUNCH_FEE_CONFIG. Units match the DBC SDK (bps, percent,
+ * slots) unless noted.
+ */
+export interface LaunchEconOverrides {
+  /** Fee-schedule decay periods. SDK requires >= 1. */
+  feeSchedulerPeriods?: number;
+  /** Fee-schedule total duration, in slots. Must be >= periods. */
+  feeSchedulerTotalDuration?: number;
+  /** Extra dynamic fee on volatile swaps. */
+  dynamicFeeEnabled?: boolean;
+  /** Fee taken from migrating liquidity at graduation, whole percent 0-99. */
+  migrationFeePercent?: number;
+  /** DAMM v2 base fee after graduation, bps, 10-1000. */
+  migratedPoolFeeBps?: number;
+  /** Dynamic fee on the post-graduation DAMM v2 pool. */
+  migratedPoolDynamicFee?: boolean;
+}
+
+/** Effective economics: defaults merged with the spec's overrides. */
+export function resolveEcon(spec: LaunchSpec): ResolvedEcon {
+  return { ...defaultEcon(), ...spec.econ };
 }
 
 export type CurvePresetId = 'flat' | 'exponential' | 'long' | 'gentle';
@@ -125,6 +155,24 @@ export function validateLaunchSpec(spec: LaunchSpec): string[] {
     errors.push('Ending fee must be 25-9900 bps');
   if (spec.endingFeeBps > spec.startingFeeBps)
     errors.push('Ending fee cannot exceed the starting fee');
+  // Creator-configurable economics. Bounds mirror the DBC SDK exactly so a
+  // spec that passes here never fails at transaction-build time.
+  const econ = resolveEcon(spec);
+  if (!Number.isInteger(econ.feeSchedulerPeriods) || econ.feeSchedulerPeriods < 1)
+    errors.push('Fee decay periods must be a whole number of 1 or more');
+  if (
+    !Number.isInteger(econ.feeSchedulerTotalDuration) ||
+    econ.feeSchedulerTotalDuration < econ.feeSchedulerPeriods
+  )
+    errors.push('Fee decay duration must be a whole number of slots, at least the number of periods');
+  if (!Number.isInteger(econ.migrationFeePercent) || econ.migrationFeePercent < 0 || econ.migrationFeePercent > 99)
+    errors.push('Migration fee must be a whole percent between 0 and 99');
+  if (
+    !Number.isInteger(econ.migratedPoolFeeBps) ||
+    econ.migratedPoolFeeBps < 10 ||
+    econ.migratedPoolFeeBps > 1000
+  )
+    errors.push('Post-graduation pool fee must be 10-1000 bps');
   return errors;
 }
 
@@ -142,6 +190,7 @@ export function buildCurveParams(
   const errors = validateLaunchSpec(spec);
   if (errors.length > 0) throw new Error(errors[0]);
 
+  const econ = resolveEcon(spec);
   const baseDecimalEnum = toTokenDecimalEnum(spec.baseDecimals);
   const sqrtPrices = createSqrtPrices(spec.curve.prices, baseDecimalEnum, spec.quoteDecimals);
 
@@ -160,29 +209,29 @@ export function buildCurveParams(
         feeSchedulerParam: {
           startingFeeBps: spec.startingFeeBps,
           endingFeeBps: spec.endingFeeBps,
-          numberOfPeriod: LAUNCH_FEE_CONFIG.feeSchedulerPeriods,
-          totalDuration: LAUNCH_FEE_CONFIG.feeSchedulerTotalDuration,
+          numberOfPeriod: econ.feeSchedulerPeriods,
+          totalDuration: econ.feeSchedulerTotalDuration,
         },
       },
-      dynamicFeeEnabled: LAUNCH_FEE_CONFIG.dynamicFeeEnabled,
+      dynamicFeeEnabled: econ.dynamicFeeEnabled,
       collectFeeMode: CollectFeeMode.QuoteToken,
-      creatorTradingFeePercentage: LAUNCH_FEE_CONFIG.creatorTradingFeePercent,
-      poolCreationFee: LAUNCH_FEE_CONFIG.poolCreationFeeSol,
+      creatorTradingFeePercentage: econ.creatorTradingFeePercent,
+      poolCreationFee: econ.poolCreationFeeSol,
       enableFirstSwapWithMinFee: false,
     },
     migration: {
       migrationOption: MigrationOption.MET_DAMM_V2,
       migrationFeeOption: MigrationFeeOption.Customizable,
       migrationFee: {
-        feePercentage: LAUNCH_FEE_CONFIG.migrationFeePercent,
-        creatorFeePercentage: LAUNCH_FEE_CONFIG.creatorMigrationFeePercent,
+        feePercentage: econ.migrationFeePercent,
+        creatorFeePercentage: econ.creatorMigrationFeePercent,
       },
       migratedPoolFee: {
         collectFeeMode: MigratedCollectFeeMode.QuoteToken,
-        dynamicFee: LAUNCH_FEE_CONFIG.migratedPoolDynamicFee
+        dynamicFee: econ.migratedPoolDynamicFee
           ? DammV2DynamicFeeMode.Enabled
           : DammV2DynamicFeeMode.Disabled,
-        poolFeeBps: LAUNCH_FEE_CONFIG.migratedPoolFeeBps,
+        poolFeeBps: econ.migratedPoolFeeBps,
         baseFeeMode: DammV2BaseFeeMode.FeeTimeSchedulerLinear,
       },
     },
@@ -203,6 +252,76 @@ export function buildCurveParams(
     sqrtPrices,
     liquidityWeights: spec.curve.liquidityWeights,
   });
+}
+
+/**
+ * Graduation threshold for a spec, in quote UI units (e.g. SOL): the quote
+ * reserve level at which the pool migrates to DAMM v2. Computed with the
+ * real DBC SDK math from the curve and effective economics — never an
+ * estimate. Returns null when the spec is invalid.
+ */
+export function graduationThresholdQuote(spec: LaunchSpec): number | null {
+  try {
+    if (validateLaunchSpec(spec).length > 0) return null;
+    // buildCurveParams returns the SDK's ConfigParameters at runtime, which
+    // carries migrationQuoteThreshold (a BN in quote raw units).
+    const params = buildCurveParams(spec) as unknown as {
+      migrationQuoteThreshold: { toString(): string };
+    };
+    const asFloat = Number(params.migrationQuoteThreshold.toString()) / 10 ** spec.quoteDecimals;
+    return Number.isFinite(asFloat) && asFloat > 0 ? asFloat : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Rescale a spec's curve price ladder so its graduation threshold equals
+ * `targetQuote` (quote UI units). The threshold is monotonic in a uniform
+ * price scale, so a binary search on the SDK's own math converges on the
+ * exact scale factor. Returns the rescaled spec; weights, supply, fees and
+ * economics are untouched. Throws when the target is not positive or the
+ * spec is invalid.
+ */
+export function scaleCurveToGraduationTarget(spec: LaunchSpec, targetQuote: number): LaunchSpec {
+  if (!Number.isFinite(targetQuote) || targetQuote <= 0)
+    throw new Error('Graduation target must be a positive number');
+  if (validateLaunchSpec(spec).length > 0) throw new Error('Spec is not valid');
+  const scaled = (s: number): LaunchSpec => ({
+    ...spec,
+    curve: {
+      ...spec.curve,
+      prices: spec.curve.prices.map((p) => p * s),
+    },
+  });
+  // At extreme scales the SDK math can underflow to zero; treat that as a
+  // zero threshold (economically true: a near-free curve needs near-zero
+  // quote to fill).
+  const thresholdOf = (s: number): number => {
+    try {
+      return graduationThresholdQuote(scaled(s)) ?? 0;
+    } catch {
+      return 0;
+    }
+  };
+  // Bracket the target: threshold grows with the price scale.
+  let lo = 1e-9;
+  let hi = 1;
+  if (thresholdOf(hi) < targetQuote) {
+    while (thresholdOf(hi) < targetQuote && hi < 1e18) hi *= 2;
+  } else {
+    while (thresholdOf(lo) > targetQuote && lo > 1e-18) lo /= 2;
+  }
+  for (let i = 0; i < 64; i++) {
+    const mid = (lo + hi) / 2;
+    if (thresholdOf(mid) < targetQuote) lo = mid;
+    else hi = mid;
+  }
+  const result = scaled((lo + hi) / 2);
+  const achieved = thresholdOf((lo + hi) / 2);
+  if (achieved <= 0 || Math.abs(achieved - targetQuote) / targetQuote > 0.01)
+    throw new Error('Could not match that graduation target');
+  return result;
 }
 
 export interface BuiltLaunch {

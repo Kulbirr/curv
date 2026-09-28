@@ -70,3 +70,41 @@ describe('buildFeeDisclosureRows', () => {
     expect(usdc.find((r) => r.label === 'Trading fees')!.hint).toContain('USDC');
   });
 });
+
+describe('buildFeeDisclosureRows with creator overrides', () => {
+  it('reflects an overridden fee schedule', () => {
+    const rows = buildFeeDisclosureRows({
+      startingFeeBps: 500,
+      endingFeeBps: 100,
+      quoteSymbol: 'SOL',
+      econ: {
+        ...LAUNCH_FEE_CONFIG,
+        feeSchedulerPeriods: 120,
+        dynamicFeeEnabled: false,
+      },
+    });
+    const hint = rows.find((r) => r.label === 'Trading fees')!.hint;
+    expect(hint).toContain('120 periods');
+    expect(hint).not.toContain('dynamic fee');
+  });
+
+  it('reflects an overridden migration fee', () => {
+    const rows = buildFeeDisclosureRows({
+      startingFeeBps: 500,
+      endingFeeBps: 100,
+      quoteSymbol: 'SOL',
+      econ: { ...LAUNCH_FEE_CONFIG, migrationFeePercent: 20 },
+    });
+    expect(rows.find((r) => r.label === 'Migration fee')!.value).toBe('20% (you keep 50%)');
+  });
+
+  it('reflects an overridden post-graduation pool fee', () => {
+    const rows = buildFeeDisclosureRows({
+      startingFeeBps: 500,
+      endingFeeBps: 100,
+      quoteSymbol: 'SOL',
+      econ: { ...LAUNCH_FEE_CONFIG, migratedPoolFeeBps: 300, migratedPoolDynamicFee: false },
+    });
+    expect(rows.find((r) => r.label === 'After graduation')!.value).toBe('3.00%');
+  });
+});

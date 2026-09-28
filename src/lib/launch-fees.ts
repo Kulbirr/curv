@@ -51,6 +51,30 @@ export interface FeeDisclosureInput {
   startingFeeBps: number;
   endingFeeBps: number;
   quoteSymbol: string;
+  /** Effective economics (defaults merged with the creator's overrides).
+   *  When omitted, LAUNCH_FEE_CONFIG is used. */
+  econ?: ResolvedEcon;
+}
+
+/** Effective economics: LAUNCH_FEE_CONFIG merged with creator overrides.
+ *  Widened from the `as const` literal types so overrides typecheck. */
+export interface ResolvedEcon {
+  poolCreationFeeSol: number;
+  feeSchedulerPeriods: number;
+  feeSchedulerTotalDuration: number;
+  dynamicFeeEnabled: boolean;
+  creatorTradingFeePercent: number;
+  collectFeeMode: string;
+  migrationOption: string;
+  migrationFeePercent: number;
+  creatorMigrationFeePercent: number;
+  migratedPoolFeeBps: number;
+  migratedPoolDynamicFee: boolean;
+}
+
+/** The defaults as a mutable effective-economics object. */
+export function defaultEcon(): ResolvedEcon {
+  return { ...LAUNCH_FEE_CONFIG };
 }
 
 export interface FeeDisclosureRow {
@@ -70,7 +94,8 @@ function pct(bps: number): string {
  * is invented here.
  */
 export function buildFeeDisclosureRows(input: FeeDisclosureInput): FeeDisclosureRow[] {
-  const c = LAUNCH_FEE_CONFIG;
+  const c = input.econ ?? LAUNCH_FEE_CONFIG;
+  const dyn = (on: boolean) => (on ? ', plus a dynamic fee on volatile swaps' : '');
   return [
     {
       label: 'Pool creation fee',
@@ -85,7 +110,7 @@ export function buildFeeDisclosureRows(input: FeeDisclosureInput): FeeDisclosure
       value: `${pct(input.startingFeeBps)} → ${pct(input.endingFeeBps)}`,
       hint:
         `Your schedule: decays exponentially over ${c.feeSchedulerPeriods} periods` +
-        (c.dynamicFeeEnabled ? ', plus a dynamic fee on volatile swaps' : '') +
+        dyn(c.dynamicFeeEnabled) +
         `. Collected in ${input.quoteSymbol || 'the quote token'}.`,
     },
     {

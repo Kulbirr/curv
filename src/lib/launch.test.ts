@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BN } from '@coral-xyz/anchor';
-import { CURVE_PRESETS, buildCurveParams, presetCurve, validateLaunchSpec, type LaunchSpec } from './launch';
+import { CURVE_PRESETS, buildCurveParams, graduationThresholdQuote, presetCurve, resolveEcon, scaleCurveToGraduationTarget, validateLaunchSpec, type LaunchSpec } from './launch';
 import { SOL_MINT } from './quote-assets';
 import { randomAddress } from '@/test-support/db';
 
@@ -187,5 +187,154 @@ describe('buildCurveParams', () => {
   it('uses a custom base mint fixture without complaint', () => {
     const params = buildCurveParams(validSpec({ quoteMint: randomAddress(), quoteDecimals: 6 }));
     expect(params.curve).toHaveLength(3);
+  });
+});
+
+describe('creator economics overrides', () => {
+  it('resolveEcon returns the defaults with no overrides', () => {
+    const e = resolveEcon(validSpec());
+    expect(e.feeSchedulerPeriods).toBe(60);
+    expect(e.feeSchedulerTotalDuration).toBe(60);
+    expect(e.dynamicFeeEnabled).toBe(true);
+    expect(e.migrationFeePercent).toBe(10);
+    expect(e.migratedPoolFeeBps).toBe(120);
+    expect(e.migratedPoolDynamicFee).toBe(true);
+  });
+
+  it('resolveEcon merges overrides over the defaults', () => {
+    const e = resolveEcon(
+      validSpec({ econ: { feeSchedulerPeriods: 120, migrationFeePercent: 5 } }),
+    );
+    expect(e.feeSchedulerPeriods).toBe(120);
+    expect(e.migrationFeePercent).toBe(5);
+    // Untouched fields keep their defaults.
+    expect(e.feeSchedulerTotalDuration).toBe(60);
+    expect(e.migratedPoolFeeBps).toBe(120);
+  });
+
+  it('never lets the spec override the locked creator cuts', () => {
+    const e = resolveEcon(validSpec({ econ: {} }));
+    expect(e.creatorTradingFeePercent).toBe(0.3);
+    expect(e.creatorMigrationFeePercent).toBe(50);
+    expect(e.poolCreationFeeSol).toBe(0);
+  });
+
+  it('rejects a zero or negative fee-decay period count', () => {
+    expect(validateLaunchSpec(validSpec({ econ: { feeSchedulerPeriods: 0 } }))).toContain(
+      'Fee decay periods must be a whole number of 1 or more',
+    );
+  });
+
+  it('rejects a decay duration shorter than the period count', () => {
+    expect(
+      validateLaunchSpec(validSpec({ econ: { feeSchedulerPeriods: 60, feeSchedulerTotalDuration: 59 } })),
+    ).toContain(
+      'Fee decay duration must be a whole number of slots, at least the number of periods',
+    );
+  });
+
+  it('rejects out-of-range migration fees', () => {
+    expect(validateLaunchSpec(validSpec({ econ: { migrationFeePercent: 100 } }))).toContain(
+      'Migration fee must be a whole percent between 0 and 99',
+    );
+    expect(validateLaunchSpec(validSpec({ econ: { migrationFeePercent: -1 } }))).toContain(
+      'Migration fee must be a whole percent between 0 and 99',
+    );
+    expect(validateLaunchSpec(validSpec({ econ: { migrationFeePercent: 2.5 } }))).toContain(
+      'Migration fee must be a whole percent between 0 and 99',
+    );
+  });
+
+  it('rejects out-of-range post-graduation pool fees', () => {
+    expect(validateLaunchSpec(validSpec({ econ: { migratedPoolFeeBps: 9 } }))).toContain(
+      'Post-graduation pool fee must be 10-1000 bps',
+    );
+    expect(validateLaunchSpec(validSpec({ econ: { migratedPoolFeeBps: 1001 } }))).toContain(
+      'Post-graduation pool fee must be 10-1000 bps',
+    );
+  });
+
+  it('accepts valid overrides', () => {
+    expect(
+      validateLaunchSpec(
+        validSpec({
+          econ: {
+            feeSchedulerPeriods: 120,
+            feeSchedulerTotalDuration: 240,
+            dynamicFeeEnabled: false,
+            migrationFeePercent: 0,
+            migratedPoolFeeBps: 10,
+            migratedPoolDynamicFee: false,
+          },
+        }),
+      ),
+    ).toEqual([]);
+  });
+});
+
+describe('graduationThresholdQuote', () => {
+  it('returns a positive threshold for a valid spec', () => {
+    const t = graduationThresholdQuote(validSpec());
+    expect(t).not.toBeNull();
+    expect(t!).toBeGreaterThan(0);
+    expect(Number.isFinite(t!)).toBe(true);
+  });
+
+  it('returns null for an invalid spec', () => {
+    expect(graduationThresholdQuote(validSpec({ name: '' }))).toBeNull();
+  });
+
+  it('rises when the migration fee rises', () => {
+    const low = graduationThresholdQuote(validSpec({ econ: { migrationFeePercent: 0 } }))!;
+    const high = graduationThresholdQuote(validSpec({ econ: { migrationFeePercent: 20 } }))!;
+    expect(high).toBeGreaterThan(low);
+  });
+
+  it('is unaffected by the fee schedule', () => {
+    const a = graduationThresholdQuote(validSpec())!;
+    const b = graduationThresholdQuote(
+      validSpec({ econ: { feeSchedulerPeriods: 240, feeSchedulerTotalDuration: 240 } }),
+    )!;
+    expect(b).toBeCloseTo(a, 10);
+  });
+});
+
+describe('scaleCurveToGraduationTarget', () => {
+  it('hits a lower target', () => {
+    const s = validSpec();
+    const t0 = graduationThresholdQuote(s)!;
+    const target = t0 / 10;
+    const r = scaleCurveToGraduationTarget(s, target);
+    const t1 = graduationThresholdQuote(r)!;
+    expect(Math.abs(t1 - target) / target).toBeLessThan(0.01);
+  });
+
+  it('hits a higher target', () => {
+    const s = validSpec();
+    const t0 = graduationThresholdQuote(s)!;
+    const target = t0 * 3;
+    const r = scaleCurveToGraduationTarget(s, target);
+    const t1 = graduationThresholdQuote(r)!;
+    expect(Math.abs(t1 - target) / target).toBeLessThan(0.01);
+  });
+
+  it('scales the curve uniformly, preserving its shape', () => {
+    const s = validSpec();
+    const t0 = graduationThresholdQuote(s)!;
+    const r = scaleCurveToGraduationTarget(s, t0 * 2);
+    const ratios = r.curve.prices.map((p, i) => p / s.curve.prices[i]);
+    const spread = Math.max(...ratios) / Math.min(...ratios);
+    expect(spread).toBeLessThan(1.000001);
+    expect(r.curve.liquidityWeights).toEqual(s.curve.liquidityWeights);
+  });
+
+  it('throws on a non-positive target', () => {
+    expect(() => scaleCurveToGraduationTarget(validSpec(), 0)).toThrow();
+    expect(() => scaleCurveToGraduationTarget(validSpec(), -5)).toThrow();
+  });
+
+  it('throws on an invalid spec', () => {
+    const t0 = graduationThresholdQuote(validSpec())!;
+    expect(() => scaleCurveToGraduationTarget(validSpec({ name: '' }), t0)).toThrow();
   });
 });
