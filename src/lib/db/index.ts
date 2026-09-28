@@ -149,6 +149,23 @@ function numEnv(name: string, fallback: number): number {
   return Number.isFinite(raw) && raw > 0 ? raw : fallback;
 }
 
+/**
+ * Strip sslmode from a pasted connection string. pg-connection-string
+ * treats sslmode=require as verify-full and lets it silently override the
+ * explicit `ssl` option in getPool(), which breaks managed hosts whose CA
+ * is not in the default trust store (Aiven: "self-signed certificate in
+ * certificate chain"). TLS is managed explicitly via `ssl` in getPool().
+ */
+export function sanitizeConnectionString(url: string): string {
+  try {
+    const u = new URL(url);
+    u.searchParams.delete('sslmode');
+    return u.toString();
+  } catch {
+    return url;
+  }
+}
+
 function connectionString(): string {
   const url = process.env.DATABASE_URL;
   if (!url) {
@@ -158,7 +175,7 @@ function connectionString(): string {
         'Postgres and use postgres://postgres@localhost:5432/curv',
     );
   }
-  return url;
+  return sanitizeConnectionString(url);
 }
 
 function sslFor(url: string): false | { rejectUnauthorized: boolean } {
