@@ -5128,3 +5128,64 @@ select {
   color: #aab3aa;
   font-size: 9px;
 }
+
+/* ---- Launch mode toggle (Quick / Pro) ---- */
+.sc-launch-mode-toggle {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 18px 0 0;
+}
+.sc-launch-mode-tab {
+  display: grid;
+  gap: 4px;
+  padding: 14px 16px;
+  border: 1px solid #2a302e;
+  border-radius: 10px;
+  background: #101414;
+  color: #dce3db;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.sc-launch-mode-tab strong {
+  font-size: 15px;
+  font-weight: 680;
+  letter-spacing: -0.01em;
+}
+.sc-launch-mode-tab span {
+  font-size: 12px;
+  color: #8f9991;
+}
+.sc-launch-mode-tab:hover {
+  border-color: #3a453f;
+}
+.sc-launch-mode-tab-active {
+  border-color: #39dc78;
+  box-shadow: inset 0 0 0 1px #39dc78;
+  background: #0e1a12;
+}
+.sc-launch-mode-tab-active span {
+  color: #b9c6b6;
+}
+
+/* ---- Quick mode defaults summary ---- */
+.sc-quick-defaults {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.sc-quick-defaults li {
+  padding: 10px 12px;
+  border: 1px solid #232a27;
+  border-radius: 8px;
+  background: #0d100e;
+  font-size: 13px;
+  color: #b9c6b6;
+}
+.sc-quick-defaults li strong {
+  color: #38ee81;
+  font-weight: 680;
+}

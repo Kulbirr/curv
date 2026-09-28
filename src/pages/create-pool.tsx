@@ -101,6 +101,7 @@ function vanityEta(p: VanityProgress): string {
 const DRAFT_KEY = 'curv.launch-draft.v1';
 
 interface LaunchDraft {
+  mode?: 'quick' | 'pro';
   name: string;
   symbol: string;
   description: string;
@@ -179,6 +180,7 @@ export default function CreatePool() {
   const [metadataConfigured, setMetadataConfigured] = useState<boolean | null>(null);
   const [manualUri, setManualUri] = useState('');
   const [status, setStatus] = useState<LaunchStatus>('idle');
+  const [mode, setMode] = useState<'quick' | 'pro'>('quick');
   const [launchError, setLaunchError] = useState<string | null>(null);
   const [txSig, setTxSig] = useState<string | null>(null);
   const [launchedPool, setLaunchedPool] = useState<string | null>(null);
@@ -507,7 +509,7 @@ export default function CreatePool() {
   // ---- draft (this browser only; the image is never stored) ----
   function saveDraft() {
     const draft: LaunchDraft = {
-      name, symbol, description, tokenType, underlying,
+      mode, name, symbol, description, tokenType, underlying,
       preset, startPrice, prices, weights,
       quoteSel, customMint, customDecimals, customSymbol,
       baseDecimals, totalSupply, startFeeBps, endFeeBps,
@@ -537,6 +539,7 @@ export default function CreatePool() {
       const raw = localStorage.getItem(DRAFT_KEY);
       if (!raw) return;
       const d = JSON.parse(raw) as Partial<LaunchDraft>;
+      if (d.mode === 'quick' || d.mode === 'pro') setMode(d.mode);
       if (typeof d.name === 'string') setName(d.name);
       if (typeof d.symbol === 'string') setSymbol(d.symbol);
       if (typeof d.description === 'string') setDescription(d.description);
@@ -744,6 +747,8 @@ export default function CreatePool() {
     ? 'Custom'
     : CURVE_PRESETS.find((p) => p.id === preset)?.name ?? 'Custom';
   const allErrors = [...tokenErrors, ...curveErrors, ...econErrors];
+  // Quick mode runs on proven defaults, so only the token fields can block it.
+  const activeErrors = mode === 'quick' ? tokenErrors : allErrors;
   const deployCost = feeRows.length > 0 ? feeRows[0].value : '0 SOL';
 
   return (
@@ -785,6 +790,29 @@ export default function CreatePool() {
               parameter before signing.
             </>
           )}
+        </div>
+
+        <div className="sc-launch-mode-toggle" role="tablist" aria-label="Launch mode">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mode === 'quick'}
+            className={cn('sc-launch-mode-tab', mode === 'quick' && 'sc-launch-mode-tab-active')}
+            onClick={() => setMode('quick')}
+          >
+            <strong>Quick launch</strong>
+            <span>Name, ticker, image. Done.</span>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mode === 'pro'}
+            className={cn('sc-launch-mode-tab', mode === 'pro' && 'sc-launch-mode-tab-active')}
+            onClick={() => setMode('pro')}
+          >
+            <strong>Pro designer</strong>
+            <span>Full control of curve, fees, graduation.</span>
+          </button>
         </div>
 
         <div className="sc-launch-builder-grid">
@@ -912,7 +940,29 @@ export default function CreatePool() {
               )}
             </section>
 
-            {/* ---- Bonding Curve Settings ---- */}
+            {/* ---- Quick mode: what you get with the proven defaults ---- */}
+            {mode === 'quick' && (
+            <section className="sc-builder-section" aria-labelledby="sc-quick-defaults-heading">
+              <div className="sc-builder-section-head">
+                <span className="sc-section-glyph">✦</span>
+                <div>
+                  <h2 id="sc-quick-defaults-heading">What you get</h2>
+                  <p>Proven defaults. Switch to Pro designer to change any of this.</p>
+                </div>
+              </div>
+              <ul className="sc-quick-defaults">
+                <li><strong>1B</strong> token supply · paired with <strong>SOL</strong></li>
+                <li><strong>Exponential</strong> bonding curve from <strong>0.0001 SOL</strong></li>
+                <li>Trading fee <strong>5%</strong> easing to <strong>1%</strong> as volume grows</li>
+                <li><strong>Automatic graduation</strong> to DAMM v2 when the curve fills</li>
+                <li>You keep <strong>0.3%</strong> of every trade plus <strong>half</strong> the migration fee</li>
+                <li><strong>No pool creation fee.</strong> Only Solana network fees.</li>
+              </ul>
+            </section>
+            )}
+
+            {/* ---- Bonding Curve Settings (pro mode only) ---- */}
+            {mode === 'pro' && (
             <section className="sc-builder-section sc-curve-settings">
               <div className="sc-builder-section-head">
                 <span className="sc-section-glyph">⌁</span>
@@ -1056,8 +1106,10 @@ export default function CreatePool() {
 
               <ErrorList errors={curveErrors} />
             </section>
+            )}
 
-            {/* ---- Economics ---- */}
+            {/* ---- Economics (pro mode only) ---- */}
+            {mode === 'pro' && (
             <section className="sc-builder-section">
               <div className="sc-builder-section-head">
                 <span className="sc-section-glyph">◎</span>
@@ -1242,8 +1294,10 @@ export default function CreatePool() {
 
               <ErrorList errors={econErrors} />
             </section>
+            )}
 
-            {/* ---- Graduation & migration ---- */}
+            {/* ---- Graduation & migration (pro mode only) ---- */}
+            {mode === 'pro' && (
             <section className="sc-builder-section">
               <div className="sc-builder-section-head">
                 <span className="sc-section-glyph">▲</span>
@@ -1330,6 +1384,7 @@ export default function CreatePool() {
                 network fees.
               </p>
             </section>
+            )}
 
             {/* ---- Review ---- */}
             <section className="sc-builder-section">
@@ -1433,7 +1488,7 @@ export default function CreatePool() {
                 </div>
               )}
 
-              <ErrorList errors={allErrors} />
+              <ErrorList errors={activeErrors} />
             </section>
 
             {/* ---- Wallet gate: the entire form is completable without a wallet.
@@ -1542,7 +1597,7 @@ export default function CreatePool() {
                   onClick={handleLaunch}
                   disabled={
                     busy ||
-                    allErrors.length > 0 ||
+                    activeErrors.length > 0 ||
                     (metadataConfigured === false && !manualUri.trim())
                   }
                 >
