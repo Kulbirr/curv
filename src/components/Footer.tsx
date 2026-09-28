@@ -7,7 +7,7 @@ export default function Footer() {
   return (
     <footer className="sc-page-foot sc-reference-footer">
       <span>
-        curv <i>© 2024 All rights reserved</i>
+        curv <i>© 2026 All rights reserved</i>
       </span>
       <div className="sc-footer-socials" aria-label="curv social channels">
         <span>Follow curv</span>

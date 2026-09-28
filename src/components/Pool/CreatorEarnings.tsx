@@ -88,63 +88,80 @@ export default function CreatorEarnings({
           : null;
 
   return (
-    <section className="rounded-2xl border border-neutral-800/60 bg-neutral-950 p-5">
-      <h2 className="text-sm font-semibold text-neutral-200">Creator earnings</h2>
-      <p className="mt-1 text-xs text-neutral-500">
-        Your 0.3% of every trade on this pool · {agoText(state.sampledAt, Date.now())}
-        {state.stale ? ' · showing last known values' : ''}
+    <section className="sc-creator-earnings-panel" aria-labelledby="sc-creator-earnings-title">
+      <div className="sc-creator-earnings-head">
+        <h2 id="sc-creator-earnings-title">Creator earnings</h2>
+        <span>Creator-only</span>
+      </div>
+      <p style={{ margin: '8px 0 0', fontSize: 9, color: '#778179' }}>
+        Your 0.3% of every trade on this pool
       </p>
 
       {unknown ? (
-        <p className="mt-4 text-sm text-neutral-500">
-          Earnings data hasn&apos;t been indexed for this pool yet. It appears after the next
+        <p style={{ margin: '14px 0 0', fontSize: 10, lineHeight: 1.6, color: '#8c968d' }}>
+          Earnings data has not been indexed for this pool yet. It appears after the next
           indexer sample.
         </p>
       ) : empty ? (
-        <p className="mt-4 text-sm text-neutral-500">
+        <p style={{ margin: '14px 0 0', fontSize: 10, lineHeight: 1.6, color: '#8c968d' }}>
           No fees accrued yet. You earn 0.3% of every trade once trading starts.
         </p>
       ) : (
-        <div className="mt-4 space-y-2">
-          <div className="flex items-center justify-between rounded-xl bg-neutral-900/60 px-4 py-3">
-            <span className="text-xs text-neutral-500">{state.baseSymbol}</span>
-            <span className="text-sm font-semibold tabular-nums text-neutral-100">{baseFee}</span>
+        <dl className="sc-creator-earnings-balances">
+          <div>
+            <dt>Base token</dt>
+            <dd>
+              {baseFee} {state.baseSymbol}
+            </dd>
           </div>
-          <div className="flex items-center justify-between rounded-xl bg-neutral-900/60 px-4 py-3">
-            <span className="text-xs text-neutral-500">{state.quoteSymbol}</span>
-            <span className="text-sm font-semibold tabular-nums text-neutral-100">{quoteFee}</span>
+          <div>
+            <dt>Quote token</dt>
+            <dd>
+              {quoteFee} {state.quoteSymbol}
+            </dd>
           </div>
-        </div>
+        </dl>
       )}
 
       {!unknown && !empty && (
-        <button
-          type="button"
-          onClick={claim}
-          disabled={busy}
-          className="mt-4 w-full rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-black transition-opacity hover:opacity-90 disabled:opacity-50"
-        >
-          {busy ? statusText : 'Claim earnings'}
-        </button>
+        <div className="sc-creator-earnings-actions">
+          <span>
+            {agoText(state.sampledAt, Date.now())}
+            {state.stale ? ' · showing last known values' : ''}
+          </span>
+          <button
+            type="button"
+            onClick={claim}
+            disabled={busy}
+            className="sc-button sc-button-primary"
+          >
+            {busy ? statusText : 'Claim earnings'}
+          </button>
+        </div>
       )}
 
       {status === 'confirmed' && txSig && (
-        <p className="mt-3 text-xs text-emerald-300">
+        <p className="sc-creator-claim-message">
           Claimed.{' '}
           <a
             href={`https://solscan.io/tx/${txSig}${isDevnet() ? '?cluster=devnet' : ''}`}
             target="_blank"
             rel="noreferrer"
-            className="underline hover:text-emerald-200"
+            style={{ color: '#c4f0c8', textDecoration: 'underline' }}
           >
             View transaction
           </a>
         </p>
       )}
-      {status === 'failed' && error && (
-        <p className="mt-3 text-xs text-red-400">{error}</p>
-      )}
-      <p className="mt-3 text-[11px] leading-relaxed text-neutral-600">
+      {status === 'failed' && error && <p className="sc-trade-message">{error}</p>}
+      <p
+        style={{
+          margin: '10px 0 0',
+          fontSize: 8,
+          lineHeight: 1.6,
+          color: '#5f6a60',
+        }}
+      >
         Claiming sends a transaction you sign in your wallet. Fees land in your wallet in the
         tokens they accrued in.
       </p>

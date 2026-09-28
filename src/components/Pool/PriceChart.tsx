@@ -1,13 +1,27 @@
-import { useMemo } from 'react';
-import { cn } from '@/lib/utils';
+import { useMemo, useState } from 'react';
+import { usePoolHistory } from './usePoolData';
 import type { HistoryPoint } from './types';
 
 const W = 800;
 const H = 300;
-const PAD_L = 64;
-const PAD_R = 16;
-const PAD_T = 16;
-const PAD_B = 32;
+const PAD_L = 10;
+const PAD_R = 10;
+const PAD_T = 12;
+const PAD_B = 26;
+
+type RangeId = '1H' | '24H' | '7D' | '30D' | 'ALL';
+
+/**
+ * Real chart ranges. The history API caps windows at 30 days, so ALL covers
+ * the full 30-day window the API can serve.
+ */
+const RANGES: { id: RangeId; ms: number; points: number }[] = [
+  { id: '1H', ms: 60 * 60 * 1000, points: 120 },
+  { id: '24H', ms: 24 * 60 * 60 * 1000, points: 300 },
+  { id: '7D', ms: 7 * 24 * 60 * 60 * 1000, points: 420 },
+  { id: '30D', ms: 30 * 24 * 60 * 60 * 1000, points: 600 },
+  { id: 'ALL', ms: 30 * 24 * 60 * 60 * 1000, points: 1000 },
+];
 
 /** Split points into segments, breaking the line across data gaps. */
 function toSegments(points: HistoryPoint[]): HistoryPoint[][] {
@@ -41,14 +55,49 @@ function formatAxisTime(t: number): string {
   return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
 }
 
+function ChartHead({
+  range,
+  onRange,
+}: {
+  range: RangeId;
+  onRange: (r: RangeId) => void;
+}) {
+  return (
+    <div className="sc-pool-section-head">
+      <h2>Price chart</h2>
+      <div className="sc-chart-range" aria-label="Chart timeframe">
+        {RANGES.map((r) => (
+          <button
+            key={r.id}
+            type="button"
+            aria-pressed={range === r.id}
+            className={range === r.id ? 'selected' : ''}
+            onClick={() => onRange(r.id)}
+          >
+            {r.id}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 interface Props {
-  points: HistoryPoint[];
-  complete: boolean;
-  isLoading: boolean;
+  poolAddress: string;
   quoteSymbol: string;
 }
 
-export default function PriceChart({ points, complete, isLoading, quoteSymbol }: Props) {
+export default function PriceChart({ poolAddress, quoteSymbol }: Props) {
+  const [range, setRange] = useState<RangeId>('24H');
+  const rangeDef = RANGES.find((r) => r.id === range) ?? RANGES[1];
+  // Fixed once per range selection; the query key stays stable while polling.
+  const from = useMemo(() => Date.now() - rangeDef.ms, [rangeDef]);
+  const historyQuery = usePoolHistory(poolAddress, rangeDef.points, from);
+
+  const points = historyQuery.data?.points ?? [];
+  const complete = historyQuery.data?.complete ?? false;
+  const isLoading = historyQuery.isLoading;
+
   const model = useMemo(() => {
     if (points.length === 0) return null;
     const prices = points.map((p) => p.price);
@@ -75,7 +124,7 @@ export default function PriceChart({ points, complete, isLoading, quoteSymbol }:
       seg.map((pt) => `${pt.x.toFixed(1)},${pt.y.toFixed(1)}`).join(' ')
     );
 
-    const yTicks = [0, 0.25, 0.5, 0.75, 1].map((f) => {
+    const yTicks = [0, 1 / 3, 2 / 3, 1].map((f) => {
       const v = min + (max - min) * f;
       return { v, y: y(v) };
     });
@@ -98,100 +147,120 @@ export default function PriceChart({ points, complete, isLoading, quoteSymbol }:
 
   if (isLoading && points.length === 0) {
     return (
-      <div className="flex h-[300px] items-center justify-center rounded-2xl border border-neutral-800/60 bg-neutral-950">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-neutral-700 border-t-primary" />
-      </div>
+      <section className="sc-pool-chart-card" aria-label="Price chart">
+        <ChartHead range={range} onRange={setRange} />
+        <div
+          className="sc-pool-chart-wrap"
+          style={{ alignItems: 'center', justifyContent: 'center' }}
+        >
+          <div
+            className="animate-spin"
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: '50%',
+              border: '2px solid #2a3134',
+              borderTopColor: '#32f27b',
+            }}
+          />
+        </div>
+      </section>
     );
   }
 
   if (!model) {
     return (
-      <div className="flex h-[300px] flex-col items-center justify-center gap-2 rounded-2xl border border-neutral-800/60 bg-neutral-950 text-center">
-        <p className="text-sm font-medium text-neutral-200">No price history yet</p>
-        <p className="max-w-xs text-sm text-neutral-500">
-          Price history is being recorded — check back soon.
-        </p>
-      </div>
+      <section className="sc-pool-chart-card" aria-label="Price chart">
+        <ChartHead range={range} onRange={setRange} />
+        <div
+          className="sc-pool-chart-wrap"
+          style={{
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 6,
+            textAlign: 'center',
+          }}
+        >
+          <p style={{ margin: 0, fontSize: 11, fontWeight: 600, color: '#dfe5dc' }}>
+            No price history yet
+          </p>
+          <p style={{ margin: 0, fontSize: 9, color: '#77817b', maxWidth: 260 }}>
+            Price history is being recorded. Check back soon.
+          </p>
+        </div>
+      </section>
     );
   }
 
   const up = model.last.price >= points[0].price;
-  const lineColor = up ? '#34d399' : '#fb7185';
+  const lineColor = up ? '#32f27b' : '#fa6d74';
 
   return (
-    <div className="rounded-2xl border border-neutral-800/60 bg-neutral-950 p-2">
-      <div className="mb-1 flex items-center justify-between px-2 pt-1">
-        <span className="text-xs text-neutral-500">
-          Price <span className="text-neutral-400">({quoteSymbol})</span>
-        </span>
-        <span className="flex items-center gap-1.5 text-xs text-neutral-500">
-          <span className="relative flex h-2 w-2">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-60" />
-            <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
-          </span>
-          live
-          {!complete && <span className="text-amber-400/90">· partial history</span>}
-        </span>
-      </div>
-      <svg viewBox={`0 0 ${W} ${H}`} className="h-[280px] w-full" role="img" aria-label="Price chart">
-        <defs>
-          <linearGradient id="chartFill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={lineColor} stopOpacity="0.25" />
-            <stop offset="100%" stopColor={lineColor} stopOpacity="0" />
-          </linearGradient>
-        </defs>
+    <section className="sc-pool-chart-card" aria-label="Price chart">
+      <ChartHead range={range} onRange={setRange} />
+      <div className="sc-pool-chart-wrap">
+        <div className="sc-chart-y-axis" aria-hidden="true">
+          {[...model.yTicks].reverse().map((tick, i) => (
+            <span key={i}>{formatAxisPrice(tick.v)}</span>
+          ))}
+        </div>
+        <svg
+          className="sc-pool-price-chart"
+          viewBox={`0 0 ${W} ${H}`}
+          preserveAspectRatio="none"
+          role="img"
+          aria-label={`Price chart in ${quoteSymbol}`}
+        >
+          <defs>
+            <linearGradient id="sc-pool-fill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={lineColor} stopOpacity="0.22" />
+              <stop offset="100%" stopColor={lineColor} stopOpacity="0" />
+            </linearGradient>
+          </defs>
 
-        {model.yTicks.map((tick, i) => (
-          <g key={i}>
+          {model.yTicks.map((tick, i) => (
             <line
+              key={i}
               x1={PAD_L}
               x2={W - PAD_R}
               y1={tick.y}
               y2={tick.y}
-              stroke="#1f2937"
-              strokeWidth="1"
-              strokeDasharray="3 4"
+              className="sc-pool-grid-line"
             />
-            <text x={PAD_L - 8} y={tick.y + 4} textAnchor="end" fontSize="11" fill="#6b7280" className="tabular-nums">
-              {formatAxisPrice(tick.v)}
-            </text>
-          </g>
-        ))}
-        {model.xTicks.map((tick, i) => (
-          <text
-            key={i}
-            x={tick.x}
-            y={H - 10}
-            textAnchor="middle"
-            fontSize="11"
-            fill="#6b7280"
-            className="tabular-nums"
-          >
-            {formatAxisTime(tick.t)}
-          </text>
-        ))}
+          ))}
 
-        {model.areaPath && <path d={model.areaPath} fill="url(#chartFill)" />}
+          <path d={model.areaPath} fill="url(#sc-pool-fill)" />
 
-        {model.segStrings.map((seg, i) => (
-          <polyline
-            key={i}
-            points={seg}
-            fill="none"
-            stroke={lineColor}
-            strokeWidth="2"
-            strokeLinejoin="round"
-            strokeLinecap="round"
+          {model.segStrings.map((seg, i) => (
+            <polyline
+              key={i}
+              points={seg}
+              className="sc-pool-price-line"
+              style={{ stroke: lineColor }}
+            />
+          ))}
+
+          <circle
+            cx={model.x}
+            cy={model.y}
+            r="4"
+            className="sc-pool-price-point"
+            style={{ fill: lineColor }}
           />
+        </svg>
+      </div>
+      <div className="sc-chart-time-labels" aria-hidden="true">
+        {model.xTicks.map((tick, i) => (
+          <span key={i}>{formatAxisTime(tick.t)}</span>
         ))}
-
-        <circle cx={model.x} cy={model.y} r="4" fill={lineColor} stroke="#05070a" strokeWidth="2" />
-      </svg>
+      </div>
       {!complete && (
-        <p className={cn('px-3 pb-2 text-xs text-neutral-500')}>
-          Gaps in the line are periods where the indexer wasn&apos;t running — no data was invented to fill them.
+        <p className="sc-chart-hint" style={{ marginTop: 6 }}>
+          Gaps in the line are periods where the indexer was not running. No
+          data was invented to fill them.
         </p>
       )}
-    </div>
+    </section>
   );
 }

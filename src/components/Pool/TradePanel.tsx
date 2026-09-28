@@ -62,7 +62,7 @@ async function pollSignatureStatus(signature: string): Promise<void> {
     const status = res?.value;
     if (status?.err) throw new Error(`Transaction failed on-chain: ${JSON.stringify(status.err)}`);
     if (status && (status.confirmationStatus === 'confirmed' || status.confirmationStatus === 'finalized')) return;
-    if (Date.now() > deadline) throw new Error('Timed out waiting for confirmation — check the explorer for status.');
+    if (Date.now() > deadline) throw new Error('Timed out waiting for confirmation. Check the explorer for status.');
     await new Promise((r) => setTimeout(r, 2000));
   }
 }
@@ -302,12 +302,15 @@ export default function TradePanel({ poolAddress, state }: Props) {
     connected && !!publicKey && !!onChain && !graduated && status === 'ready' && !validationError && !!quote;
 
   return (
-    <div className="flex flex-col gap-4 rounded-2xl border border-neutral-800/60 bg-neutral-950 p-5">
-      <div className="grid grid-cols-2 gap-1 rounded-xl bg-neutral-900 p-1">
+    <section className="sc-trade-panel" aria-label="Trade">
+      <div className="sc-trade-side-tabs" role="tablist" aria-label="Trade direction">
         {(['buy', 'sell'] as Side[]).map((s) => (
           <button
             key={s}
             type="button"
+            role="tab"
+            aria-selected={side === s}
+            className={side === s ? 'selected' : ''}
             onClick={() => {
               setSide(s);
               setAmountStr('');
@@ -316,150 +319,170 @@ export default function TradePanel({ poolAddress, state }: Props) {
               setTxSig(null);
               setStatus('idle');
             }}
-            className={cn(
-              'rounded-lg py-2 text-sm font-semibold capitalize transition-colors',
-              side === s
-                ? s === 'buy'
-                  ? 'bg-emerald-500 text-black'
-                  : 'bg-rose-500 text-black'
-                : 'text-neutral-400 hover:text-neutral-200'
-            )}
           >
-            {s}
+            {s === 'buy' ? 'Buy' : 'Sell'}
           </button>
         ))}
       </div>
 
       {!connected ? (
-        <div className="flex flex-col items-center gap-3 py-6 text-center">
-          <p className="text-sm text-neutral-400">Connect your wallet to trade</p>
+        <div
+          style={{
+            display: 'grid',
+            gap: 12,
+            justifyItems: 'center',
+            padding: '26px 12px',
+            textAlign: 'center',
+          }}
+        >
+          <p style={{ margin: 0, fontSize: 11, color: '#8c968d' }}>
+            Connect your wallet to trade
+          </p>
           <UnifiedWalletButton />
         </div>
       ) : graduated ? (
-        <div className="rounded-xl border border-neutral-800 bg-neutral-900/60 p-4 text-center text-sm text-neutral-400">
+        <p
+          style={{
+            margin: '14px 0 0',
+            padding: 12,
+            borderRadius: 6,
+            border: '1px solid #242b29',
+            background: '#0d1110',
+            fontSize: 10,
+            color: '#8c968d',
+            textAlign: 'center',
+          }}
+        >
           This pool has graduated and migrated to DAMM. Trading here is closed.
-        </div>
+        </p>
       ) : onChainLoading ? (
-        <div className="flex items-center justify-center py-8">
-          <div className="h-6 w-6 animate-spin rounded-full border-2 border-neutral-700 border-t-primary" />
+        <div style={{ display: 'flex', justifyContent: 'center', padding: '28px 0' }}>
+          <div
+            className="animate-spin"
+            style={{
+              width: 24,
+              height: 24,
+              borderRadius: '50%',
+              border: '2px solid #2a3134',
+              borderTopColor: '#32f27b',
+            }}
+          />
         </div>
       ) : onChainError || !onChain ? (
-        <div className="rounded-xl border border-neutral-800 bg-neutral-900/60 p-4 text-center text-sm text-neutral-400">
+        <p
+          style={{
+            margin: '14px 0 0',
+            padding: 12,
+            borderRadius: 6,
+            border: '1px solid #242b29',
+            background: '#0d1110',
+            fontSize: 10,
+            color: '#8c968d',
+            textAlign: 'center',
+          }}
+        >
           Couldn&apos;t read the pool from the chain. Check your connection and try again.
-        </div>
+        </p>
       ) : (
         <>
+          <div className="sc-trade-input-heading">
+            <label htmlFor="pool-amount">Amount</label>
+            <span>
+              {balance ? `${rawToUi(balance.raw, balance.decimals)} ${inputSymbol}` : '—'}
+              {balance && balance.raw.gt(new BN(0)) && (
+                <button
+                  type="button"
+                  onClick={setMax}
+                  style={{
+                    marginLeft: 6,
+                    padding: 0,
+                    border: 0,
+                    background: 'transparent',
+                    color: '#a9e778',
+                    font: 'inherit',
+                    cursor: 'pointer',
+                  }}
+                >
+                  MAX
+                </button>
+              )}
+            </span>
+          </div>
+          <div className="sc-trade-amount">
+            <input
+              id="pool-amount"
+              value={amountStr}
+              onChange={(e) => setAmountStr(e.target.value)}
+              inputMode="decimal"
+              placeholder="0.00"
+              aria-label={`Amount in ${inputSymbol}`}
+            />
+            <span>{inputSymbol}</span>
+          </div>
+
           {/* Quick amount presets */}
-          <div className="flex flex-wrap items-center gap-1.5">
-            {side === 'buy' ? (
-              <>
-                {buyPresets.map((amt) => (
+          <div className="sc-quick-amounts">
+            {side === 'buy'
+              ? buyPresets.map((amt) => (
                   <button
                     key={amt}
                     type="button"
                     onClick={() => setAmountStr(String(amt))}
-                    className="rounded-lg bg-neutral-900 px-2.5 py-1 text-xs font-semibold text-neutral-300 tabular-nums hover:bg-neutral-800 hover:text-neutral-100"
                   >
                     {amt} {inputSymbol}
                   </button>
-                ))}
-              </>
-            ) : (
-              <>
-                {sellPresets.map((pct) => (
+                ))
+              : sellPresets.map((pct) => (
                   <button
                     key={pct}
                     type="button"
                     onClick={() => applySellPreset(pct)}
                     disabled={!balance || balance.raw.isZero()}
-                    className="rounded-lg bg-neutral-900 px-2.5 py-1 text-xs font-semibold text-neutral-300 tabular-nums hover:bg-neutral-800 hover:text-neutral-100 disabled:cursor-not-allowed disabled:opacity-40"
+                    style={
+                      !balance || balance.raw.isZero()
+                        ? { opacity: 0.4, cursor: 'not-allowed' }
+                        : undefined
+                    }
                   >
                     {pct === 100 ? 'MAX' : `${pct}%`}
                   </button>
                 ))}
-              </>
-            )}
           </div>
 
-          <div>
-            <div className="mb-1.5 flex items-center justify-between text-xs">
-              <span className="text-neutral-500">You {side === 'buy' ? 'pay' : 'sell'}</span>
-              <span className="text-neutral-500 tabular-nums">
-                Balance:{' '}
-                {balance ? (
-                  <span className="text-neutral-300">
-                    {rawToUi(balance.raw, balance.decimals)} {inputSymbol}
-                  </span>
-                ) : (
-                  '—'
-                )}
-                {balance && balance.raw.gt(new BN(0)) && (
-                  <button
-                    type="button"
-                    onClick={setMax}
-                    className="ml-2 rounded bg-primary/10 px-1.5 py-0.5 font-semibold text-primary hover:bg-primary/20"
-                  >
-                    MAX
-                  </button>
-                )}
-              </span>
-            </div>
-            <div className="flex items-center gap-2 rounded-xl border border-neutral-800 bg-neutral-900 px-3 py-2.5 focus-within:border-neutral-600">
-              <input
-                value={amountStr}
-                onChange={(e) => setAmountStr(e.target.value)}
-                inputMode="decimal"
-                placeholder="0.0"
-                className="w-full bg-transparent text-lg font-semibold text-neutral-50 tabular-nums outline-none placeholder:text-neutral-600"
-              />
-              <span className="shrink-0 text-sm font-semibold text-neutral-400">{inputSymbol}</span>
-            </div>
+          <div className="sc-receive-row">
+            <span>You receive</span>
+            <strong>
+              {status === 'quoting'
+                ? 'quoting…'
+                : quote
+                  ? `${quote.outputUi} ${outputSymbol}`
+                  : '—'}
+            </strong>
           </div>
-
-          <div className="flex items-center justify-center text-neutral-600">
-            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M12 5v14" />
-              <path d="m19 12-7 7-7-7" />
-            </svg>
-          </div>
-
-          <div className="rounded-xl border border-neutral-800 bg-neutral-900/60 px-3 py-2.5">
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-neutral-500">You receive</span>
-              <span className="font-semibold text-neutral-100 tabular-nums">
-                {status === 'quoting' ? (
-                  <span className="text-neutral-500">quoting…</span>
-                ) : quote ? (
-                  `${quote.outputUi} ${outputSymbol}`
-                ) : (
-                  '—'
-                )}
-              </span>
-            </div>
-            {quote && (
-              <div className="mt-1.5 space-y-1 text-xs text-neutral-500">
-                <div className="flex justify-between">
-                  <span>Minimum received</span>
-                  <span className="tabular-nums text-neutral-300">
-                    {rawToUi(quote.minOutRaw, quote.outDecimals)} {outputSymbol}
-                  </span>
-                </div>
-                {quote.priceImpactPct !== null && (
-                  <div className="flex justify-between">
-                    <span>Price impact</span>
-                    <span className={cn('tabular-nums', quote.priceImpactPct > 5 ? 'text-rose-400' : 'text-neutral-300')}>
-                      {quote.priceImpactPct >= 0 ? '~' : '~'}
-                      {quote.priceImpactPct.toFixed(2)}%
-                    </span>
-                  </div>
-                )}
+          {quote && (
+            <>
+              <div className="sc-receive-row" style={{ marginTop: 5 }}>
+                <span>Minimum received</span>
+                <strong>
+                  {rawToUi(quote.minOutRaw, quote.outDecimals)} {outputSymbol}
+                </strong>
               </div>
-            )}
-          </div>
+              {quote.priceImpactPct !== null && (
+                <div className="sc-receive-row" style={{ marginTop: 5 }}>
+                  <span>Price impact</span>
+                  <strong
+                    style={quote.priceImpactPct > 5 ? { color: '#f05f67' } : undefined}
+                  >
+                    ~{quote.priceImpactPct.toFixed(2)}%
+                  </strong>
+                </div>
+              )}
+            </>
+          )}
 
-          <div>
-            <div className="mb-1.5 text-xs text-neutral-500">Slippage tolerance</div>
-            <div className="flex flex-wrap items-center gap-1.5">
+          <div className="sc-trade-settings">
+            <label>Slippage</label>
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 4 }}>
               {SLIPPAGE_OPTIONS.map((bps) => (
                 <button
                   key={bps}
@@ -468,62 +491,89 @@ export default function TradePanel({ poolAddress, state }: Props) {
                     setSlippageBps(bps);
                     setCustomSlippage('');
                   }}
-                  className={cn(
-                    'rounded-lg px-2.5 py-1 text-xs font-semibold',
-                    slippageBps === bps && customSlippage === ''
-                      ? 'bg-primary text-black'
-                      : 'bg-neutral-900 text-neutral-400 hover:text-neutral-200'
-                  )}
+                  style={{
+                    minHeight: 22,
+                    padding: '0 7px',
+                    border: '1px solid #242b29',
+                    borderRadius: 5,
+                    background:
+                      slippageBps === bps && customSlippage === '' ? '#132016' : '#0e1211',
+                    color: slippageBps === bps && customSlippage === '' ? '#74e799' : '#8b948b',
+                    fontFamily: 'var(--sc-number)',
+                    fontSize: 8,
+                    cursor: 'pointer',
+                  }}
                 >
                   {(bps / 100).toFixed(1)}%
                 </button>
               ))}
-              <div className="flex items-center gap-1">
-                <input
-                  value={customSlippage}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setCustomSlippage(v);
-                    const n = Number(v);
-                    if (v !== '' && Number.isFinite(n) && n > 0 && n <= 50) setSlippageBps(Math.round(n * 100));
-                  }}
-                  inputMode="decimal"
-                  placeholder="Custom %"
-                  className="w-20 rounded-lg bg-neutral-900 px-2 py-1 text-xs text-neutral-200 outline-none placeholder:text-neutral-600"
-                />
-              </div>
+              <input
+                value={customSlippage}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setCustomSlippage(v);
+                  const n = Number(v);
+                  if (v !== '' && Number.isFinite(n) && n > 0 && n <= 50)
+                    setSlippageBps(Math.round(n * 100));
+                }}
+                inputMode="decimal"
+                placeholder="Custom %"
+                aria-label="Custom slippage percent"
+                style={{
+                  width: 64,
+                  minHeight: 22,
+                  padding: '0 7px',
+                  border: '1px solid #242b29',
+                  borderRadius: 5,
+                  background: '#0e1211',
+                  color: '#aeb8ae',
+                  fontFamily: 'var(--sc-number)',
+                  fontSize: 8,
+                  outline: 'none',
+                }}
+              />
             </div>
+            <span>Creator fee 0.3%</span>
           </div>
 
-          {validationError && <p className="text-xs text-rose-400">{validationError}</p>}
+          {validationError && <p className="sc-trade-message">{validationError}</p>}
           {error && status === 'failed' && (
-            <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-300">
+            <p className="sc-trade-message" role="alert">
               {error}
-            </div>
+            </p>
           )}
           {status === 'confirmed' && txSig && (
-            <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs">
-              <span className="font-semibold text-emerald-300">Swap confirmed. </span>
+            <p
+              style={{
+                margin: '10px 0 0',
+                padding: 10,
+                borderRadius: 6,
+                border: '1px solid #1f3a28',
+                background: '#0e1710',
+                fontSize: 9,
+                color: '#91c99c',
+              }}
+            >
+              Swap confirmed.{' '}
               <a
                 href={explorerUrl ?? '#'}
                 target="_blank"
                 rel="noreferrer"
-                className="text-emerald-300 underline hover:text-emerald-200"
+                style={{ color: '#c4f0c8', textDecoration: 'underline' }}
               >
                 View on Solscan
               </a>
-            </div>
+            </p>
           )}
 
           <button
             type="button"
             disabled={!canTrade || busy}
             onClick={execute}
-            className={cn(
-              'rounded-xl py-3 text-sm font-bold transition-opacity',
-              side === 'buy' ? 'bg-emerald-500 text-black' : 'bg-rose-500 text-black',
-              (!canTrade || busy) && 'cursor-not-allowed opacity-40'
-            )}
+            className={cn('sc-button sc-trade-submit', side === 'sell' && 'sell')}
+            style={
+              !canTrade || busy ? { opacity: 0.4, cursor: 'not-allowed' } : undefined
+            }
           >
             {status === 'quoting'
               ? 'Quoting…'
@@ -535,11 +585,20 @@ export default function TradePanel({ poolAddress, state }: Props) {
                     ? 'Confirming…'
                     : `Swap ${inputSymbol} → ${outputSymbol}`}
           </button>
-          <p className="text-center text-[11px] text-neutral-600">
-            Swaps execute on-chain via Meteora DBC. You sign every transaction in your wallet.
+          <p
+            style={{
+              margin: '10px 0 0',
+              fontSize: 8,
+              color: '#5f6a60',
+              textAlign: 'center',
+              lineHeight: 1.6,
+            }}
+          >
+            Swaps execute on-chain via Meteora DBC. You sign every transaction in
+            your wallet.
           </p>
         </>
       )}
-    </div>
+    </section>
   );
 }

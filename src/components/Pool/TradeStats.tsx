@@ -1,4 +1,3 @@
-import { cn } from '@/lib/utils';
 import { formatMoneyValue } from '@/components/Discover/format';
 import type { TradeStats24h } from './types';
 
@@ -10,15 +9,22 @@ interface Props {
 function StackedBar({ buyShare }: { buyShare: number }) {
   const sellShare = 1 - buyShare;
   return (
-    <div className="flex h-2 w-full overflow-hidden rounded-full bg-neutral-800">
+    <div
+      style={{
+        display: 'flex',
+        height: 7,
+        width: '100%',
+        overflow: 'hidden',
+        borderRadius: 999,
+        background: '#222929',
+      }}
+    >
       <div
-        className="h-full bg-emerald-500 transition-[width]"
-        style={{ width: `${buyShare * 100}%` }}
+        style={{ height: '100%', background: '#32f27b', width: `${buyShare * 100}%` }}
         title={`${(buyShare * 100).toFixed(1)}% buys`}
       />
       <div
-        className="h-full bg-rose-500 transition-[width]"
-        style={{ width: `${sellShare * 100}%` }}
+        style={{ height: '100%', background: '#fa6d74', width: `${sellShare * 100}%` }}
         title={`${(sellShare * 100).toFixed(1)}% sells`}
       />
     </div>
@@ -40,50 +46,77 @@ export default function TradeStats({ stats, quoteSymbol }: Props) {
   const buyVolShare = totalVolume > 0 ? stats.buyVolume / totalVolume : 0.5;
 
   return (
-    <div className="rounded-2xl border border-neutral-800/60 bg-neutral-950 p-5">
-      <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-neutral-200">Buys vs sells</h2>
+    <section className="sc-position-card" aria-label="Buys versus sells">
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: 12,
+        }}
+      >
+        <span className="sc-trade-card-label" style={{ marginBottom: 0 }}>
+          Buys vs sells
+        </span>
         <span
-          className="text-[11px] text-neutral-500"
+          style={{ fontSize: 8, color: '#737d76' }}
           title="Inferred from quote-reserve movement between indexer samples, not individual trades"
         >
           24h · estimated
         </span>
       </div>
 
-      <div className="space-y-4">
+      <div style={{ display: 'grid', gap: 14 }}>
         <div>
-          <div className="mb-1.5 flex items-center justify-between text-xs">
-            <span className="font-medium text-emerald-400 tabular-nums">
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              fontSize: 9,
+              marginBottom: 6,
+              fontFamily: 'var(--sc-number)',
+            }}
+          >
+            <span style={{ color: '#3deb80' }}>
               {stats.buys.toLocaleString('en-US')} buys
             </span>
-            <span className="font-medium text-rose-400 tabular-nums">
+            <span style={{ color: '#f05f67' }}>
               {stats.sells.toLocaleString('en-US')} sells
             </span>
           </div>
           <StackedBar buyShare={buyMoveShare} />
-          <p className="mt-1 text-[11px] text-neutral-600">Buy/sell moves</p>
+          <p style={{ margin: '4px 0 0', fontSize: 8, color: '#5f6a60' }}>Buy/sell moves</p>
         </div>
 
         <div>
-          <div className="mb-1.5 flex items-center justify-between text-xs">
-            <span className="font-medium text-emerald-400 tabular-nums">
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              fontSize: 9,
+              marginBottom: 6,
+              fontFamily: 'var(--sc-number)',
+            }}
+          >
+            <span style={{ color: '#3deb80' }}>
               {formatMoneyValue(null, stats.buyVolume, quoteSymbol)}
             </span>
-            <span className="font-medium text-rose-400 tabular-nums">
+            <span style={{ color: '#f05f67' }}>
               {formatMoneyValue(null, stats.sellVolume, quoteSymbol)}
             </span>
           </div>
           <StackedBar buyShare={buyVolShare} />
-          <p className="mt-1 text-[11px] text-neutral-600">Buy/sell volume</p>
+          <p style={{ margin: '4px 0 0', fontSize: 8, color: '#5f6a60' }}>Buy/sell volume</p>
         </div>
       </div>
 
       {totalMoves === 0 && (
-        <p className={cn('mt-3 text-xs text-neutral-500')}>
+        <p style={{ margin: '12px 0 0', fontSize: 9, color: '#77817b' }}>
           No reserve movement sampled in the last 24h.
         </p>
       )}
-    </div>
+    </section>
   );
 }
