@@ -44,6 +44,9 @@ const USDC_MINT = getUsdcMint(SOLANA_NETWORK);
 type QuoteSel = 'SOL' | 'USDC' | 'custom';
 type PresetSel = CurvePresetId | 'custom';
 type TokenType = 'Memecoin' | 'Tokenized Stock';
+
+/** The proven defaults every Quick launch builds on. */
+const QUICK_DEFAULT_CURVE = presetCurve('exponential', 0.0001);
 type LaunchStatus =
   | 'idle'
   | 'uploading'
@@ -359,7 +362,7 @@ export default function CreatePool() {
     return errs;
   }, [name, symbol, tokenType, underlying, fullDescription]);
 
-  const econErrors = useMemo(() => {
+  const quoteErrors = useMemo(() => {
     const errs: string[] = [];
     if (quoteSel === 'custom') {
       if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(customMint.trim()))
@@ -369,6 +372,11 @@ export default function CreatePool() {
       if (!/^[A-Za-z0-9]{1,10}$/.test(customSymbol.trim()))
         errs.push('Quote symbol must be 1-10 alphanumeric characters');
     }
+    return errs;
+  }, [quoteSel, customMint, customDecimals, customSymbol]);
+
+  const econErrors = useMemo(() => {
+    const errs: string[] = [];
     const supply = parseFloat(totalSupply);
     if (!Number.isFinite(supply) || supply < 1_000 || supply > 1e15)
       errs.push('Total supply must be between 1,000 and 1,000,000,000,000,000');
@@ -391,10 +399,14 @@ export default function CreatePool() {
     if (!Number.isInteger(df) || df < 10 || df > 1000)
       errs.push('Post-graduation pool fee must be 10-1000 bps');
     return errs;
-  }, [quoteSel, customMint, customDecimals, customSymbol, totalSupply, startFeeBps, endFeeBps,
+  }, [totalSupply, startFeeBps, endFeeBps,
       feePeriods, feeDuration, migrationFeePct, dammFeeBps]);
 
   function buildSpec(metadataUri: string): LaunchSpec {
+    // Quick launch always builds on the proven defaults, no matter what a
+    // Pro draft holds. The quote pair is the one setting quick mode lets
+    // you change, so it follows the picker's state in both modes.
+    const quick = mode === 'quick';
     return {
       name: name.trim(),
       symbol: symbol.trim().toUpperCase(),
@@ -403,15 +415,29 @@ export default function CreatePool() {
       quoteMint,
       quoteDecimals,
       quoteSymbol,
-      baseDecimals,
-      totalSupply: parseFloat(totalSupply),
-      curve: {
-        prices: priceNums,
-        liquidityWeights: weights.map((w) => parseFloat(w)),
-      },
-      startingFeeBps: parseInt(startFeeBps, 10),
-      endingFeeBps: parseInt(endFeeBps, 10),
-      econ: buildEcon(),
+      baseDecimals: quick ? 9 : baseDecimals,
+      totalSupply: quick ? 1_000_000_000 : parseFloat(totalSupply),
+      curve: quick
+        ? {
+            prices: QUICK_DEFAULT_CURVE.prices,
+            liquidityWeights: QUICK_DEFAULT_CURVE.liquidityWeights,
+          }
+        : {
+            prices: priceNums,
+            liquidityWeights: weights.map((w) => parseFloat(w)),
+          },
+      startingFeeBps: quick ? 500 : parseInt(startFeeBps, 10),
+      endingFeeBps: quick ? 100 : parseInt(endFeeBps, 10),
+      econ: quick
+        ? {
+            feeSchedulerPeriods: 60,
+            feeSchedulerTotalDuration: 60,
+            dynamicFeeEnabled: true,
+            migrationFeePercent: 10,
+            migratedPoolFeeBps: 120,
+            migratedPoolDynamicFee: true,
+          }
+        : buildEcon(),
     };
   }
 
@@ -746,10 +772,77 @@ export default function CreatePool() {
   const presetName = isCustom
     ? 'Custom'
     : CURVE_PRESETS.find((p) => p.id === preset)?.name ?? 'Custom';
-  const allErrors = [...tokenErrors, ...curveErrors, ...econErrors];
-  // Quick mode runs on proven defaults, so only the token fields can block it.
-  const activeErrors = mode === 'quick' ? tokenErrors : allErrors;
+  const allErrors = [...tokenErrors, ...curveErrors, ...quoteErrors, ...econErrors];
+  // Quick mode runs on proven defaults, so only the token fields and the
+  // quote pair choice can block it.
+  const activeErrors = mode === 'quick' ? [...tokenErrors, ...quoteErrors] : allErrors;
   const deployCost = feeRows.length > 0 ? feeRows[0].value : '0 SOL';
+
+  /** The quote-pair picker, shared by Quick launch and Pro designer. */
+  function renderQuotePicker() {
+    return (
+      <>
+        <div
+          className="sc-token-type-options"
+          style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}
+        >
+          {(
+            [
+              { id: 'SOL', label: 'SOL', sub: 'Native', glyph: '◎' },
+              { id: 'USDC', label: 'USDC', sub: isDevnet() ? 'Devnet stablecoin' : 'Stablecoin', glyph: '$' },
+              { id: 'custom', label: 'Custom', sub: 'Any SPL mint', glyph: '⌁' },
+            ] as const
+          ).map((q) => (
+            <button
+              key={q.id}
+              type="button"
+              onClick={() => setQuoteSel(q.id)}
+              aria-pressed={quoteSel === q.id}
+              className={quoteSel === q.id ? 'selected' : ''}
+            >
+              <span className="sc-type-icon">{q.glyph}</span>
+              <strong>{q.label}</strong>
+              <small>{q.sub}</small>
+            </button>
+          ))}
+        </div>
+        {quoteSel === 'custom' && (
+          <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
+            <div className="md:col-span-2">
+              <Field label="Quote mint address">
+                <input
+                  placeholder="SPL mint address"
+                  value={customMint}
+                  onChange={(e) => setCustomMint(e.target.value)}
+                />
+              </Field>
+            </div>
+            <Field label="Decimals">
+              <input
+                inputMode="numeric"
+                value={customDecimals}
+                onChange={(e) => setCustomDecimals(e.target.value.replace(/[^0-9]/g, ''))}
+              />
+            </Field>
+            <Field label="Symbol">
+              <input
+                placeholder="e.g. AAPLx"
+                value={customSymbol}
+                maxLength={10}
+                onChange={(e) =>
+                  setCustomSymbol(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))
+                }
+              />
+            </Field>
+          </div>
+        )}
+        {quoteSel !== 'custom' && (
+          <p className="mt-2 font-mono text-xs text-neutral-500">{shorten(quoteMint)}</p>
+        )}
+        <ErrorList errors={quoteErrors} />
+      </>
+    );
+  }
 
   return (
     <Page>
@@ -947,12 +1040,16 @@ export default function CreatePool() {
                 <span className="sc-section-glyph">✦</span>
                 <div>
                   <h2 id="sc-quick-defaults-heading">What you get</h2>
-                  <p>Proven defaults. Switch to Pro designer to change any of this.</p>
+                  <p>Proven defaults. You just pick what to pair with.</p>
                 </div>
               </div>
+              <div className="mb-5">
+                <p className="mb-2 text-sm font-medium text-neutral-300">Pair with</p>
+                {renderQuotePicker()}
+              </div>
               <ul className="sc-quick-defaults">
-                <li><strong>1B</strong> token supply · paired with <strong>SOL</strong></li>
-                <li><strong>Exponential</strong> bonding curve from <strong>0.0001 SOL</strong></li>
+                <li><strong>1B</strong> token supply · paired with <strong>{quoteSymbol}</strong></li>
+                <li><strong>Exponential</strong> bonding curve from <strong>0.0001 {quoteSymbol}</strong></li>
                 <li>Trading fee <strong>5%</strong> easing to <strong>1%</strong> as volume grows</li>
                 <li><strong>Automatic graduation</strong> to DAMM v2 when the curve fills</li>
                 <li>You keep <strong>0.3%</strong> of every trade plus <strong>half</strong> the migration fee</li>
@@ -1120,63 +1217,7 @@ export default function CreatePool() {
               </div>
               <div>
                 <p className="mb-2 text-sm font-medium text-neutral-300">Quote token</p>
-                <div
-                  className="sc-token-type-options"
-                  style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}
-                >
-                  {(
-                    [
-                      { id: 'SOL', label: 'SOL', sub: 'Native', glyph: '◎' },
-                      { id: 'USDC', label: 'USDC', sub: isDevnet() ? 'Devnet stablecoin' : 'Stablecoin', glyph: '$' },
-                      { id: 'custom', label: 'Custom', sub: 'Any SPL mint', glyph: '⌁' },
-                    ] as const
-                  ).map((q) => (
-                    <button
-                      key={q.id}
-                      type="button"
-                      onClick={() => setQuoteSel(q.id)}
-                      aria-pressed={quoteSel === q.id}
-                      className={quoteSel === q.id ? 'selected' : ''}
-                    >
-                      <span className="sc-type-icon">{q.glyph}</span>
-                      <strong>{q.label}</strong>
-                      <small>{q.sub}</small>
-                    </button>
-                  ))}
-                </div>
-                {quoteSel === 'custom' && (
-                  <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
-                    <div className="md:col-span-2">
-                      <Field label="Quote mint address">
-                        <input
-                          placeholder="SPL mint address"
-                          value={customMint}
-                          onChange={(e) => setCustomMint(e.target.value)}
-                        />
-                      </Field>
-                    </div>
-                    <Field label="Decimals">
-                      <input
-                        inputMode="numeric"
-                        value={customDecimals}
-                        onChange={(e) => setCustomDecimals(e.target.value.replace(/[^0-9]/g, ''))}
-                      />
-                    </Field>
-                    <Field label="Symbol">
-                      <input
-                        placeholder="e.g. AAPLx"
-                        value={customSymbol}
-                        maxLength={10}
-                        onChange={(e) =>
-                          setCustomSymbol(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))
-                        }
-                      />
-                    </Field>
-                  </div>
-                )}
-                {quoteSel !== 'custom' && (
-                  <p className="mt-2 font-mono text-xs text-neutral-500">{shorten(quoteMint)}</p>
-                )}
+                {renderQuotePicker()}
               </div>
 
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
