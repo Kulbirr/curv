@@ -145,7 +145,7 @@ async function handleGet(_req: NextApiRequest, res: NextApiResponse) {
   if (process.env.NODE_ENV !== 'test' && listCache && now - listCache.at < LIST_CACHE_TTL_MS) {
     return res.status(200).json(listCache.body);
   }
-  const pools = listTrackedPools();
+  const pools = await listTrackedPools();
   // Quote USD prices are cached 60s in memory and short-circuit to null on
   // devnet without any network call — one lookup per distinct quote mint.
   const quoteMints = [...new Set(pools.map((p) => p.quoteMint))];
@@ -159,11 +159,12 @@ async function handleGet(_req: NextApiRequest, res: NextApiResponse) {
   // instead of 3 per pool. This is what keeps the list fast at thousands
   // of pools.
   const addresses = pools.map((p) => p.poolAddress);
-  const batch: BatchReads = {
-    states: getPoolStatesBatch(addresses),
-    prices24hAgo: getPrices24hAgoBatch(addresses),
-    volumes24h: getVolumes24hBatch(addresses),
-  };
+  const [states, prices24hAgo, volumes24h] = await Promise.all([
+    getPoolStatesBatch(addresses),
+    getPrices24hAgoBatch(addresses),
+    getVolumes24hBatch(addresses),
+  ]);
+  const batch: BatchReads = { states, prices24hAgo, volumes24h };
   const summaries = pools.map((p) =>
     buildSummary(p, quoteUsdByMint.get(p.quoteMint) ?? null, batch),
   );
@@ -184,7 +185,7 @@ async function handlePost(req: NextApiRequest, res: NextApiResponse) {
   //    in-memory Map is gone). Abusive floods are rejected before any
   //    expensive work.
   const ip = getClientIp(req);
-  const ipHit = hitRateLimit(`reg:ip:${ip}`, REGISTRATION_IP_LIMIT, REGISTRATION_IP_WINDOW_MS, now);
+  const ipHit = await hitRateLimit(`reg:ip:${ip}`, REGISTRATION_IP_LIMIT, REGISTRATION_IP_WINDOW_MS, now);
   if (!ipHit.allowed) {
     return res.status(429).json({ error: 'Too many registrations from this address, try again later' });
   }
@@ -199,7 +200,7 @@ async function handlePost(req: NextApiRequest, res: NextApiResponse) {
   if (parsed.ok === false) return res.status(400).json({ error: parsed.error });
   const input = parsed.value;
 
-  const walletHit = hitRateLimit(
+  const walletHit = await hitRateLimit(
     `reg:wallet:${input.creator}`,
     REGISTRATION_WALLET_LIMIT,
     REGISTRATION_WALLET_WINDOW_MS,
@@ -222,9 +223,9 @@ async function handlePost(req: NextApiRequest, res: NextApiResponse) {
   // 4. Persistent replay protection: the claim is one atomic INSERT, so a
   //    replayed signature can never be accepted twice — even concurrently,
   //    even on another instance.
-  pruneNonces(now - REGISTRATION_TTL_MS);
-  pruneRateLimits(now);
-  if (!claimNonce(input.signature, now)) {
+  await pruneNonces(now - REGISTRATION_TTL_MS);
+  await pruneRateLimits(now);
+  if (!(await claimNonce(input.signature, now))) {
     return res.status(400).json({ error: 'Signature already used' });
   }
 
@@ -238,7 +239,7 @@ async function handlePost(req: NextApiRequest, res: NextApiResponse) {
 
   // 6. Transactional registry insert.
   try {
-    const entry = registerPool({ ...input, verified: verification.status === 'verified' });
+    const entry = await registerPool({ ...input, verified: verification.status === 'verified' });
     invalidateListCache();
     return res.status(201).json({ pool: entry });
   } catch (e) {

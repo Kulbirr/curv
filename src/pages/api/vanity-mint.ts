@@ -46,7 +46,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const ip = getClientIp(req);
   const now = Date.now();
-  const hit = hitRateLimit(`vanity:ip:${ip}`, VANITY_HANDOUT_LIMIT, VANITY_HANDOUT_WINDOW_MS, now);
+  const hit = await hitRateLimit(`vanity:ip:${ip}`, VANITY_HANDOUT_LIMIT, VANITY_HANDOUT_WINDOW_MS, now);
   if (!hit.allowed) {
     return res
       .status(429)
@@ -55,7 +55,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   let claim: { publicKey: string; secretEncrypted: Buffer } | null;
   try {
-    claim = claimVanityMint(now);
+    claim = await claimVanityMint(now);
   } catch (e) {
     return res.status(500).json({ error: e instanceof Error ? e.message : 'Handout failed' });
   }

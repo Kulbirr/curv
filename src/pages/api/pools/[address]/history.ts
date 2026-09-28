@@ -21,7 +21,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
   const address = parseAddress(req.query.address);
   if (!address) return res.status(400).json({ error: 'address is not a valid Solana address' });
-  const tracked = getTrackedPool(address);
+  const tracked = await getTrackedPool(address);
   if (!tracked) return res.status(404).json({ error: 'Pool not registered' });
 
   const now = Date.now();
@@ -33,12 +33,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(400).json({ error: 'Invalid time window' });
   }
 
-  const history = getHistory(tracked.poolAddress, from, to, points);
+  const history = await getHistory(tracked.poolAddress, from, to, points);
   return res.status(200).json({
     poolAddress: tracked.poolAddress,
     from,
     to,
     ...history,
-    volume24h: getVolume24h(tracked.poolAddress),
+    volume24h: await getVolume24h(tracked.poolAddress),
   });
 }

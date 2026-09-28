@@ -13,10 +13,10 @@ const mockGetConnection = getConnection as unknown as ReturnType<typeof vi.fn>;
 const mockGetRpcStatus = getRpcStatus as unknown as ReturnType<typeof vi.fn>;
 
 describe('GET /api/health', () => {
-  let db: ReturnType<typeof useTempDb>;
+  let db: Awaited<ReturnType<typeof useTempDb>>;
 
-  beforeEach(() => {
-    db = useTempDb();
+  beforeEach(async () => {
+    db = await useTempDb();
     mockGetConnection.mockReturnValue({ getSlot: async () => 999_999 });
     mockGetRpcStatus.mockReturnValue({
       primary: 'https://primary.example',
@@ -26,8 +26,8 @@ describe('GET /api/health', () => {
     });
   });
 
-  afterEach(() => {
-    db.cleanup();
+  afterEach(async () => {
+    await db.cleanup();
     vi.clearAllMocks();
   });
 

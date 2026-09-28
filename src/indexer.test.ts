@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { sampleAllPools } from '@/indexer';
 import { fetchPoolLiveState, type PoolLiveState } from '@/lib/pool-state';
-import { getDb } from '@/lib/db';
+import { execute, query } from '@/lib/db';
 import { insertPool } from '@/lib/db/pools';
 import { getPoolState } from '@/lib/db/states';
 import { getHistory, getLatestPrice } from '@/lib/db/ticks';
@@ -12,15 +12,15 @@ vi.mock('@/lib/pool-state', () => ({ fetchPoolLiveState: vi.fn() }));
 
 const mockFetch = fetchPoolLiveState as unknown as ReturnType<typeof vi.fn>;
 
-let db: ReturnType<typeof useTempDb>;
-beforeEach(() => {
-  db = useTempDb();
+let db: Awaited<ReturnType<typeof useTempDb>>;
+beforeEach(async () => {
+  db = await useTempDb();
   vi.clearAllMocks();
 });
-afterEach(() => db.cleanup());
+afterEach(async () => { await db.cleanup(); });
 
-function seedPool() {
-  return insertPool({
+async function seedPool() {
+  return await insertPool({
     poolAddress: randomAddress(),
     configAddress: randomAddress(),
     baseMint: randomAddress(),
@@ -74,63 +74,61 @@ describe('sampleAllPools', () => {
   });
 
   it('persists a successful sample to pool_states and one tick', async () => {
-    const p = seedPool();
+    const p = await seedPool();
     mockFetch.mockResolvedValue(fullState(0.002));
     await sampleAllPools();
     expect(mockFetch).toHaveBeenCalledWith(p);
-    const latest = getPoolState(p.poolAddress)!;
+    const latest = (await getPoolState(p.poolAddress))!;
     expect(latest.price).toBe(0.002);
     expect(latest.consecutiveFailures).toBe(0);
-    const ticks = getHistory(p.poolAddress, 0, Date.now()).points;
+    const ticks = (await getHistory(p.poolAddress, 0, Date.now())).points;
     expect(ticks).toHaveLength(1);
     expect(ticks[0].price).toBe(0.002);
   });
 
   it('records a null-price sample but writes no tick', async () => {
-    const p = seedPool();
+    const p = await seedPool();
     mockFetch.mockResolvedValue({ ...fullState(0), price: null });
     await sampleAllPools();
-    expect(getPoolState(p.poolAddress)).not.toBeNull();
-    expect(getHistory(p.poolAddress, 0, Date.now()).points).toHaveLength(0);
+    expect(await getPoolState(p.poolAddress)).not.toBeNull();
+    expect((await getHistory(p.poolAddress, 0, Date.now())).points).toHaveLength(0);
   });
 
   it('preserves the last good values and increments failures when the chain goes stale', async () => {
-    const p = seedPool();
+    const p = await seedPool();
     mockFetch.mockResolvedValue(fullState(0.005));
     await sampleAllPools();
     mockFetch.mockResolvedValue(failedState);
     await sampleAllPools();
-    const latest = getPoolState(p.poolAddress)!;
+    const latest = (await getPoolState(p.poolAddress))!;
     expect(latest.price).toBe(0.005); // last good price preserved
     expect(latest.consecutiveFailures).toBe(1);
-    expect(getPoolState(p.poolAddress)!.price).toBe(0.005);
+    expect((await getPoolState(p.poolAddress))!.price).toBe(0.005);
     // No new tick from a failed sample.
-    expect(getHistory(p.poolAddress, 0, Date.now()).points).toHaveLength(1);
+    expect((await getHistory(p.poolAddress, 0, Date.now())).points).toHaveLength(1);
   });
 
   it('survives a thrown fetch without aborting the whole pass', async () => {
-    const a = seedPool();
-    const b = seedPool();
+    const a = await seedPool();
+    const b = await seedPool();
     mockFetch.mockImplementation(async (tracked: { poolAddress: string }) => {
       if (tracked.poolAddress === a.poolAddress) throw new Error('RPC exploded');
       return fullState(0.001);
     });
     await sampleAllPools();
-    const la = getPoolState(a.poolAddress)!;
+    const la = (await getPoolState(a.poolAddress))!;
     expect(la.consecutiveFailures).toBe(1);
     expect(la.price).toBeNull(); // no prior good sample: honest null
-    expect(getPoolState(b.poolAddress)!.price).toBe(0.001); // b still sampled
+    expect((await getPoolState(b.poolAddress))!.price).toBe(0.001); // b still sampled
   });
 
   it('prunes ticks older than the retention window', async () => {
-    const p = seedPool();
+    const p = await seedPool();
     mockFetch.mockResolvedValue(fullState(0.001));
     const ancient = Date.now() - 10 * 24 * 3600_000;
-    getDb().prepare('INSERT INTO ticks (pool_address, ts, price, quote_reserve) VALUES (?, ?, ?, ?)').run(p.poolAddress, ancient, 0.0005, 50);
+    await execute('INSERT INTO ticks (pool_address, ts, price, quote_reserve) VALUES ($1, $2, $3, $4)', [p.poolAddress, ancient, 0.0005, 50]);
     await sampleAllPools();
-    const rows = getDb()
-      .prepare('SELECT ts FROM ticks WHERE pool_address = ?')
-      .all(p.poolAddress) as { ts: number }[];
+    const rows = await query<{ ts: number }>('SELECT ts FROM ticks WHERE pool_address = $1', [p.poolAddress]);
     expect(rows.every((r) => r.ts > ancient)).toBe(true);
     expect(rows).toHaveLength(1); // only the fresh tick survives
   });

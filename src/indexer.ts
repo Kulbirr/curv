@@ -24,7 +24,7 @@
  * Solana data access is REST polling only — never WebSocket subscriptions.
  */
 
-import { getDb } from './lib/db';
+import { ensureSchema } from './lib/db';
 import { INDEXER_POLL_MS, TICK_RETENTION_MS } from './lib/db/config';
 import { listPools } from './lib/db/pools';
 import { recordPoolSample, type PoolStateSample } from './lib/db/states';
@@ -41,7 +41,7 @@ function redactRpc(url: string): string {
 }
 
 /** Sample every registered pool once. Exported for tests; main() loops it. */
-export async function sampleAllPools(): Promise<void> {  const pools = listPools();
+export async function sampleAllPools(): Promise<void> {  const pools = await listPools();
   const now = Date.now();
   if (pools.length === 0) return;
 
@@ -50,7 +50,7 @@ export async function sampleAllPools(): Promise<void> {  const pools = listPools
       const state = await fetchPoolLiveState(pool);
       if (state.stale) {
         // Failed read: preserve the last good sample, record the attempt.
-        recordPoolSample(pool.poolAddress, null, now);
+        await recordPoolSample(pool.poolAddress, null, now);
         console.log(
           new Date(now).toISOString(),
           pool.baseSymbol || pool.poolAddress,
@@ -72,9 +72,9 @@ export async function sampleAllPools(): Promise<void> {  const pools = listPools
         creatorBaseFeeRaw: state.creatorBaseFeeRaw,
         creatorQuoteFeeRaw: state.creatorQuoteFeeRaw,
       };
-      recordPoolSample(pool.poolAddress, sample, now);
+      await recordPoolSample(pool.poolAddress, sample, now);
       if (state.price !== null) {
-        recordTick(pool.poolAddress, now, state.price, state.quoteReserve);
+        await recordTick(pool.poolAddress, now, state.price, state.quoteReserve);
       }
       console.log(
         new Date(now).toISOString(),
@@ -84,7 +84,7 @@ export async function sampleAllPools(): Promise<void> {  const pools = listPools
         `progress=${state.progress}`,
       );
     } catch (err) {
-      recordPoolSample(pool.poolAddress, null, now);
+      await recordPoolSample(pool.poolAddress, null, now);
       console.log(
         new Date(now).toISOString(),
         pool.baseSymbol || pool.poolAddress,
@@ -94,13 +94,12 @@ export async function sampleAllPools(): Promise<void> {  const pools = listPools
     }
   }
 
-  pruneTicks(now - TICK_RETENTION_MS);
+  await pruneTicks(now - TICK_RETENTION_MS);
 }
 
 async function main(): Promise<void> {
-  // Open the DB eagerly so legacy migrations (pools.json, prices.db) run
-  // once here before the first sample pass.
-  getDb();
+  // Open the DB eagerly so the schema exists before the first sample pass.
+  await ensureSchema();
   console.log(
     `stockcurve indexer started network=${SOLANA_NETWORK} rpc=${redactRpc(SOLANA_RPC_URL)} poll=${INDEXER_POLL_MS}ms`,
   );

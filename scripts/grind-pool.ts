@@ -99,9 +99,9 @@ async function main(): Promise<void> {
 
   for (;;) {
     if (stopping) break;
-    const stats = vanityPoolStats();
+    const stats = await vanityPoolStats();
     if (stats.ready >= TARGET) {
-      pruneConsumedVanityMints(Date.now() - CONSUMED_RETENTION_MS);
+      await pruneConsumedVanityMints(Date.now() - CONSUMED_RETENTION_MS);
       await sleep(TOPUP_MS);
       continue;
     }
@@ -124,7 +124,7 @@ async function main(): Promise<void> {
     if (!res || stopping) break;
     const pubkey = res.keypair.publicKey.toBase58();
     const encrypted = encryptSecret(Buffer.from(res.keypair.secretKey));
-    storeVanityMint(pubkey, encrypted, Date.now());
+    await storeVanityMint(pubkey, encrypted, Date.now());
     const rate = res.durationMs > 0 ? Math.round((res.attempts / res.durationMs) * 1000) : 0;
     console.log(
       `[grind-pool] stored ${pubkey} — ${res.attempts.toLocaleString('en-US')} attempts ` +

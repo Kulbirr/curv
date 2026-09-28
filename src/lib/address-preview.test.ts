@@ -6,12 +6,12 @@ function mockFetch(status: number): typeof fetch {
 }
 
 describe('parsePreviewAddress', () => {
-  it('accepts a valid base58 address and trims whitespace', () => {
+  it('accepts a valid base58 address and trims whitespace', async () => {
     const addr = 'AcdyunXSN1dLgS8tPCRPLTauZxmi84mLLQvi2xhKQoP4';
     expect(parsePreviewAddress(`  ${addr}  `)).toBe(addr);
   });
 
-  it('rejects non-addresses: too short, bad chars, empty', () => {
+  it('rejects non-addresses: too short, bad chars, empty', async () => {
     expect(parsePreviewAddress('nope')).toBeNull();
     expect(parsePreviewAddress('')).toBeNull();
     expect(parsePreviewAddress('0'.repeat(44))).toBeNull(); // 0 is not base58

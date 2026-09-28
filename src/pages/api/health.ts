@@ -1,5 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { getDb } from '@/lib/db/index';
+import { query } from '@/lib/db/index';
 import { getConnection, getRpcStatus, SOLANA_NETWORK } from '@/lib/solana';
 
 export interface HealthResponse {
@@ -25,8 +25,8 @@ export default async function handler(
   let dbOk = false;
   let pools = 0;
   try {
-    const row = getDb().prepare('SELECT COUNT(*) AS c FROM pools').get() as { c: number };
-    pools = row.c;
+    const rows = await query<{ c: number }>('SELECT COUNT(*) AS c FROM pools');
+    pools = Number(rows[0]?.c ?? 0);
     dbOk = true;
   } catch {
     dbOk = false;

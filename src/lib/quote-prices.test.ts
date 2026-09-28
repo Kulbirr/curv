@@ -81,7 +81,7 @@ describe('getQuoteUsdPrice (mainnet branch, fetch mocked)', () => {
 });
 
 describe('KNOWN_QUOTES', () => {
-  it('labels the canonical mainnet quote mints', () => {
+  it('labels the canonical mainnet quote mints', async () => {
     expect(KNOWN_QUOTES['So11111111111111111111111111111111111111112']).toBe('SOL');
     expect(KNOWN_QUOTES['EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v']).toBe('USDC');
   });

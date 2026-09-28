@@ -6,14 +6,14 @@ import { SOL_MINT } from '@/lib/quote-assets';
 import { mockReqRes } from '@/test-support/http';
 import { randomAddress, useTempDb } from '@/test-support/db';
 
-let db: ReturnType<typeof useTempDb>;
-beforeEach(() => {
-  db = useTempDb();
+let db: Awaited<ReturnType<typeof useTempDb>>;
+beforeEach(async () => {
+  db = await useTempDb();
 });
-afterEach(() => db.cleanup());
+afterEach(async () => { await db.cleanup(); });
 
-function seedPool() {
-  return insertPool({
+async function seedPool() {
+  return await insertPool({
     poolAddress: randomAddress(),
     configAddress: randomAddress(),
     baseMint: randomAddress(),
@@ -28,9 +28,9 @@ function seedPool() {
 
 describe('GET /api/pools/[address]/history', () => {
   it('serves bucketed real samples: 200', async () => {
-    const p = seedPool();
+    const p = await seedPool();
     const now = Date.now();
-    for (let i = 0; i < 20; i++) recordTick(p.poolAddress, now - i * 60_000, 0.001 + i * 1e-6, 100);
+    for (let i = 0; i < 20; i++) await recordTick(p.poolAddress, now - i * 60_000, 0.001 + i * 1e-6, 100);
     const { req, res } = mockReqRes('GET', {
       query: { address: p.poolAddress, from: String(now - 3_600_000), to: String(now) },
     });
@@ -43,7 +43,7 @@ describe('GET /api/pools/[address]/history', () => {
   });
 
   it('HONESTY: empty history returns an honest empty state, never invented points', async () => {
-    const p = seedPool();
+    const p = await seedPool();
     const now = Date.now();
     const { req, res } = mockReqRes('GET', {
       query: { address: p.poolAddress, from: String(now - 3_600_000), to: String(now) },
@@ -56,10 +56,10 @@ describe('GET /api/pools/[address]/history', () => {
   });
 
   it('HONESTY: gaps surface as complete: false so the chart renders them honestly', async () => {
-    const p = seedPool();
+    const p = await seedPool();
     const now = Date.now();
-    for (let i = 0; i < 5; i++) recordTick(p.poolAddress, now - 3_600_000 + i * 1000, 0.001, 100);
-    for (let i = 0; i < 5; i++) recordTick(p.poolAddress, now - i * 1000, 0.002, 100);
+    for (let i = 0; i < 5; i++) await recordTick(p.poolAddress, now - 3_600_000 + i * 1000, 0.001, 100);
+    for (let i = 0; i < 5; i++) await recordTick(p.poolAddress, now - i * 1000, 0.002, 100);
     const { req, res } = mockReqRes('GET', {
       query: { address: p.poolAddress, from: String(now - 3_600_000), to: String(now) },
     });
@@ -69,7 +69,7 @@ describe('GET /api/pools/[address]/history', () => {
   });
 
   it('rejects invalid time windows: 400', async () => {
-    const p = seedPool();
+    const p = await seedPool();
     const now = Date.now();
     const bad = mockReqRes('GET', {
       query: { address: p.poolAddress, from: String(now), to: String(now - 1000) },

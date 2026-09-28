@@ -1,5 +1,5 @@
 import { PublicKey } from '@solana/web3.js';
-import { getDb, transaction } from './index';
+import { query, transaction } from './index';
 
 /**
  * Pool registry repository. This is the authoritative store of *which*
@@ -87,24 +87,22 @@ function validateAddress(label: string, value: unknown): string {
   }
 }
 
-export function listPools(): TrackedPool[] {
-  const rows = getDb()
-    .prepare('SELECT * FROM pools ORDER BY created_at DESC')
-    .all() as unknown as PoolRow[];
+export async function listPools(): Promise<TrackedPool[]> {
+  const rows = await query<PoolRow>('SELECT * FROM pools ORDER BY created_at DESC');
   return rows.map(rowToPool);
 }
 
-export function getPool(poolAddress: string): TrackedPool | null {
+export async function getPool(poolAddress: string): Promise<TrackedPool | null> {
   let normalized: string;
   try {
     normalized = new PublicKey(poolAddress).toBase58();
   } catch {
     return null;
   }
-  const row = getDb()
-    .prepare('SELECT * FROM pools WHERE pool_address = ?')
-    .get(normalized) as unknown as PoolRow | undefined;
-  return row ? rowToPool(row) : null;
+  const rows = await query<PoolRow>('SELECT * FROM pools WHERE pool_address = $1', [
+    normalized,
+  ]);
+  return rows[0] ? rowToPool(rows[0]) : null;
 }
 
 export type RegisterPoolInput = Omit<TrackedPool, 'createdAt' | 'verified'> & {
@@ -114,10 +112,10 @@ export type RegisterPoolInput = Omit<TrackedPool, 'createdAt' | 'verified'> & {
 
 /**
  * Insert a pool transactionally. The duplicate check and the insert run
- * inside one IMMEDIATE transaction, so two concurrent registrations of the
- * same pool cannot both succeed.
+ * inside one transaction on a single connection, so two concurrent
+ * registrations of the same pool cannot both succeed.
  */
-export function insertPool(input: RegisterPoolInput): TrackedPool {
+export async function insertPool(input: RegisterPoolInput): Promise<TrackedPool> {
   const entry: TrackedPool = {
     poolAddress: validateAddress('poolAddress', input.poolAddress),
     configAddress: validateAddress('configAddress', input.configAddress),
@@ -139,34 +137,34 @@ export function insertPool(input: RegisterPoolInput): TrackedPool {
   if (!entry.baseName) throw new Error('baseName is required');
   if (entry.imageUrl && !/^https?:\/\//.test(entry.imageUrl)) throw new Error('imageUrl must be http(s)');
 
-  return transaction(() => {
-    const d = getDb();
-    const existing = d
-      .prepare('SELECT 1 FROM pools WHERE pool_address = ?')
-      .get(entry.poolAddress) as unknown;
-    if (existing) throw new Error('Pool is already registered');
-    d.prepare(
+  return transaction(async (db) => {
+    const existing = await db.query('SELECT 1 FROM pools WHERE pool_address = $1', [
+      entry.poolAddress,
+    ]);
+    if ((existing.rowCount ?? 0) > 0) throw new Error('Pool is already registered');
+    await db.query(
       `INSERT INTO pools
        (pool_address, config_address, base_mint, quote_mint, base_symbol, base_name,
         quote_symbol, description, image_url, website, twitter, creator,
         created_at, launched_at, verified)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).run(
-      entry.poolAddress,
-      entry.configAddress,
-      entry.baseMint,
-      entry.quoteMint,
-      entry.baseSymbol,
-      entry.baseName,
-      entry.quoteSymbol,
-      entry.description ?? null,
-      entry.imageUrl ?? null,
-      entry.website ?? null,
-      entry.twitter ?? null,
-      entry.creator,
-      entry.createdAt,
-      entry.launchedAt ?? null,
-      entry.verified ? 1 : 0,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+      [
+        entry.poolAddress,
+        entry.configAddress,
+        entry.baseMint,
+        entry.quoteMint,
+        entry.baseSymbol,
+        entry.baseName,
+        entry.quoteSymbol,
+        entry.description ?? null,
+        entry.imageUrl ?? null,
+        entry.website ?? null,
+        entry.twitter ?? null,
+        entry.creator,
+        entry.createdAt,
+        entry.launchedAt ?? null,
+        entry.verified ? 1 : 0,
+      ],
     );
     return entry;
   });

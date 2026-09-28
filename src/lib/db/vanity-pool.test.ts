@@ -1,6 +1,6 @@
-import { Worker } from 'worker_threads';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { randomBytes } from 'crypto';
+import { Client } from 'pg';
 import {
   claimVanityMint,
   pruneConsumedVanityMints,
@@ -9,126 +9,127 @@ import {
 } from './vanity-pool';
 import { VANITY_POOL_KEY_ENV } from '../vanity-crypto';
 import { encryptSecret } from '../vanity-crypto';
-import { getDb } from './index';
+import { _testConnectionString, execute, query } from './index';
 import { randomAddress, useTempDb } from '@/test-support/db';
 
-let db: ReturnType<typeof useTempDb>;
+let db: Awaited<ReturnType<typeof useTempDb>>;
 const TEST_KEY = randomBytes(32).toString('hex');
 let savedKey: string | undefined;
 
-beforeEach(() => {
+beforeEach(async () => {
   savedKey = process.env[VANITY_POOL_KEY_ENV];
   process.env[VANITY_POOL_KEY_ENV] = TEST_KEY;
-  db = useTempDb();
+  db = await useTempDb();
 });
 
-afterEach(() => {
-  db.cleanup();
+afterEach(async () => {
+  await db.cleanup();
   if (savedKey === undefined) delete process.env[VANITY_POOL_KEY_ENV];
   else process.env[VANITY_POOL_KEY_ENV] = savedKey;
 });
 
-function storeOne(pubkey = randomAddress()): string {
-  storeVanityMint(pubkey, encryptSecret(randomBytes(64)), Date.now());
+async function storeOne(pubkey = randomAddress()): Promise<string> {
+  await storeVanityMint(pubkey, encryptSecret(randomBytes(64)), Date.now());
   return pubkey;
 }
 
 describe('vanity pool store/claim', () => {
-  it('stores and claims exactly once, wiping the secret', () => {
-    const pubkey = storeOne();
-    expect(vanityPoolStats()).toEqual({ ready: 1, consumed: 0 });
+  it('stores and claims exactly once, wiping the secret', async () => {
+    const pubkey = await storeOne();
+    expect(await vanityPoolStats()).toEqual({ ready: 1, consumed: 0 });
 
-    const claim = claimVanityMint(Date.now());
+    const claim = await claimVanityMint(Date.now());
     expect(claim?.publicKey).toBe(pubkey);
     expect(claim?.secretEncrypted.length).toBe(12 + 16 + 64);
-    expect(vanityPoolStats()).toEqual({ ready: 0, consumed: 1 });
+    expect(await vanityPoolStats()).toEqual({ ready: 0, consumed: 1 });
 
     // Secret is wiped at handout — the row keeps only the audit trail.
-    const row = getDb()
-      .prepare('SELECT secret_encrypted, consumed FROM vanity_pool WHERE pubkey = ?')
-      .get(pubkey) as { secret_encrypted: Buffer | null; consumed: number };
+    const rows = await query<{ secret_encrypted: Buffer | null; consumed: number }>(
+      'SELECT secret_encrypted, consumed FROM vanity_pool WHERE pubkey = $1',
+      [pubkey],
+    );
+    const row = rows[0];
     expect(row.consumed).toBe(1);
     expect(row.secret_encrypted).toBeNull();
 
     // Second claim finds nothing.
-    expect(claimVanityMint(Date.now())).toBeNull();
+    expect(await claimVanityMint(Date.now())).toBeNull();
   });
 
-  it('claims oldest first', () => {
-    const first = storeOne();
-    storeOne();
+  it('claims oldest first', async () => {
+    const first = await storeOne();
+    await storeOne();
     // Make the second row older by rewriting created_at.
-    getDb().prepare('UPDATE vanity_pool SET created_at = 1 WHERE pubkey != ?').run(first);
-    expect(claimVanityMint(Date.now())?.publicKey).not.toBe(first);
+    await execute('UPDATE vanity_pool SET created_at = 1 WHERE pubkey != $1', [first]);
+    expect((await claimVanityMint(Date.now()))?.publicKey).not.toBe(first);
   });
 
-  it('returns null on an empty pool', () => {
-    expect(claimVanityMint(Date.now())).toBeNull();
+  it('returns null on an empty pool', async () => {
+    expect(await claimVanityMint(Date.now())).toBeNull();
   });
 
-  it('prunes old consumed rows', () => {
-    storeOne();
-    claimVanityMint(Date.now());
-    expect(pruneConsumedVanityMints(Date.now() + 1)).toBe(1);
-    expect(vanityPoolStats()).toEqual({ ready: 0, consumed: 0 });
+  it('prunes old consumed rows', async () => {
+    await storeOne();
+    await claimVanityMint(Date.now());
+    expect(await pruneConsumedVanityMints(Date.now() + 1)).toBe(1);
+    expect(await vanityPoolStats()).toEqual({ ready: 0, consumed: 0 });
   });
 });
 
 /**
- * True OS-thread race: 20 workers claim from a pool of 10. The
- * SELECT+UPDATE inside one IMMEDIATE transaction must hand each keypair
- * out exactly once — 10 distinct winners, 10 losers, zero duplicates.
+ * True concurrency race: 20 independent Postgres connections claim from a
+ * pool of 10. The SELECT+UPDATE inside one transaction must hand each
+ * keypair out exactly once — 10 distinct winners, 10 losers, zero
+ * duplicates. (With pg there is no need for worker threads: separate
+ * connections ARE the concurrency.)
  */
-const RACE_WORKER_SRC = `
-  const { parentPort, workerData } = require('worker_threads');
-  const { DatabaseSync } = require('node:sqlite');
-  const d = new DatabaseSync(workerData.dbPath);
-  d.exec('PRAGMA journal_mode = WAL;');
-  d.exec('PRAGMA busy_timeout = 10000;');
-  const start = Date.now();
-  while (Date.now() - start < 300) {}
-  let claimed = null;
-  d.exec('BEGIN IMMEDIATE');
-  try {
-    const row = d.prepare(
-      'SELECT pubkey FROM vanity_pool WHERE consumed = 0 ORDER BY created_at ASC LIMIT 1'
-    ).get();
-    if (row) {
-      const u = d.prepare(
-        'UPDATE vanity_pool SET consumed = 1, consumed_at = ?, secret_encrypted = NULL WHERE pubkey = ? AND consumed = 0'
-      ).run(Date.now(), row.pubkey);
-      if (u.changes === 1) claimed = row.pubkey;
+async function raceClaim(schema: string, threads: number): Promise<(string | null)[]> {
+  const runOne = async (): Promise<string | null> => {
+    const c = new Client({
+      connectionString: _testConnectionString(),
+      ssl: false,
+      options: `-c search_path="${schema}"`,
+    });
+    await c.connect();
+    try {
+      // Spin until every connection is ready so the claims land at once.
+      const start = Date.now();
+      while (Date.now() - start < 300) {}
+      let claimed: string | null = null;
+      await c.query('BEGIN');
+      try {
+        // Mirror production: FOR UPDATE SKIP LOCKED hands each connection
+        // a distinct ready row instead of piling onto the same oldest one.
+        const r = await c.query(
+          'SELECT pubkey FROM vanity_pool WHERE consumed = 0 ORDER BY created_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED',
+        );
+        const row = r.rows[0] as { pubkey: string } | undefined;
+        if (row) {
+          const u = await c.query(
+            'UPDATE vanity_pool SET consumed = 1, consumed_at = $1, secret_encrypted = NULL WHERE pubkey = $2 AND consumed = 0',
+            [Date.now(), row.pubkey],
+          );
+          if (u.rowCount === 1) claimed = row.pubkey;
+        }
+        await c.query('COMMIT');
+      } catch {
+        try { await c.query('ROLLBACK'); } catch { /* ignore */ }
+      }
+      return claimed;
+    } finally {
+      await c.end();
     }
-    d.exec('COMMIT');
-  } catch {
-    try { d.exec('ROLLBACK'); } catch {}
-  }
-  d.close();
-  parentPort.postMessage(claimed);
-`;
-
-function raceClaim(dbPath: string, threads: number): Promise<(string | null)[]> {
-  return Promise.all(
-    Array.from({ length: threads }, () => {
-      return new Promise<string | null>((resolve, reject) => {
-        const w = new Worker(RACE_WORKER_SRC, { eval: true, workerData: { dbPath } });
-        w.on('message', (m: string | null) => resolve(m));
-        w.on('error', reject);
-        w.on('exit', (code) => {
-          if (code !== 0) reject(new Error(`worker exited ${code}`));
-        });
-      });
-    }),
-  );
+  };
+  return Promise.all(Array.from({ length: threads }, runOne));
 }
 
 describe('vanity pool concurrency', () => {
-  it('hands each keypair out exactly once under a 20-thread race', async () => {
-    for (let i = 0; i < 10; i++) storeOne();
-    const results = await raceClaim(db.dbPath, 20);
+  it('hands each keypair out exactly once under a 20-connection race', async () => {
+    for (let i = 0; i < 10; i++) await storeOne();
+    const results = await raceClaim(db.schema, 20);
     const winners = results.filter((r): r is string => r !== null);
     expect(winners).toHaveLength(10);
     expect(new Set(winners).size).toBe(10); // no duplicates
-    expect(vanityPoolStats()).toEqual({ ready: 0, consumed: 10 });
+    expect(await vanityPoolStats()).toEqual({ ready: 0, consumed: 10 });
   }, 30_000);
 });

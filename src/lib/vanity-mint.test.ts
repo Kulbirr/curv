@@ -16,40 +16,40 @@ function fakeKeypair(address: string): Keypair {
 }
 
 describe('matchesVanitySuffix', () => {
-  it('matches an exact suffix', () => {
+  it('matches an exact suffix', async () => {
     expect(matchesVanitySuffix('abcXYZcurv', 'curv')).toBe(true);
   });
-  it('is case-sensitive', () => {
+  it('is case-sensitive', async () => {
     expect(matchesVanitySuffix('abcXYZCURV', 'curv')).toBe(false);
     expect(matchesVanitySuffix('abcXYZCurv', 'curv')).toBe(false);
     expect(matchesVanitySuffix('abcXYZcUrV', 'curv')).toBe(false);
   });
-  it('rejects mid-string occurrences', () => {
+  it('rejects mid-string occurrences', async () => {
     expect(matchesVanitySuffix('curvXYZabc', 'curv')).toBe(false);
     expect(matchesVanitySuffix('abcurvXYZ', 'curv')).toBe(false);
   });
-  it('rejects empty suffix', () => {
+  it('rejects empty suffix', async () => {
     expect(matchesVanitySuffix('abcXYZcurv', '')).toBe(false);
   });
-  it('rejects longer-than-address suffix', () => {
+  it('rejects longer-than-address suffix', async () => {
     expect(matchesVanitySuffix('cur', 'curv')).toBe(false);
   });
 });
 
 describe('VANITY_SUFFIX', () => {
-  it('is the Curv brand suffix', () => {
+  it('is the Curv brand suffix', async () => {
     expect(VANITY_SUFFIX).toBe('curv');
   });
-  it('uses only base58 characters', () => {
+  it('uses only base58 characters', async () => {
     expect(/^[1-9A-HJ-NP-Za-km-z]+$/.test(VANITY_SUFFIX)).toBe(true);
   });
 });
 
 describe('estimateVanityMintAttempts', () => {
-  it('is 58^4 for a 4-char suffix', () => {
+  it('is 58^4 for a 4-char suffix', async () => {
     expect(estimateVanityMintAttempts('curv')).toBe(11_316_496);
   });
-  it('is 58^1 for a 1-char suffix', () => {
+  it('is 58^1 for a 1-char suffix', async () => {
     expect(estimateVanityMintAttempts('x')).toBe(58);
   });
 });

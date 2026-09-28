@@ -22,7 +22,7 @@ function validSpec(overrides: Partial<LaunchSpec> = {}): LaunchSpec {
 }
 
 describe('presetCurve', () => {
-  it('covers every declared preset', () => {
+  it('covers every declared preset', async () => {
     for (const p of CURVE_PRESETS) {
       const curve = presetCurve(p.id, 0.001);
       expect(curve.prices.length).toBeGreaterThanOrEqual(2);
@@ -35,7 +35,7 @@ describe('presetCurve', () => {
     }
   });
 
-  it('scales prices from the starting price', () => {
+  it('scales prices from the starting price', async () => {
     const a = presetCurve('exponential', 1);
     const b = presetCurve('exponential', 2);
     expect(a.prices[0]).toBe(1);
@@ -44,7 +44,7 @@ describe('presetCurve', () => {
     }
   });
 
-  it('has the documented segment counts', () => {
+  it('has the documented segment counts', async () => {
     expect(presetCurve('flat', 1).prices).toHaveLength(4);
     expect(presetCurve('exponential', 1).prices).toHaveLength(4);
     expect(presetCurve('long', 1).prices).toHaveLength(6);
@@ -53,18 +53,18 @@ describe('presetCurve', () => {
 });
 
 describe('validateLaunchSpec', () => {
-  it('accepts a valid spec', () => {
+  it('accepts a valid spec', async () => {
     expect(validateLaunchSpec(validSpec())).toEqual([]);
   });
 
-  it('validates the token name', () => {
+  it('validates the token name', async () => {
     expect(validateLaunchSpec(validSpec({ name: '   ' }))).toContain('Token name is required');
     expect(validateLaunchSpec(validSpec({ name: 'x'.repeat(33) }))).toContain(
       'Token name must be 32 characters or less',
     );
   });
 
-  it('validates the symbol (1-10 alphanumerics)', () => {
+  it('validates the symbol (1-10 alphanumerics)', async () => {
     expect(validateLaunchSpec(validSpec({ symbol: '' }))).toContain('Token symbol is required');
     expect(validateLaunchSpec(validSpec({ symbol: 'TOOLONGSYMBOL' }))).toContain(
       'Symbol must be 1-10 alphanumeric characters',
@@ -74,14 +74,14 @@ describe('validateLaunchSpec', () => {
     );
   });
 
-  it('validates the quote mint and metadata URI', () => {
+  it('validates the quote mint and metadata URI', async () => {
     expect(validateLaunchSpec(validSpec({ quoteMint: 'nope' }))).toContain(
       'Quote mint is not a valid address',
     );
     expect(validateLaunchSpec(validSpec({ metadataUri: '  ' }))).toContain('Metadata URI is required');
   });
 
-  it('bounds the total supply', () => {
+  it('bounds the total supply', async () => {
     expect(validateLaunchSpec(validSpec({ totalSupply: 999 }))).toContain(
       'Total supply must be between 1,000 and 1,000,000,000,000,000',
     );
@@ -93,7 +93,7 @@ describe('validateLaunchSpec', () => {
     );
   });
 
-  it('validates the curve shape', () => {
+  it('validates the curve shape', async () => {
     expect(
       validateLaunchSpec(validSpec({ curve: { prices: [0.001], liquidityWeights: [] } })),
     ).toContain('Curve needs 2-10 price points');
@@ -119,7 +119,7 @@ describe('validateLaunchSpec', () => {
     ).toContain('Liquidity weights must be positive numbers');
   });
 
-  it('validates the fee schedule against the DBC SDK bounds (25-9900 bps)', () => {
+  it('validates the fee schedule against the DBC SDK bounds (25-9900 bps)', async () => {
     // The SDK throws below 25 / above 9900, so the UI must reject them first.
     for (const v of [-1, 0, 24, 9901, 10001]) {
       expect(validateLaunchSpec(validSpec({ startingFeeBps: v })), `start=${v}`).toContain(
@@ -140,7 +140,7 @@ describe('validateLaunchSpec', () => {
     expect(validateLaunchSpec(validSpec({ startingFeeBps: 9900, endingFeeBps: 25 }))).toEqual([]);
   });
 
-  it('rejects below-SDK-minimum fees that the SDK would throw on', () => {
+  it('rejects below-SDK-minimum fees that the SDK would throw on', async () => {
     // Regression: endingFeeBps 20 passed validation but buildCurveParams
     // threw "less than minimum allowed value of 25 bps".
     expect(() => buildCurveParams(validSpec({ endingFeeBps: 20 }))).toThrow(
@@ -148,14 +148,14 @@ describe('validateLaunchSpec', () => {
     );
   });
 
-  it('collects multiple errors at once', () => {
+  it('collects multiple errors at once', async () => {
     const errors = validateLaunchSpec(validSpec({ name: '', symbol: '!!', totalSupply: 0 }));
     expect(errors.length).toBeGreaterThanOrEqual(3);
   });
 });
 
 describe('buildCurveParams', () => {
-  it('builds SDK curve params from a valid spec', () => {
+  it('builds SDK curve params from a valid spec', async () => {
     const params = buildCurveParams(validSpec());
     // The SDK returns per-segment { sqrtPrice, liquidity } entries.
     expect(params.curve).toHaveLength(3); // flat preset: 4 price points -> 3 segments
@@ -168,30 +168,30 @@ describe('buildCurveParams', () => {
     expect(params.migrationQuoteThreshold.gt(new BN(0))).toBe(true);
   });
 
-  it('carries the 0.3% creator trading fee into the SDK fee config', () => {
+  it('carries the 0.3% creator trading fee into the SDK fee config', async () => {
     const params = buildCurveParams(validSpec());
     // The SDK's buildCurveWithCustomSqrtPrices flattens the fee config:
     // creatorTradingFeePercentage lands top-level, in percent.
     expect(params.creatorTradingFeePercentage).toBe(0.3);
   });
 
-  it('throws the first validation error on an invalid spec', () => {
+  it('throws the first validation error on an invalid spec', async () => {
     expect(() => buildCurveParams(validSpec({ name: '' }))).toThrow('Token name is required');
   });
 
-  it('supports 6-decimal base mints', () => {
+  it('supports 6-decimal base mints', async () => {
     const params = buildCurveParams(validSpec({ baseDecimals: 6 }));
     expect(params.curve).toHaveLength(3);
   });
 
-  it('uses a custom base mint fixture without complaint', () => {
+  it('uses a custom base mint fixture without complaint', async () => {
     const params = buildCurveParams(validSpec({ quoteMint: randomAddress(), quoteDecimals: 6 }));
     expect(params.curve).toHaveLength(3);
   });
 });
 
 describe('creator economics overrides', () => {
-  it('resolveEcon returns the defaults with no overrides', () => {
+  it('resolveEcon returns the defaults with no overrides', async () => {
     const e = resolveEcon(validSpec());
     expect(e.feeSchedulerPeriods).toBe(60);
     expect(e.feeSchedulerTotalDuration).toBe(60);
@@ -201,7 +201,7 @@ describe('creator economics overrides', () => {
     expect(e.migratedPoolDynamicFee).toBe(true);
   });
 
-  it('resolveEcon merges overrides over the defaults', () => {
+  it('resolveEcon merges overrides over the defaults', async () => {
     const e = resolveEcon(
       validSpec({ econ: { feeSchedulerPeriods: 120, migrationFeePercent: 5 } }),
     );
@@ -212,20 +212,20 @@ describe('creator economics overrides', () => {
     expect(e.migratedPoolFeeBps).toBe(120);
   });
 
-  it('never lets the spec override the locked creator cuts', () => {
+  it('never lets the spec override the locked creator cuts', async () => {
     const e = resolveEcon(validSpec({ econ: {} }));
     expect(e.creatorTradingFeePercent).toBe(0.3);
     expect(e.creatorMigrationFeePercent).toBe(50);
     expect(e.poolCreationFeeSol).toBe(0);
   });
 
-  it('rejects a zero or negative fee-decay period count', () => {
+  it('rejects a zero or negative fee-decay period count', async () => {
     expect(validateLaunchSpec(validSpec({ econ: { feeSchedulerPeriods: 0 } }))).toContain(
       'Fee decay periods must be a whole number of 1 or more',
     );
   });
 
-  it('rejects a decay duration shorter than the period count', () => {
+  it('rejects a decay duration shorter than the period count', async () => {
     expect(
       validateLaunchSpec(validSpec({ econ: { feeSchedulerPeriods: 60, feeSchedulerTotalDuration: 59 } })),
     ).toContain(
@@ -233,7 +233,7 @@ describe('creator economics overrides', () => {
     );
   });
 
-  it('rejects out-of-range migration fees', () => {
+  it('rejects out-of-range migration fees', async () => {
     expect(validateLaunchSpec(validSpec({ econ: { migrationFeePercent: 100 } }))).toContain(
       'Migration fee must be a whole percent between 0 and 99',
     );
@@ -245,7 +245,7 @@ describe('creator economics overrides', () => {
     );
   });
 
-  it('rejects out-of-range post-graduation pool fees', () => {
+  it('rejects out-of-range post-graduation pool fees', async () => {
     expect(validateLaunchSpec(validSpec({ econ: { migratedPoolFeeBps: 9 } }))).toContain(
       'Post-graduation pool fee must be 10-1000 bps',
     );
@@ -254,7 +254,7 @@ describe('creator economics overrides', () => {
     );
   });
 
-  it('accepts valid overrides', () => {
+  it('accepts valid overrides', async () => {
     expect(
       validateLaunchSpec(
         validSpec({
@@ -273,24 +273,24 @@ describe('creator economics overrides', () => {
 });
 
 describe('graduationThresholdQuote', () => {
-  it('returns a positive threshold for a valid spec', () => {
+  it('returns a positive threshold for a valid spec', async () => {
     const t = graduationThresholdQuote(validSpec());
     expect(t).not.toBeNull();
     expect(t!).toBeGreaterThan(0);
     expect(Number.isFinite(t!)).toBe(true);
   });
 
-  it('returns null for an invalid spec', () => {
+  it('returns null for an invalid spec', async () => {
     expect(graduationThresholdQuote(validSpec({ name: '' }))).toBeNull();
   });
 
-  it('rises when the migration fee rises', () => {
+  it('rises when the migration fee rises', async () => {
     const low = graduationThresholdQuote(validSpec({ econ: { migrationFeePercent: 0 } }))!;
     const high = graduationThresholdQuote(validSpec({ econ: { migrationFeePercent: 20 } }))!;
     expect(high).toBeGreaterThan(low);
   });
 
-  it('is unaffected by the fee schedule', () => {
+  it('is unaffected by the fee schedule', async () => {
     const a = graduationThresholdQuote(validSpec())!;
     const b = graduationThresholdQuote(
       validSpec({ econ: { feeSchedulerPeriods: 240, feeSchedulerTotalDuration: 240 } }),
@@ -300,7 +300,7 @@ describe('graduationThresholdQuote', () => {
 });
 
 describe('scaleCurveToGraduationTarget', () => {
-  it('hits a lower target', () => {
+  it('hits a lower target', async () => {
     const s = validSpec();
     const t0 = graduationThresholdQuote(s)!;
     const target = t0 / 10;
@@ -309,7 +309,7 @@ describe('scaleCurveToGraduationTarget', () => {
     expect(Math.abs(t1 - target) / target).toBeLessThan(0.01);
   });
 
-  it('hits a higher target', () => {
+  it('hits a higher target', async () => {
     const s = validSpec();
     const t0 = graduationThresholdQuote(s)!;
     const target = t0 * 3;
@@ -318,7 +318,7 @@ describe('scaleCurveToGraduationTarget', () => {
     expect(Math.abs(t1 - target) / target).toBeLessThan(0.01);
   });
 
-  it('scales the curve uniformly, preserving its shape', () => {
+  it('scales the curve uniformly, preserving its shape', async () => {
     const s = validSpec();
     const t0 = graduationThresholdQuote(s)!;
     const r = scaleCurveToGraduationTarget(s, t0 * 2);
@@ -328,12 +328,12 @@ describe('scaleCurveToGraduationTarget', () => {
     expect(r.curve.liquidityWeights).toEqual(s.curve.liquidityWeights);
   });
 
-  it('throws on a non-positive target', () => {
+  it('throws on a non-positive target', async () => {
     expect(() => scaleCurveToGraduationTarget(validSpec(), 0)).toThrow();
     expect(() => scaleCurveToGraduationTarget(validSpec(), -5)).toThrow();
   });
 
-  it('throws on an invalid spec', () => {
+  it('throws on an invalid spec', async () => {
     const t0 = graduationThresholdQuote(validSpec())!;
     expect(() => scaleCurveToGraduationTarget(validSpec({ name: '' }), t0)).toThrow();
   });

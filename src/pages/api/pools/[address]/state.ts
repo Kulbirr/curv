@@ -27,10 +27,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
   const address = parseAddress(req.query.address);
   if (!address) return res.status(400).json({ error: 'address is not a valid Solana address' });
-  const tracked = getTrackedPool(address);
+  const tracked = await getTrackedPool(address);
   if (!tracked) return res.status(404).json({ error: 'Pool not registered' });
 
-  const state = getPoolState(tracked.poolAddress);
+  const state = await getPoolState(tracked.poolAddress);
   const stale = !state || isSampleStale(state.sampledAt, Date.now());
 
   const price = state?.price ?? null;
@@ -60,7 +60,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     marketCap,
     marketCapUsd: marketCap !== null && quoteUsd !== null ? marketCap * quoteUsd : null,
     migrationQuoteThreshold: state?.migrationQuoteThreshold ?? null,
-    tradeStats24h: getTradeStats24h(tracked.poolAddress),
+    tradeStats24h: await getTradeStats24h(tracked.poolAddress),
     /** Accrued creator trading fees in raw integer units (decimal strings). */
     creatorBaseFeeRaw: state?.creatorBaseFeeRaw ?? null,
     creatorQuoteFeeRaw: state?.creatorQuoteFeeRaw ?? null,

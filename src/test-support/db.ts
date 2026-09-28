@@ -1,25 +1,19 @@
-import { mkdtempSync, rmSync } from 'fs';
-import { tmpdir } from 'os';
-import { join } from 'path';
 import { randomBytes } from 'crypto';
 import bs58 from 'bs58';
 import { _testCloseDb, _testUseDb } from '@/lib/db';
 
 /**
- * Point the DB singleton at a throwaway SQLite file for one test.
- * Call `db.cleanup()` when done (afterEach). Never touches the real
- * data/stockcurve.db and never touches the network.
+ * Point the DB singleton at a throwaway Postgres schema for one test.
+ * Call `await db.cleanup()` when done (afterEach). Never touches the real
+ * database. Tests use TEST_DATABASE_URL, defaulting to a local Postgres
+ * (see src/lib/db/index.ts).
  */
-export function useTempDb() {
-  const dir = mkdtempSync(join(tmpdir(), 'stockcurve-test-'));
-  const dbPath = join(dir, 'test.db');
-  _testUseDb(dbPath);
+export async function useTempDb() {
+  const schema = await _testUseDb();
   return {
-    dir,
-    dbPath,
-    cleanup() {
-      _testCloseDb();
-      rmSync(dir, { recursive: true, force: true });
+    schema,
+    async cleanup() {
+      await _testCloseDb();
     },
   };
 }

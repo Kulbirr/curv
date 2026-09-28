@@ -1,4 +1,4 @@
-import { getDb } from './index';
+import { query } from './index';
 import { chunkArray } from './states';
 
 /**
@@ -30,18 +30,25 @@ export interface HistoryResult {
  * Bucket raw ticks into at most `maxPoints` time-weighted samples.
  * Returns the last tick of each bucket (a real sample, not an average).
  */
-export function getHistory(poolAddress: string, fromMs: number, toMs: number, maxPoints = 300): HistoryResult {
-  const d = getDb();
-  const rows = d
-    .prepare('SELECT ts, price FROM ticks WHERE pool_address = ? AND ts >= ? AND ts <= ? ORDER BY ts ASC')
-    .all(poolAddress, fromMs, toMs) as Array<{ ts: number; price: number }>;
+export async function getHistory(
+  poolAddress: string,
+  fromMs: number,
+  toMs: number,
+  maxPoints = 300,
+): Promise<HistoryResult> {
+  const rows = await query<{ ts: number; price: number }>(
+    'SELECT ts, price FROM ticks WHERE pool_address = $1 AND ts >= $2 AND ts <= $3 ORDER BY ts ASC',
+    [poolAddress, fromMs, toMs],
+  );
 
-  const earliestRow = d
-    .prepare('SELECT MIN(ts) AS m FROM ticks WHERE pool_address = ?')
-    .get(poolAddress) as { m: number | null };
+  const earliestRows = await query<{ m: number | null }>(
+    'SELECT MIN(ts) AS m FROM ticks WHERE pool_address = $1',
+    [poolAddress],
+  );
+  const earliest = earliestRows[0]?.m ?? null;
 
   if (rows.length === 0) {
-    return { points: [], earliest: earliestRow?.m ?? null, complete: false };
+    return { points: [], earliest, complete: false };
   }
 
   const span = Math.max(1, toMs - fromMs);
@@ -61,25 +68,25 @@ export function getHistory(poolAddress: string, fromMs: number, toMs: number, ma
       break;
     }
   }
-  return { points, earliest: earliestRow?.m ?? null, complete };
+  return { points, earliest, complete };
 }
 
-export function getLatestPrice(poolAddress: string): PricePoint | null {
-  const d = getDb();
-  const row = d
-    .prepare('SELECT ts AS t, price FROM ticks WHERE pool_address = ? ORDER BY ts DESC LIMIT 1')
-    .get(poolAddress) as unknown as PricePoint | undefined;
-  return row ?? null;
+export async function getLatestPrice(poolAddress: string): Promise<PricePoint | null> {
+  const rows = await query<PricePoint>(
+    'SELECT ts AS t, price FROM ticks WHERE pool_address = $1 ORDER BY ts DESC LIMIT 1',
+    [poolAddress],
+  );
+  return rows[0] ?? null;
 }
 
 /** 24h-ago price for change %; null when we lack history. */
-export function getPrice24hAgo(poolAddress: string): number | null {
-  const d = getDb();
+export async function getPrice24hAgo(poolAddress: string): Promise<number | null> {
   const cutoff = Date.now() - 24 * 3600 * 1000;
-  const row = d
-    .prepare('SELECT price FROM ticks WHERE pool_address = ? AND ts <= ? ORDER BY ts DESC LIMIT 1')
-    .get(poolAddress, cutoff) as { price: number } | undefined;
-  return row?.price ?? null;
+  const rows = await query<{ price: number }>(
+    'SELECT price FROM ticks WHERE pool_address = $1 AND ts <= $2 ORDER BY ts DESC LIMIT 1',
+    [poolAddress, cutoff],
+  );
+  return rows[0]?.price ?? null;
 }
 
 /**
@@ -87,20 +94,19 @@ export function getPrice24hAgo(poolAddress: string): number | null {
  * per pool, in one query per chunk. Window function keeps it portable
  * (SQLite + Postgres); results identical to the per-pool version.
  */
-export function getPrices24hAgoBatch(poolAddresses: string[]): Map<string, number> {
+export async function getPrices24hAgoBatch(poolAddresses: string[]): Promise<Map<string, number>> {
   const out = new Map<string, number>();
   const cutoff = Date.now() - 24 * 3600 * 1000;
   for (const chunk of chunkArray([...new Set(poolAddresses)], 500)) {
-    const placeholders = chunk.map(() => '?').join(',');
-    const rows = getDb()
-      .prepare(
-        `SELECT pool_address, price FROM (
-           SELECT pool_address, price,
-                  ROW_NUMBER() OVER (PARTITION BY pool_address ORDER BY ts DESC) AS rn
-           FROM ticks WHERE pool_address IN (${placeholders}) AND ts <= ?
-         ) WHERE rn = 1`,
-      )
-      .all(...chunk, cutoff) as Array<{ pool_address: string; price: number }>;
+    const placeholders = chunk.map((_, i) => `$${i + 1}`).join(',');
+    const rows = await query<{ pool_address: string; price: number }>(
+      `SELECT pool_address, price FROM (
+         SELECT pool_address, price,
+                ROW_NUMBER() OVER (PARTITION BY pool_address ORDER BY ts DESC) AS rn
+         FROM ticks WHERE pool_address IN (${placeholders}) AND ts <= $${chunk.length + 1}
+       ) WHERE rn = 1`,
+      [...chunk, cutoff],
+    );
     for (const row of rows) out.set(row.pool_address, row.price);
   }
   return out;
@@ -111,21 +117,25 @@ export function getPrices24hAgoBatch(poolAddresses: string[]): Map<string, numbe
  * Portable ON CONFLICT upsert so an indexer restart never double-counts
  * a tick.
  */
-export function recordTick(poolAddress: string, ts: number, price: number, quoteReserve: number | null): void {
-  getDb()
-    .prepare(
-      `INSERT INTO ticks (pool_address, ts, price, quote_reserve)
-       VALUES (?, ?, ?, ?)
-       ON CONFLICT (pool_address, ts) DO UPDATE SET
-         price = excluded.price,
-         quote_reserve = excluded.quote_reserve`,
-    )
-    .run(poolAddress, ts, price, quoteReserve);
+export async function recordTick(
+  poolAddress: string,
+  ts: number,
+  price: number,
+  quoteReserve: number | null,
+): Promise<void> {
+  await query(
+    `INSERT INTO ticks (pool_address, ts, price, quote_reserve)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT (pool_address, ts) DO UPDATE SET
+       price = excluded.price,
+       quote_reserve = excluded.quote_reserve`,
+    [poolAddress, ts, price, quoteReserve],
+  );
 }
 
 /** Drop ticks older than the retention cutoff (called by the indexer). */
-export function pruneTicks(olderThanMs: number): void {
-  getDb().prepare('DELETE FROM ticks WHERE ts < ?').run(olderThanMs);
+export async function pruneTicks(olderThanMs: number): Promise<void> {
+  await query('DELETE FROM ticks WHERE ts < $1', [olderThanMs]);
 }
 
 export interface TradeStats24h {
@@ -148,14 +158,12 @@ export interface TradeStats24h {
  * null when history is too thin (fewer than 2 ticks or under 1 hour of
  * coverage) to say anything meaningful.
  */
-export function getTradeStats24h(poolAddress: string): TradeStats24h | null {
-  const d = getDb();
+export async function getTradeStats24h(poolAddress: string): Promise<TradeStats24h | null> {
   const cutoff = Date.now() - 24 * 3600 * 1000;
-  const rows = d
-    .prepare(
-      'SELECT ts, quote_reserve FROM ticks WHERE pool_address = ? AND ts >= ? AND quote_reserve IS NOT NULL ORDER BY ts ASC',
-    )
-    .all(poolAddress, cutoff) as Array<{ ts: number; quote_reserve: number }>;
+  const rows = await query<{ ts: number; quote_reserve: number }>(
+    'SELECT ts, quote_reserve FROM ticks WHERE pool_address = $1 AND ts >= $2 AND quote_reserve IS NOT NULL ORDER BY ts ASC',
+    [poolAddress, cutoff],
+  );
   if (rows.length < 2) return null;
   // Require at least 1 hour of coverage before quoting a "24h" number.
   if (rows[rows.length - 1].ts - rows[0].ts < 3600 * 1000) return null;
@@ -184,14 +192,12 @@ export function getTradeStats24h(poolAddress: string): TradeStats24h | null {
  * tracked separately on-chain). Returns null when history is too thin to
  * be honest about. Callers must label this an estimate, never exact volume.
  */
-export function getVolume24h(poolAddress: string): number | null {
-  const d = getDb();
+export async function getVolume24h(poolAddress: string): Promise<number | null> {
   const cutoff = Date.now() - 24 * 3600 * 1000;
-  const rows = d
-    .prepare(
-      'SELECT ts, quote_reserve FROM ticks WHERE pool_address = ? AND ts >= ? AND quote_reserve IS NOT NULL ORDER BY ts ASC',
-    )
-    .all(poolAddress, cutoff) as Array<{ ts: number; quote_reserve: number }>;
+  const rows = await query<{ ts: number; quote_reserve: number }>(
+    'SELECT ts, quote_reserve FROM ticks WHERE pool_address = $1 AND ts >= $2 AND quote_reserve IS NOT NULL ORDER BY ts ASC',
+    [poolAddress, cutoff],
+  );
   if (rows.length < 2) return null;
   // Require at least 1 hour of coverage before quoting a "24h" number.
   if (rows[rows.length - 1].ts - rows[0].ts < 3600 * 1000) return null;
@@ -207,22 +213,21 @@ export function getVolume24h(poolAddress: string): number | null {
  * JS with the exact same rules (2+ ticks, 1h+ coverage). Pools with thin
  * history are absent from the map (caller treats as null).
  */
-export function getVolumes24hBatch(poolAddresses: string[]): Map<string, number> {
+export async function getVolumes24hBatch(poolAddresses: string[]): Promise<Map<string, number>> {
   const out = new Map<string, number>();
   const cutoff = Date.now() - 24 * 3600 * 1000;
   for (const chunk of chunkArray([...new Set(poolAddresses)], 500)) {
-    const placeholders = chunk.map(() => '?').join(',');
-    const rows = getDb()
-      .prepare(
-        `SELECT pool_address, ts, quote_reserve FROM ticks
-         WHERE pool_address IN (${placeholders}) AND ts >= ? AND quote_reserve IS NOT NULL
-         ORDER BY pool_address ASC, ts ASC`,
-      )
-      .all(...chunk, cutoff) as Array<{
+    const placeholders = chunk.map((_, i) => `$${i + 1}`).join(',');
+    const rows = await query<{
       pool_address: string;
       ts: number;
       quote_reserve: number;
-    }>;
+    }>(
+      `SELECT pool_address, ts, quote_reserve FROM ticks
+       WHERE pool_address IN (${placeholders}) AND ts >= $${chunk.length + 1} AND quote_reserve IS NOT NULL
+       ORDER BY pool_address ASC, ts ASC`,
+      [...chunk, cutoff],
+    );
     let cur: string | null = null;
     let firstTs = 0;
     let lastTs = 0;

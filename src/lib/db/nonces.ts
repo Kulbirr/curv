@@ -1,4 +1,4 @@
-import { getDb } from './index';
+import { execute, query } from './index';
 
 /**
  * Single-use registration signatures (replay protection).
@@ -23,24 +23,23 @@ import { getDb } from './index';
  * replay. Safe under concurrency: the PRIMARY KEY + ON CONFLICT makes the
  * check-and-set a single atomic statement.
  */
-export function claimNonce(signature: string, nowMs: number): boolean {
-  const result = getDb()
-    .prepare(
-      'INSERT INTO nonces (signature, created_at) VALUES (?, ?) ON CONFLICT (signature) DO NOTHING',
-    )
-    .run(signature, nowMs) as { changes: number };
-  return result.changes === 1;
+export async function claimNonce(signature: string, nowMs: number): Promise<boolean> {
+  const changes = await execute(
+    'INSERT INTO nonces (signature, created_at) VALUES ($1, $2) ON CONFLICT (signature) DO NOTHING',
+    [signature, nowMs],
+  );
+  return changes === 1;
 }
 
 /** True when the signature was already claimed (without claiming it). */
-export function isNonceUsed(signature: string): boolean {
-  const row = getDb()
-    .prepare('SELECT 1 AS one FROM nonces WHERE signature = ?')
-    .get(signature) as { one: number } | undefined;
-  return row !== undefined;
+export async function isNonceUsed(signature: string): Promise<boolean> {
+  const rows = await query<{ one: number }>('SELECT 1 AS one FROM nonces WHERE signature = $1', [
+    signature,
+  ]);
+  return rows.length > 0;
 }
 
 /** Drop nonces older than the cutoff so the table cannot grow without bound. */
-export function pruneNonces(olderThanMs: number): void {
-  getDb().prepare('DELETE FROM nonces WHERE created_at < ?').run(olderThanMs);
+export async function pruneNonces(olderThanMs: number): Promise<void> {
+  await execute('DELETE FROM nonces WHERE created_at < $1', [olderThanMs]);
 }

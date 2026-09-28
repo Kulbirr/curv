@@ -1,4 +1,4 @@
-import { getDb, transaction } from './index';
+import { execute, query, transaction } from './index';
 
 /**
  * DB-backed fixed-window rate limiter.
@@ -9,13 +9,13 @@ import { getDb, transaction } from './index';
  * enforces the same budget.
  *
  * Correctness under concurrency: the increment and the post-increment read
- * run inside one IMMEDIATE transaction, so they are serialized against
- * every other caller. Each caller observes exactly its own count, which
- * means at most `limit` callers are ever admitted (no over-admission)
- * and the first caller always sees count 1 (no under-admission).
- * A bare upsert followed by a separate SELECT does NOT have this
- * property: concurrent callers can all observe the same final count and
- * every one of them can be denied even though budget remained.
+ * run inside one transaction on a single connection, so they are
+ * serialized against every other caller. Each caller observes exactly its
+ * own count, which means at most `limit` callers are ever admitted (no
+ * over-admission) and the first caller always sees count 1 (no
+ * under-admission). A bare upsert followed by a separate SELECT does NOT
+ * have this property: concurrent callers can all observe the same final
+ * count and every one of them can be denied even though budget remained.
  *
  * Redis swap-in path: replace hitRateLimit with
  *   INCR rl:{key}:{windowStart} + EXPIRE rl:{key}:{windowStart} windowMs/1000
@@ -27,34 +27,33 @@ export interface RateLimitResult {
   count: number;
 }
 
-export function hitRateLimit(
+export async function hitRateLimit(
   key: string,
   limit: number,
   windowMs: number,
   nowMs: number,
-): RateLimitResult {
-  return transaction(() => {
-    const d = getDb();
+): Promise<RateLimitResult> {
+  return transaction(async (db) => {
     const windowStart = nowMs - (nowMs % windowMs);
-    d.prepare(
-      `INSERT INTO rate_limits (key, window_start, count) VALUES (?, ?, 1)
+    await db.query(
+      `INSERT INTO rate_limits (key, window_start, count) VALUES ($1, $2, 1)
        ON CONFLICT (key) DO UPDATE SET
          count = CASE WHEN rate_limits.window_start = excluded.window_start
                       THEN rate_limits.count + 1 ELSE 1 END,
          window_start = excluded.window_start`,
-    ).run(key, windowStart);
-    const row = d.prepare('SELECT count AS count FROM rate_limits WHERE key = ?').get(key) as {
-      count: number;
-    };
+      [key, windowStart],
+    );
+    const res = await db.query('SELECT count AS count FROM rate_limits WHERE key = $1', [key]);
+    const count = Number(res.rows[0]?.count ?? 0);
     // Per-key prune only. A global "delete everything older than THIS
     // call's window" would wipe longer-window counters: the 10-minute IP
     // check used to delete the 1-hour wallet row on every request, which
     // silently disabled the wallet throttle (each wallet looked fresh).
-    d.prepare('DELETE FROM rate_limits WHERE key = ? AND window_start < ?').run(
+    await db.query('DELETE FROM rate_limits WHERE key = $1 AND window_start < $2', [
       key,
       nowMs - windowMs,
-    );
-    return { allowed: row.count <= limit, count: row.count };
+    ]);
+    return { allowed: count <= limit, count };
   });
 }
 
@@ -64,11 +63,9 @@ export function hitRateLimit(
  * they expire. Call it wherever the policy windows are known (the
  * registration route does this once per request, next to pruneNonces).
  */
-export function pruneRateLimits(nowMs: number): void {
+export async function pruneRateLimits(nowMs: number): Promise<void> {
   const longestWindow = Math.max(REGISTRATION_IP_WINDOW_MS, REGISTRATION_WALLET_WINDOW_MS);
-  getDb()
-    .prepare('DELETE FROM rate_limits WHERE window_start < ?')
-    .run(nowMs - longestWindow);
+  await execute('DELETE FROM rate_limits WHERE window_start < $1', [nowMs - longestWindow]);
 }
 
 /**

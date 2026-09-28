@@ -7,25 +7,25 @@ import { VANITY_POOL_KEY_ENV, encryptSecret } from '@/lib/vanity-crypto';
 import { mockReqRes } from '@/test-support/http';
 import { randomAddress, useTempDb } from '@/test-support/db';
 
-let db: ReturnType<typeof useTempDb>;
+let db: Awaited<ReturnType<typeof useTempDb>>;
 const TEST_KEY = randomBytes(32).toString('hex');
 let savedKey: string | undefined;
 
-beforeEach(() => {
+beforeEach(async () => {
   savedKey = process.env[VANITY_POOL_KEY_ENV];
   process.env[VANITY_POOL_KEY_ENV] = TEST_KEY;
-  db = useTempDb();
+  db = await useTempDb();
 });
 
-afterEach(() => {
-  db.cleanup();
+afterEach(async () => {
+  await db.cleanup();
   if (savedKey === undefined) delete process.env[VANITY_POOL_KEY_ENV];
   else process.env[VANITY_POOL_KEY_ENV] = savedKey;
 });
 
-function storeKeypair(): Keypair {
+async function storeKeypair(): Promise<Keypair> {
   const kp = Keypair.generate();
-  storeVanityMint(
+  await storeVanityMint(
     kp.publicKey.toBase58(),
     encryptSecret(Buffer.from(kp.secretKey)),
     Date.now(),
@@ -40,7 +40,7 @@ function post(ip = '127.0.0.1') {
 
 describe('POST /api/vanity-mint', () => {
   it('hands out a valid keypair exactly once, then reports the pool dry', async () => {
-    const kp = storeKeypair();
+    const kp = await storeKeypair();
 
     const first = post();
     await handler(first.req, first.res);
@@ -59,7 +59,7 @@ describe('POST /api/vanity-mint', () => {
   });
 
   it('enforces 5 handouts per hour per IP', async () => {
-    for (let i = 0; i < VANITY_HANDOUT_LIMIT + 1; i++) storeKeypair();
+    for (let i = 0; i < VANITY_HANDOUT_LIMIT + 1; i++) await storeKeypair();
     let last = 0;
     for (let i = 0; i < VANITY_HANDOUT_LIMIT + 1; i++) {
       const { req, res } = post();
@@ -70,7 +70,7 @@ describe('POST /api/vanity-mint', () => {
   });
 
   it('rate limits per IP independently', async () => {
-    for (let i = 0; i < 3; i++) storeKeypair();
+    for (let i = 0; i < 3; i++) await storeKeypair();
     const a = post('10.0.0.1');
     await handler(a.req, a.res);
     expect(a.res.statusCode).toBe(200);
@@ -86,7 +86,7 @@ describe('POST /api/vanity-mint', () => {
   });
 
   it('fails closed with an honest 503 when the pool key is unset', async () => {
-    storeKeypair();
+    await storeKeypair();
     delete process.env[VANITY_POOL_KEY_ENV];
     const { req, res } = post();
     await handler(req, res);
@@ -96,7 +96,7 @@ describe('POST /api/vanity-mint', () => {
   });
 
   it('never logs secrets (response carries only the two fields)', async () => {
-    storeKeypair();
+    await storeKeypair();
     const { req, res } = post();
     await handler(req, res);
     expect(Object.keys(res.body).sort()).toEqual(['publicKey', 'secretKey']);

@@ -8,13 +8,13 @@ import {
 } from './quote-assets';
 
 describe('quote assets', () => {
-  it('serves the network-correct USDC mint', () => {
+  it('serves the network-correct USDC mint', async () => {
     expect(getUsdcMint('mainnet-beta')).toBe(MAINNET_USDC_MINT);
     expect(getUsdcMint('devnet')).toBe(DEVNET_USDC_MINT);
     expect(MAINNET_USDC_MINT).not.toBe(DEVNET_USDC_MINT);
   });
 
-  it('flags a well-known mint of the other network', () => {
+  it('flags a well-known mint of the other network', async () => {
     // Mainnet deployment must reject devnet USDC and vice versa.
     expect(isCrossNetworkKnownMint(DEVNET_USDC_MINT, 'mainnet-beta')).toBe(true);
     expect(isCrossNetworkKnownMint(MAINNET_USDC_MINT, 'devnet')).toBe(true);

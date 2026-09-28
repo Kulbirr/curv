@@ -83,15 +83,15 @@ function mockRpcDown() {
   });
 }
 
-let db: ReturnType<typeof useTempDb>;
-beforeEach(() => {
-  db = useTempDb();
+let db: Awaited<ReturnType<typeof useTempDb>>;
+beforeEach(async () => {
+  db = await useTempDb();
   vi.clearAllMocks();
 });
-afterEach(() => db.cleanup());
+afterEach(async () => { await db.cleanup(); });
 
-function seedPool(overrides: Record<string, unknown> = {}) {
-  return insertPool({
+async function seedPool(overrides: Record<string, unknown> = {}) {
+  return await insertPool({
     poolAddress: randomAddress(),
     configAddress: randomAddress(),
     baseMint: randomAddress(),
@@ -107,7 +107,7 @@ function seedPool(overrides: Record<string, unknown> = {}) {
 
 describe('GET /api/pools', () => {
   it('returns 200 with pool summaries including baseMint for exact matching', async () => {
-    const p = seedPool();
+    const p = await seedPool();
     const { req, res } = mockReqRes('GET');
     await handler(req, res);
     expect(res.statusCode).toBe(200);
@@ -121,7 +121,7 @@ describe('GET /api/pools', () => {
   });
 
   it('HONESTY: a pool the indexer never sampled serves honest nulls marked stale', async () => {
-    seedPool();
+    await seedPool();
     const { req, res } = mockReqRes('GET');
     await handler(req, res);
     const s = res.body.pools[0];
@@ -132,8 +132,8 @@ describe('GET /api/pools', () => {
   });
 
   it('serves indexed state without live RPC calls', async () => {
-    const p = seedPool();
-    recordPoolSample(
+    const p = await seedPool();
+    await recordPoolSample(
       p.poolAddress,
       {
         price: 0.002,
@@ -161,10 +161,10 @@ describe('GET /api/pools', () => {
   });
 
   it('computes 24h change from real tick history', async () => {
-    const p = seedPool();
+    const p = await seedPool();
     const now = Date.now();
-    recordTick(p.poolAddress, now - 25 * 3600_000, 0.001, 100);
-    recordPoolSample(
+    await recordTick(p.poolAddress, now - 25 * 3600_000, 0.001, 100);
+    await recordPoolSample(
       p.poolAddress,
       {
         price: 0.002,
@@ -200,7 +200,7 @@ describe('POST /api/pools', () => {
     await handler(req, res);
     expect(res.statusCode).toBe(201);
     expect(res.body.pool.poolAddress).toBe(body.poolAddress);
-    const rec = getVerification(body.poolAddress as string)!;
+    const rec = (await getVerification(body.poolAddress as string))!;
     expect(rec.status).toBe('verified');
   });
 
@@ -211,7 +211,7 @@ describe('POST /api/pools', () => {
     await handler(req, res);
     expect(res.statusCode).toBe(201);
     expect(res.body.pool.verified).toBe(false);
-    expect(getVerification(body.poolAddress as string)!.status).toBe('unverified');
+    expect((await getVerification(body.poolAddress as string))!.status).toBe('unverified');
   });
 
   it('rejects an on-chain mismatch: 400 naming the failed verification', async () => {

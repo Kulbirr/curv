@@ -12,14 +12,14 @@ vi.mock('@/lib/solana', async (importOriginal) => {
   return { ...actual, getDbcClient: vi.fn() };
 });
 
-let db: ReturnType<typeof useTempDb>;
-beforeEach(() => {
-  db = useTempDb();
+let db: Awaited<ReturnType<typeof useTempDb>>;
+beforeEach(async () => {
+  db = await useTempDb();
 });
-afterEach(() => db.cleanup());
+afterEach(async () => { await db.cleanup(); });
 
-function seedPool(overrides: Record<string, unknown> = {}) {
-  return insertPool({
+async function seedPool(overrides: Record<string, unknown> = {}) {
+  return await insertPool({
     poolAddress: randomAddress(),
     configAddress: randomAddress(),
     baseMint: randomAddress(),
@@ -33,8 +33,8 @@ function seedPool(overrides: Record<string, unknown> = {}) {
   });
 }
 
-function seedState(addr: string, sampledAt: number) {
-  recordPoolSample(
+async function seedState(addr: string, sampledAt: number) {
+  await recordPoolSample(
     addr,
     {
       price: 0.001,
@@ -56,8 +56,8 @@ function seedState(addr: string, sampledAt: number) {
 
 describe('GET /api/pools/[address]/state', () => {
   it('serves indexed state: 200 with baseMint and fresh flag', async () => {
-    const p = seedPool();
-    seedState(p.poolAddress, Date.now());
+    const p = await seedPool();
+    await seedState(p.poolAddress, Date.now());
     const { req, res } = mockReqRes('GET', { query: { address: p.poolAddress } });
     await handler(req, res);
     expect(res.statusCode).toBe(200);
@@ -70,9 +70,9 @@ describe('GET /api/pools/[address]/state', () => {
   });
 
   it('serves accrued creator fees as raw strings plus the sample timestamp', async () => {
-    const p = seedPool();
+    const p = await seedPool();
     const now = Date.now();
-    seedState(p.poolAddress, now);
+    await seedState(p.poolAddress, now);
     const { req, res } = mockReqRes('GET', { query: { address: p.poolAddress } });
     await handler(req, res);
     expect(res.statusCode).toBe(200);
@@ -84,8 +84,8 @@ describe('GET /api/pools/[address]/state', () => {
   });
 
   it('HONESTY: old samples are served with stale: true, values intact', async () => {
-    const p = seedPool();
-    seedState(p.poolAddress, Date.now() - 120_000);
+    const p = await seedPool();
+    await seedState(p.poolAddress, Date.now() - 120_000);
     const { req, res } = mockReqRes('GET', { query: { address: p.poolAddress } });
     await handler(req, res);
     expect(res.statusCode).toBe(200);
@@ -94,7 +94,7 @@ describe('GET /api/pools/[address]/state', () => {
   });
 
   it('HONESTY: never-sampled pools return honest nulls with stale: true', async () => {
-    const p = seedPool();
+    const p = await seedPool();
     const { req, res } = mockReqRes('GET', { query: { address: p.poolAddress } });
     await handler(req, res);
     expect(res.statusCode).toBe(200);
@@ -124,13 +124,13 @@ describe('GET /api/pools/[address]/state', () => {
   });
 
   it('includes estimated 24h buy/sell stats from indexed reserve movement', async () => {
-    const p = seedPool();
-    seedState(p.poolAddress, Date.now());
+    const p = await seedPool();
+    await seedState(p.poolAddress, Date.now());
     const now = Date.now();
     const t0 = now - 2 * 3600_000;
-    recordTick(p.poolAddress, t0, 0.001, 100);
-    recordTick(p.poolAddress, t0 + 3600_000, 0.0011, 110);
-    recordTick(p.poolAddress, t0 + 2 * 3600_000, 0.00105, 105);
+    await recordTick(p.poolAddress, t0, 0.001, 100);
+    await recordTick(p.poolAddress, t0 + 3600_000, 0.0011, 110);
+    await recordTick(p.poolAddress, t0 + 2 * 3600_000, 0.00105, 105);
     const { req, res } = mockReqRes('GET', { query: { address: p.poolAddress } });
     await handler(req, res);
     expect(res.statusCode).toBe(200);
@@ -138,8 +138,8 @@ describe('GET /api/pools/[address]/state', () => {
   });
 
   it('HONESTY: tradeStats24h is null when history is too thin to be honest about', async () => {
-    const p = seedPool();
-    seedState(p.poolAddress, Date.now());
+    const p = await seedPool();
+    await seedState(p.poolAddress, Date.now());
     const { req, res } = mockReqRes('GET', { query: { address: p.poolAddress } });
     await handler(req, res);
     expect(res.statusCode).toBe(200);

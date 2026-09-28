@@ -1,4 +1,4 @@
-import { getDb } from './index';
+import { query } from './index';
 
 /**
  * Latest sampled on-chain state per pool — the read model every user-facing
@@ -89,11 +89,11 @@ function rowToState(r: StateRow): StoredPoolState {
   };
 }
 
-export function getPoolState(poolAddress: string): StoredPoolState | null {
-  const row = getDb()
-    .prepare('SELECT * FROM pool_states WHERE pool_address = ?')
-    .get(poolAddress) as unknown as StateRow | undefined;
-  return row ? rowToState(row) : null;
+export async function getPoolState(poolAddress: string): Promise<StoredPoolState | null> {
+  const rows = await query<StateRow>('SELECT * FROM pool_states WHERE pool_address = $1', [
+    poolAddress,
+  ]);
+  return rows[0] ? rowToState(rows[0]) : null;
 }
 
 /**
@@ -102,13 +102,16 @@ export function getPoolState(poolAddress: string): StoredPoolState | null {
  * difference between ~70 req/s and ~5 req/s. Results identical to calling
  * getPoolState per address (pools with no row are absent from the map).
  */
-export function getPoolStatesBatch(poolAddresses: string[]): Map<string, StoredPoolState> {
+export async function getPoolStatesBatch(
+  poolAddresses: string[],
+): Promise<Map<string, StoredPoolState>> {
   const out = new Map<string, StoredPoolState>();
   for (const chunk of chunkArray([...new Set(poolAddresses)], 500)) {
-    const placeholders = chunk.map(() => '?').join(',');
-    const rows = getDb()
-      .prepare(`SELECT * FROM pool_states WHERE pool_address IN (${placeholders})`)
-      .all(...chunk) as unknown as StateRow[];
+    const placeholders = chunk.map((_, i) => `$${i + 1}`).join(',');
+    const rows = await query<StateRow>(
+      `SELECT * FROM pool_states WHERE pool_address IN (${placeholders})`,
+      chunk,
+    );
     for (const row of rows) out.set(row.pool_address, rowToState(row));
   }
   return out;
@@ -126,20 +129,19 @@ export function chunkArray<T>(arr: T[], size: number): T[][] {
  * failed: the last good values are preserved and only the attempt
  * bookkeeping advances. Portable ON CONFLICT upsert (SQLite + Postgres).
  */
-export function recordPoolSample(
+export async function recordPoolSample(
   poolAddress: string,
   sample: PoolStateSample | null,
   atMs: number,
-): void {
-  const d = getDb();
+): Promise<void> {
   if (sample) {
-    d.prepare(
+    await query(
       `INSERT INTO pool_states
        (pool_address, price, quote_reserve, base_reserve, progress, graduated,
         has_swap, market_cap, base_decimals, quote_decimals,
         migration_quote_threshold, creator_base_fee_raw, creator_quote_fee_raw,
         sampled_at, last_attempt_at, consecutive_failures)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 0)
        ON CONFLICT (pool_address) DO UPDATE SET
          price = excluded.price,
          quote_reserve = excluded.quote_reserve,
@@ -156,30 +158,32 @@ export function recordPoolSample(
          sampled_at = excluded.sampled_at,
          last_attempt_at = excluded.last_attempt_at,
          consecutive_failures = 0`,
-    ).run(
-      poolAddress,
-      sample.price,
-      sample.quoteReserve,
-      sample.baseReserve,
-      sample.progress,
-      sample.graduated ? 1 : 0,
-      sample.hasSwap ? 1 : 0,
-      sample.marketCap,
-      sample.baseDecimals,
-      sample.quoteDecimals,
-      sample.migrationQuoteThreshold,
-      sample.creatorBaseFeeRaw ?? null,
-      sample.creatorQuoteFeeRaw ?? null,
-      atMs,
-      atMs,
+      [
+        poolAddress,
+        sample.price,
+        sample.quoteReserve,
+        sample.baseReserve,
+        sample.progress,
+        sample.graduated ? 1 : 0,
+        sample.hasSwap ? 1 : 0,
+        sample.marketCap,
+        sample.baseDecimals,
+        sample.quoteDecimals,
+        sample.migrationQuoteThreshold,
+        sample.creatorBaseFeeRaw ?? null,
+        sample.creatorQuoteFeeRaw ?? null,
+        atMs,
+        atMs,
+      ],
     );
   } else {
-    d.prepare(
+    await query(
       `INSERT INTO pool_states (pool_address, last_attempt_at, consecutive_failures)
-       VALUES (?, ?, 1)
+       VALUES ($1, $2, 1)
        ON CONFLICT (pool_address) DO UPDATE SET
          last_attempt_at = excluded.last_attempt_at,
          consecutive_failures = pool_states.consecutive_failures + 1`,
-    ).run(poolAddress, atMs);
+      [poolAddress, atMs],
+    );
   }
 }

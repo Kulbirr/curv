@@ -23,17 +23,17 @@ const mockedGetDbcClient = vi.mocked(getDbcClient);
 
 describe('shouldShowCreatorEarnings', () => {
   const creator = randomAddress();
-  it('shows only for the connected creator wallet', () => {
+  it('shows only for the connected creator wallet', async () => {
     expect(
       shouldShowCreatorEarnings({ connected: true, walletAddress: creator, creator }),
     ).toBe(true);
   });
-  it('hides when disconnected', () => {
+  it('hides when disconnected', async () => {
     expect(
       shouldShowCreatorEarnings({ connected: false, walletAddress: creator, creator }),
     ).toBe(false);
   });
-  it('hides for a non-creator wallet', () => {
+  it('hides for a non-creator wallet', async () => {
     expect(
       shouldShowCreatorEarnings({
         connected: true,
@@ -42,7 +42,7 @@ describe('shouldShowCreatorEarnings', () => {
       }),
     ).toBe(false);
   });
-  it('hides when the wallet address is null', () => {
+  it('hides when the wallet address is null', async () => {
     expect(
       shouldShowCreatorEarnings({ connected: true, walletAddress: null, creator }),
     ).toBe(false);
@@ -50,27 +50,27 @@ describe('shouldShowCreatorEarnings', () => {
 });
 
 describe('formatFeeRaw', () => {
-  it('formats raw units with decimals', () => {
+  it('formats raw units with decimals', async () => {
     expect(formatFeeRaw('1000000', 6)).toBe('1');
     expect(formatFeeRaw('1500000', 6)).toBe('1.5');
     expect(formatFeeRaw('123456789', 9)).toBe('0.123456789');
   });
-  it('returns "0" for zero', () => {
+  it('returns "0" for zero', async () => {
     expect(formatFeeRaw('0', 9)).toBe('0');
   });
-  it('returns null for null/undefined/invalid', () => {
+  it('returns null for null/undefined/invalid', async () => {
     expect(formatFeeRaw(null, 9)).toBeNull();
     expect(formatFeeRaw(undefined, 9)).toBeNull();
     expect(formatFeeRaw('not-a-number', 9)).toBeNull();
   });
-  it('handles u64-max without precision loss', () => {
+  it('handles u64-max without precision loss', async () => {
     const formatted = formatFeeRaw('18446744073709551615', 9);
     expect(formatted).toBe('18446744073.709551615');
   });
 });
 
 describe('hasNoAccruedFees', () => {
-  it('is true only when both balances are present and zero', () => {
+  it('is true only when both balances are present and zero', async () => {
     expect(hasNoAccruedFees('0', '0')).toBe(true);
     expect(hasNoAccruedFees('0', '1')).toBe(false);
     expect(hasNoAccruedFees('1', '0')).toBe(false);
@@ -96,7 +96,7 @@ function entry(overrides: Partial<EarningsEntry> = {}): EarningsEntry {
 }
 
 describe('aggregateCreatorEarnings', () => {
-  it('sums raw amounts per mint with exact BN math', () => {
+  it('sums raw amounts per mint with exact BN math', async () => {
     const agg = aggregateCreatorEarnings([
       entry({ creatorBaseFeeRaw: '1000000000', creatorQuoteFeeRaw: null }),
       entry({ creatorBaseFeeRaw: '2000000000', creatorQuoteFeeRaw: null }),
@@ -105,19 +105,19 @@ describe('aggregateCreatorEarnings', () => {
     expect(base.rawTotal).toBe('3000000000');
     expect(base.symbol).toBe('SEED');
   });
-  it('keeps base and quote fees as separate token buckets', () => {
+  it('keeps base and quote fees as separate token buckets', async () => {
     const agg = aggregateCreatorEarnings([entry()]);
     expect(agg).toHaveLength(2);
     expect(agg.find((a) => a.symbol === 'SEED')!.rawTotal).toBe('1000000000');
     expect(agg.find((a) => a.symbol === 'SOL')!.rawTotal).toBe('2000000000');
   });
-  it('skips zero and null balances', () => {
+  it('skips zero and null balances', async () => {
     const agg = aggregateCreatorEarnings([
       entry({ creatorBaseFeeRaw: '0', creatorQuoteFeeRaw: null, priceUsd: null }),
     ]);
     expect(agg).toHaveLength(0);
   });
-  it('sums fiat only from entries with a real indexed price', () => {
+  it('sums fiat only from entries with a real indexed price', async () => {
     const agg = aggregateCreatorEarnings([
       entry({ creatorBaseFeeRaw: '1000000000', creatorQuoteFeeRaw: null, priceUsd: 2 }),
       entry({ creatorBaseFeeRaw: '1000000000', creatorQuoteFeeRaw: null, priceUsd: null }),
@@ -127,7 +127,7 @@ describe('aggregateCreatorEarnings', () => {
     expect(base.usdTotal).toBe(2);
     expect(base.fiatComplete).toBe(false);
   });
-  it('reports null fiat when no entry has a price', () => {
+  it('reports null fiat when no entry has a price', async () => {
     const agg = aggregateCreatorEarnings([
       entry({ creatorBaseFeeRaw: '1000000000', creatorQuoteFeeRaw: null, priceUsd: null }),
     ]);
@@ -135,13 +135,13 @@ describe('aggregateCreatorEarnings', () => {
     expect(base.usdTotal).toBeNull();
     expect(base.fiatComplete).toBe(false);
   });
-  it('marks fiat complete when every entry is priced', () => {
+  it('marks fiat complete when every entry is priced', async () => {
     const agg = aggregateCreatorEarnings([
       entry({ creatorBaseFeeRaw: '1000000000', creatorQuoteFeeRaw: null, priceUsd: 2 }),
     ]);
     expect(agg.find((a) => a.symbol === 'SEED')!.fiatComplete).toBe(true);
   });
-  it('never invents fiat for quote fees', () => {
+  it('never invents fiat for quote fees', async () => {
     const agg = aggregateCreatorEarnings([entry({ creatorBaseFeeRaw: null })]);
     const sol = agg.find((a) => a.symbol === 'SOL')!;
     expect(sol.usdTotal).toBeNull();
@@ -174,15 +174,15 @@ describe('buildClaimCreatorFeesTx', () => {
 });
 
 describe('creator fee persistence (db/states)', () => {
-  let db: ReturnType<typeof useTempDb>;
-  beforeEach(() => {
-    db = useTempDb();
+  let db: Awaited<ReturnType<typeof useTempDb>>;
+  beforeEach(async () => {
+    db = await useTempDb();
   });
-  afterEach(() => db.cleanup());
+  afterEach(async () => { await db.cleanup(); });
 
-  it('round-trips raw fee strings exactly', () => {
+  it('round-trips raw fee strings exactly', async () => {
     const addr = randomAddress();
-    recordPoolSample(
+    await recordPoolSample(
       addr,
       {
         price: 1,
@@ -200,14 +200,14 @@ describe('creator fee persistence (db/states)', () => {
       },
       1000,
     );
-    const s = getPoolState(addr)!;
+    const s = (await getPoolState(addr))!;
     expect(s.creatorBaseFeeRaw).toBe('18446744073709551615');
     expect(s.creatorQuoteFeeRaw).toBe('999');
   });
 
-  it('upserts fees on resample and preserves them on failed samples', () => {
+  it('upserts fees on resample and preserves them on failed samples', async () => {
     const addr = randomAddress();
-    recordPoolSample(
+    await recordPoolSample(
       addr,
       {
         price: 1,
@@ -225,9 +225,9 @@ describe('creator fee persistence (db/states)', () => {
       },
       1000,
     );
-    recordPoolSample(addr, null, 2000); // failed sample: last good kept
-    expect(getPoolState(addr)!.creatorBaseFeeRaw).toBe('500');
-    recordPoolSample(
+    await recordPoolSample(addr, null, 2000); // failed sample: last good kept
+    expect((await getPoolState(addr))!.creatorBaseFeeRaw).toBe('500');
+    await recordPoolSample(
       addr,
       {
         price: 2,
@@ -245,14 +245,14 @@ describe('creator fee persistence (db/states)', () => {
       },
       3000,
     );
-    const s = getPoolState(addr)!;
+    const s = (await getPoolState(addr))!;
     expect(s.creatorBaseFeeRaw).toBe('700');
     expect(s.creatorQuoteFeeRaw).toBe('800');
   });
 
-  it('normalizes missing fee fields to null', () => {
+  it('normalizes missing fee fields to null', async () => {
     const addr = randomAddress();
-    recordPoolSample(
+    await recordPoolSample(
       addr,
       {
         price: 1,
@@ -268,7 +268,7 @@ describe('creator fee persistence (db/states)', () => {
       },
       1000,
     );
-    const s = getPoolState(addr)!;
+    const s = (await getPoolState(addr))!;
     expect(s.creatorBaseFeeRaw).toBeNull();
     expect(s.creatorQuoteFeeRaw).toBeNull();
   });

@@ -31,12 +31,12 @@ function validBody(overrides: Record<string, unknown> = {}) {
 }
 
 describe('parseAddress', () => {
-  it('accepts a valid base58 address and normalizes it', () => {
+  it('accepts a valid base58 address and normalizes it', async () => {
     const a = randomAddress();
     expect(parseAddress(a)).toBe(a);
   });
 
-  it('rejects non-strings, empties, overlong and malformed input', () => {
+  it('rejects non-strings, empties, overlong and malformed input', async () => {
     expect(parseAddress('')).toBeNull();
     expect(parseAddress(null)).toBeNull();
     expect(parseAddress(undefined)).toBeNull();
@@ -47,12 +47,12 @@ describe('parseAddress', () => {
 });
 
 describe('parseSignature', () => {
-  it('accepts a 64-byte base58 signature', () => {
+  it('accepts a 64-byte base58 signature', async () => {
     const s = sig64();
     expect(parseSignature(s)).toBe(s);
   });
 
-  it('rejects wrong-length or undecodable signatures', () => {
+  it('rejects wrong-length or undecodable signatures', async () => {
     expect(parseSignature(bs58.encode(randomBytes(32)))).toBeNull(); // 32 bytes
     expect(parseSignature(bs58.encode(randomBytes(65)))).toBeNull(); // 65 bytes
     expect(parseSignature('!!!')).toBeNull();
@@ -63,7 +63,7 @@ describe('parseSignature', () => {
 });
 
 describe('validateRegistrationBody', () => {
-  it('accepts a valid body and drops unknown fields', () => {
+  it('accepts a valid body and drops unknown fields', async () => {
     const r = validateRegistrationBody({ ...validBody(), evil: 'injection', admin: true });
     expect(r.ok).toBe(true);
     if (r.ok === false) throw new Error('unreachable');
@@ -72,7 +72,7 @@ describe('validateRegistrationBody', () => {
     expect(r.value.baseSymbol).toBe('TEST');
   });
 
-  it('normalizes symbols to uppercase and trims text', () => {
+  it('normalizes symbols to uppercase and trims text', async () => {
     const r = validateRegistrationBody(validBody({ baseSymbol: ' test ', quoteSymbol: 'sol' }));
     expect(r.ok).toBe(true);
     if (r.ok === false) throw new Error('unreachable');
@@ -80,7 +80,7 @@ describe('validateRegistrationBody', () => {
     expect(r.value.quoteSymbol).toBe('SOL');
   });
 
-  it('names each malformed address field', () => {
+  it('names each malformed address field', async () => {
     for (const field of ['poolAddress', 'configAddress', 'baseMint', 'quoteMint', 'creator']) {
       const r = validateRegistrationBody(validBody({ [field]: 'bad' }));
       expect(r.ok).toBe(false);
@@ -89,14 +89,14 @@ describe('validateRegistrationBody', () => {
     }
   });
 
-  it('rejects a non-JSON body', () => {
+  it('rejects a non-JSON body', async () => {
     const r = validateRegistrationBody('hello');
     expect(r.ok).toBe(false);
     if (r.ok === true) throw new Error('unreachable');
     expect(r.error).toContain('JSON');
   });
 
-  it('rejects identical base and quote mints', () => {
+  it('rejects identical base and quote mints', async () => {
     const m = randomAddress();
     const r = validateRegistrationBody(validBody({ baseMint: m, quoteMint: m }));
     expect(r.ok).toBe(false);
@@ -104,19 +104,19 @@ describe('validateRegistrationBody', () => {
     expect(r.error).toContain('must differ');
   });
 
-  it('rejects a mainnet USDC quote on this devnet deployment', () => {
+  it('rejects a mainnet USDC quote on this devnet deployment', async () => {
     const r = validateRegistrationBody(validBody({ quoteMint: MAINNET_USDC_MINT }));
     expect(r.ok).toBe(false);
     if (r.ok === true) throw new Error('unreachable');
     expect(r.error).toContain('different network');
   });
 
-  it('accepts the devnet USDC mint as quote', () => {
+  it('accepts the devnet USDC mint as quote', async () => {
     const r = validateRegistrationBody(validBody({ quoteMint: DEVNET_USDC_MINT }));
     expect(r.ok).toBe(true);
   });
 
-  it('requires symbol, name and a numeric timestamp', () => {
+  it('requires symbol, name and a numeric timestamp', async () => {
     expect(validateRegistrationBody(validBody({ baseSymbol: '' })).ok).toBe(false);
     expect(validateRegistrationBody(validBody({ baseSymbol: 'x'.repeat(13) })).ok).toBe(false);
     expect(validateRegistrationBody(validBody({ baseName: '' })).ok).toBe(false);
@@ -124,7 +124,7 @@ describe('validateRegistrationBody', () => {
     expect(validateRegistrationBody(validBody({ signature: 'short' })).ok).toBe(false);
   });
 
-  it('bounds launchedAt: negative or far-future timestamps rejected', () => {
+  it('bounds launchedAt: negative or far-future timestamps rejected', async () => {
     expect(validateRegistrationBody(validBody({ launchedAt: -1 })).ok).toBe(false);
     expect(validateRegistrationBody(validBody({ launchedAt: Date.now() + 600_001 })).ok).toBe(false);
     const ok = validateRegistrationBody(validBody({ launchedAt: Date.now() - 1000 }));
@@ -133,21 +133,21 @@ describe('validateRegistrationBody', () => {
     expect(typeof ok.value.launchedAt).toBe('number');
   });
 
-  it('rejects overlong optional text with a clear error', () => {
+  it('rejects overlong optional text with a clear error', async () => {
     const r = validateRegistrationBody(validBody({ description: 'x'.repeat(501) }));
     expect(r.ok).toBe(false);
     if (r.ok === true) throw new Error('unreachable');
     expect(r.error).toContain('too long');
   });
 
-  it('rejects non-http image urls', () => {
+  it('rejects non-http image urls', async () => {
     const r = validateRegistrationBody(validBody({ imageUrl: 'ftp://x/y.png' }));
     expect(r.ok).toBe(false);
     if (r.ok === true) throw new Error('unreachable');
     expect(r.error).toContain('http(s)');
   });
 
-  it('accepts valid optional fields', () => {
+  it('accepts valid optional fields', async () => {
     const r = validateRegistrationBody(
       validBody({
         description: 'A fine token',
@@ -162,7 +162,7 @@ describe('validateRegistrationBody', () => {
     expect(r.value.website).toBe('https://example.com');
   });
 
-  it('treats empty optional strings as absent', () => {
+  it('treats empty optional strings as absent', async () => {
     const r = validateRegistrationBody(validBody({ description: '   ', website: '' }));
     expect(r.ok).toBe(true);
     if (r.ok === false) throw new Error('unreachable');
@@ -173,17 +173,17 @@ describe('validateRegistrationBody', () => {
 
 describe('getClientIp', () => {
   const base = { socket: { remoteAddress: '9.9.9.9' }, headers: {} };
-  it('prefers x-forwarded-for, first entry only', () => {
+  it('prefers x-forwarded-for, first entry only', async () => {
     expect(
       getClientIp({ ...base, headers: { 'x-forwarded-for': '1.1.1.1, 2.2.2.2' } } as never),
     ).toBe('1.1.1.1');
   });
-  it('handles the array form of the header', () => {
+  it('handles the array form of the header', async () => {
     expect(
       getClientIp({ ...base, headers: { 'x-forwarded-for': ['3.3.3.3'] } } as never),
     ).toBe('3.3.3.3');
   });
-  it('falls back to the socket address, then unknown', () => {
+  it('falls back to the socket address, then unknown', async () => {
     expect(getClientIp(base as never)).toBe('9.9.9.9');
     expect(getClientIp({ socket: {}, headers: {} } as never)).toBe('unknown');
   });

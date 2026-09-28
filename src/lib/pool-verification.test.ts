@@ -46,12 +46,12 @@ function mockClient(pool: unknown, config: unknown) {
   });
 }
 
-let db: ReturnType<typeof useTempDb>;
-beforeEach(() => {
-  db = useTempDb();
+let db: Awaited<ReturnType<typeof useTempDb>>;
+beforeEach(async () => {
+  db = await useTempDb();
   vi.clearAllMocks();
 });
-afterEach(() => db.cleanup());
+afterEach(async () => { await db.cleanup(); });
 
 describe('verifyPoolRegistration', () => {
   it('verifies when every submitted field matches the on-chain accounts', async () => {
@@ -165,7 +165,7 @@ describe('verifyAndRecord', () => {
     mockClient(matchingPool(f), matchingConfig(f));
     const out = await verifyAndRecord(f);
     expect(out.status).toBe('verified');
-    const rec = getVerification(f.poolAddress)!;
+    const rec = (await getVerification(f.poolAddress))!;
     expect(rec.status).toBe('verified');
     expect(rec.checkedAt).toBeGreaterThan(0);
   });
@@ -175,7 +175,7 @@ describe('verifyAndRecord', () => {
     mockClient(matchingPool(f), { quoteMint: new PublicKey(randomAddress()) });
     const out = await verifyAndRecord(f);
     expect(out.status).toBe('rejected');
-    const rec = getVerification(f.poolAddress)!;
+    const rec = (await getVerification(f.poolAddress))!;
     expect(rec.status).toBe('unverified');
     expect(rec.detail).toContain('rejected:');
     expect(rec.detail).toContain('quoteMint');
@@ -188,6 +188,6 @@ describe('verifyAndRecord', () => {
     });
     const out = await verifyAndRecord(f);
     expect(out.status).toBe('unverified');
-    expect(getVerification(f.poolAddress)!.status).toBe('unverified');
+    expect((await getVerification(f.poolAddress))!.status).toBe('unverified');
   });
 });

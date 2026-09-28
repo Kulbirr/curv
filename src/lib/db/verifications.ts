@@ -1,4 +1,4 @@
-import { getDb } from './index';
+import { query } from './index';
 
 /**
  * Per-pool verification state.
@@ -19,12 +19,16 @@ export interface PoolVerification {
   detail: string | null;
 }
 
-export function getVerification(poolAddress: string): PoolVerification | null {
-  const row = getDb()
-    .prepare('SELECT pool_address, status, checked_at, detail FROM pool_verifications WHERE pool_address = ?')
-    .get(poolAddress) as
-    | { pool_address: string; status: string; checked_at: number; detail: string | null }
-    | undefined;
+export async function getVerification(poolAddress: string): Promise<PoolVerification | null> {
+  const rows = await query<{
+    pool_address: string;
+    status: string;
+    checked_at: number;
+    detail: string | null;
+  }>('SELECT pool_address, status, checked_at, detail FROM pool_verifications WHERE pool_address = $1', [
+    poolAddress,
+  ]);
+  const row = rows[0];
   if (!row) return null;
   return {
     poolAddress: row.pool_address,
@@ -35,20 +39,19 @@ export function getVerification(poolAddress: string): PoolVerification | null {
 }
 
 /** Portable ON CONFLICT upsert (SQLite + Postgres). */
-export function setVerification(
+export async function setVerification(
   poolAddress: string,
   status: VerificationStatus,
   detail: string | null,
   checkedAt: number,
-): void {
-  getDb()
-    .prepare(
-      `INSERT INTO pool_verifications (pool_address, status, checked_at, detail)
-       VALUES (?, ?, ?, ?)
-       ON CONFLICT (pool_address) DO UPDATE SET
-         status = excluded.status,
-         checked_at = excluded.checked_at,
-         detail = excluded.detail`,
-    )
-    .run(poolAddress, status, checkedAt, detail);
+): Promise<void> {
+  await query(
+    `INSERT INTO pool_verifications (pool_address, status, checked_at, detail)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT (pool_address) DO UPDATE SET
+       status = excluded.status,
+       checked_at = excluded.checked_at,
+       detail = excluded.detail`,
+    [poolAddress, status, checkedAt, detail],
+  );
 }
