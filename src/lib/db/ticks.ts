@@ -1,0 +1,178 @@
+import { getDb } from './index';
+
+/**
+ * Persistent price-tick store for live charts and derived estimates.
+ *
+ * Every tick is a real on-chain sample written by the background indexer —
+ * never synthesized, never interpolated. Gaps in history mean the indexer
+ * was not running, and the API reports that honestly via `complete: false`.
+ *
+ * This is the consolidated home of the old price-history.ts logic; the
+ * ticks table is shared with (not duplicated by) pool_states, which holds
+ * the latest full snapshot per pool for API serving.
+ */
+
+export interface PricePoint {
+  t: number;
+  price: number;
+}
+
+export interface HistoryResult {
+  points: PricePoint[];
+  /** Earliest tick we have for this pool (unix ms), null when no ticks yet. */
+  earliest: number | null;
+  /** True when ticks cover the requested window without gaps larger than 5x the bucket. */
+  complete: boolean;
+}
+
+/**
+ * Bucket raw ticks into at most `maxPoints` time-weighted samples.
+ * Returns the last tick of each bucket (a real sample, not an average).
+ */
+export function getHistory(poolAddress: string, fromMs: number, toMs: number, maxPoints = 300): HistoryResult {
+  const d = getDb();
+  const rows = d
+    .prepare('SELECT ts, price FROM ticks WHERE pool_address = ? AND ts >= ? AND ts <= ? ORDER BY ts ASC')
+    .all(poolAddress, fromMs, toMs) as Array<{ ts: number; price: number }>;
+
+  const earliestRow = d
+    .prepare('SELECT MIN(ts) AS m FROM ticks WHERE pool_address = ?')
+    .get(poolAddress) as { m: number | null };
+
+  if (rows.length === 0) {
+    return { points: [], earliest: earliestRow?.m ?? null, complete: false };
+  }
+
+  const span = Math.max(1, toMs - fromMs);
+  const bucketMs = Math.max(1, Math.floor(span / maxPoints));
+  const buckets = new Map<number, { t: number; price: number }>();
+  for (const r of rows) {
+    const b = Math.floor((r.ts - fromMs) / bucketMs);
+    buckets.set(b, { t: r.ts, price: r.price });
+  }
+  const points = [...buckets.entries()].sort((a, b) => a[0] - b[0]).map(([, p]) => p);
+
+  // Gap detection: any adjacent samples farther apart than 5 buckets => incomplete.
+  let complete = true;
+  for (let i = 1; i < points.length; i++) {
+    if (points[i].t - points[i - 1].t > bucketMs * 5) {
+      complete = false;
+      break;
+    }
+  }
+  return { points, earliest: earliestRow?.m ?? null, complete };
+}
+
+export function getLatestPrice(poolAddress: string): PricePoint | null {
+  const d = getDb();
+  const row = d
+    .prepare('SELECT ts AS t, price FROM ticks WHERE pool_address = ? ORDER BY ts DESC LIMIT 1')
+    .get(poolAddress) as unknown as PricePoint | undefined;
+  return row ?? null;
+}
+
+/** 24h-ago price for change %; null when we lack history. */
+export function getPrice24hAgo(poolAddress: string): number | null {
+  const d = getDb();
+  const cutoff = Date.now() - 24 * 3600 * 1000;
+  const row = d
+    .prepare('SELECT price FROM ticks WHERE pool_address = ? AND ts <= ? ORDER BY ts DESC LIMIT 1')
+    .get(poolAddress, cutoff) as { price: number } | undefined;
+  return row?.price ?? null;
+}
+
+/**
+ * Record one sample. quoteReserve is in UI units (not lamports).
+ * Portable ON CONFLICT upsert so an indexer restart never double-counts
+ * a tick.
+ */
+export function recordTick(poolAddress: string, ts: number, price: number, quoteReserve: number | null): void {
+  getDb()
+    .prepare(
+      `INSERT INTO ticks (pool_address, ts, price, quote_reserve)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT (pool_address, ts) DO UPDATE SET
+         price = excluded.price,
+         quote_reserve = excluded.quote_reserve`,
+    )
+    .run(poolAddress, ts, price, quoteReserve);
+}
+
+/** Drop ticks older than the retention cutoff (called by the indexer). */
+export function pruneTicks(olderThanMs: number): void {
+  getDb().prepare('DELETE FROM ticks WHERE ts < ?').run(olderThanMs);
+}
+
+export interface TradeStats24h {
+  /** Estimated buy-side quote volume (UI units) from positive reserve deltas. */
+  buyVolume: number;
+  /** Estimated sell-side quote volume (UI units) from negative reserve deltas. */
+  sellVolume: number;
+  /** Estimated number of buy-side tick moves (positive reserve deltas). */
+  buys: number;
+  /** Estimated number of sell-side tick moves (negative reserve deltas). */
+  sells: number;
+}
+
+/**
+ * Estimated 24h buy/sell split, derived from real on-chain samples: a
+ * positive quote-reserve delta between consecutive ticks means buys
+ * outweighed sells in that window, a negative delta the reverse. This is
+ * direction inferred from reserve movement, not per-trade data — callers
+ * must label it an estimate. Same honesty guardrails as getVolume24h:
+ * null when history is too thin (fewer than 2 ticks or under 1 hour of
+ * coverage) to say anything meaningful.
+ */
+export function getTradeStats24h(poolAddress: string): TradeStats24h | null {
+  const d = getDb();
+  const cutoff = Date.now() - 24 * 3600 * 1000;
+  const rows = d
+    .prepare(
+      'SELECT ts, quote_reserve FROM ticks WHERE pool_address = ? AND ts >= ? AND quote_reserve IS NOT NULL ORDER BY ts ASC',
+    )
+    .all(poolAddress, cutoff) as Array<{ ts: number; quote_reserve: number }>;
+  if (rows.length < 2) return null;
+  // Require at least 1 hour of coverage before quoting a "24h" number.
+  if (rows[rows.length - 1].ts - rows[0].ts < 3600 * 1000) return null;
+  let buyVolume = 0;
+  let sellVolume = 0;
+  let buys = 0;
+  let sells = 0;
+  for (let i = 1; i < rows.length; i++) {
+    const delta = rows[i].quote_reserve - rows[i - 1].quote_reserve;
+    if (delta > 0) {
+      buyVolume += delta;
+      buys += 1;
+    } else if (delta < 0) {
+      sellVolume += -delta;
+      sells += 1;
+    }
+  }
+  return { buyVolume, sellVolume, buys, sells };
+}
+
+/**
+ * Estimated 24h traded volume in quote UI units, derived from real
+ * on-chain samples: the sum of absolute quote-reserve movements between
+ * consecutive ticks. Buys push the reserve up, sells pull it down, so the
+ * absolute deltas approximate total traded volume (minus fees, which are
+ * tracked separately on-chain). Returns null when history is too thin to
+ * be honest about. Callers must label this an estimate, never exact volume.
+ */
+export function getVolume24h(poolAddress: string): number | null {
+  const d = getDb();
+  const cutoff = Date.now() - 24 * 3600 * 1000;
+  const rows = d
+    .prepare(
+      'SELECT ts, quote_reserve FROM ticks WHERE pool_address = ? AND ts >= ? AND quote_reserve IS NOT NULL ORDER BY ts ASC',
+    )
+    .all(poolAddress, cutoff) as Array<{ ts: number; quote_reserve: number }>;
+  if (rows.length < 2) return null;
+  // Require at least 1 hour of coverage before quoting a "24h" number.
+  if (rows[rows.length - 1].ts - rows[0].ts < 3600 * 1000) return null;
+  let vol = 0;
+  for (let i = 1; i < rows.length; i++) {
+    vol += Math.abs(rows[i].quote_reserve - rows[i - 1].quote_reserve);
+  }
+  return vol;
+}

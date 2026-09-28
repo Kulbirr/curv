@@ -1,0 +1,275 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { BN } from '@coral-xyz/anchor';
+import { PublicKey } from '@solana/web3.js';
+import {
+  aggregateCreatorEarnings,
+  buildClaimCreatorFeesTx,
+  formatFeeRaw,
+  hasNoAccruedFees,
+  shouldShowCreatorEarnings,
+  type EarningsEntry,
+} from './claim-creator-fees';
+import { getPoolState, recordPoolSample } from './db/states';
+import { randomAddress, useTempDb } from '@/test-support/db';
+
+vi.mock('./solana', () => ({
+  getDbcClient: vi.fn(),
+}));
+
+import { getDbcClient } from './solana';
+
+const mockClaim = vi.fn();
+const mockedGetDbcClient = vi.mocked(getDbcClient);
+
+describe('shouldShowCreatorEarnings', () => {
+  const creator = randomAddress();
+  it('shows only for the connected creator wallet', () => {
+    expect(
+      shouldShowCreatorEarnings({ connected: true, walletAddress: creator, creator }),
+    ).toBe(true);
+  });
+  it('hides when disconnected', () => {
+    expect(
+      shouldShowCreatorEarnings({ connected: false, walletAddress: creator, creator }),
+    ).toBe(false);
+  });
+  it('hides for a non-creator wallet', () => {
+    expect(
+      shouldShowCreatorEarnings({
+        connected: true,
+        walletAddress: randomAddress(),
+        creator,
+      }),
+    ).toBe(false);
+  });
+  it('hides when the wallet address is null', () => {
+    expect(
+      shouldShowCreatorEarnings({ connected: true, walletAddress: null, creator }),
+    ).toBe(false);
+  });
+});
+
+describe('formatFeeRaw', () => {
+  it('formats raw units with decimals', () => {
+    expect(formatFeeRaw('1000000', 6)).toBe('1');
+    expect(formatFeeRaw('1500000', 6)).toBe('1.5');
+    expect(formatFeeRaw('123456789', 9)).toBe('0.123456789');
+  });
+  it('returns "0" for zero', () => {
+    expect(formatFeeRaw('0', 9)).toBe('0');
+  });
+  it('returns null for null/undefined/invalid', () => {
+    expect(formatFeeRaw(null, 9)).toBeNull();
+    expect(formatFeeRaw(undefined, 9)).toBeNull();
+    expect(formatFeeRaw('not-a-number', 9)).toBeNull();
+  });
+  it('handles u64-max without precision loss', () => {
+    const formatted = formatFeeRaw('18446744073709551615', 9);
+    expect(formatted).toBe('18446744073.709551615');
+  });
+});
+
+describe('hasNoAccruedFees', () => {
+  it('is true only when both balances are present and zero', () => {
+    expect(hasNoAccruedFees('0', '0')).toBe(true);
+    expect(hasNoAccruedFees('0', '1')).toBe(false);
+    expect(hasNoAccruedFees('1', '0')).toBe(false);
+    expect(hasNoAccruedFees(null, '0')).toBe(false);
+    expect(hasNoAccruedFees('0', null)).toBe(false);
+  });
+});
+
+function entry(overrides: Partial<EarningsEntry> = {}): EarningsEntry {
+  return {
+    poolAddress: randomAddress(),
+    baseSymbol: 'SEED',
+    quoteSymbol: 'SOL',
+    baseMint: 'BaseMint11111111111111111111111111111111111',
+    quoteMint: 'So11111111111111111111111111111111111111112',
+    baseDecimals: 9,
+    quoteDecimals: 9,
+    creatorBaseFeeRaw: '1000000000',
+    creatorQuoteFeeRaw: '2000000000',
+    priceUsd: 2,
+    ...overrides,
+  };
+}
+
+describe('aggregateCreatorEarnings', () => {
+  it('sums raw amounts per mint with exact BN math', () => {
+    const agg = aggregateCreatorEarnings([
+      entry({ creatorBaseFeeRaw: '1000000000', creatorQuoteFeeRaw: null }),
+      entry({ creatorBaseFeeRaw: '2000000000', creatorQuoteFeeRaw: null }),
+    ]);
+    const base = agg.find((a) => a.mint === entry().baseMint)!;
+    expect(base.rawTotal).toBe('3000000000');
+    expect(base.symbol).toBe('SEED');
+  });
+  it('keeps base and quote fees as separate token buckets', () => {
+    const agg = aggregateCreatorEarnings([entry()]);
+    expect(agg).toHaveLength(2);
+    expect(agg.find((a) => a.symbol === 'SEED')!.rawTotal).toBe('1000000000');
+    expect(agg.find((a) => a.symbol === 'SOL')!.rawTotal).toBe('2000000000');
+  });
+  it('skips zero and null balances', () => {
+    const agg = aggregateCreatorEarnings([
+      entry({ creatorBaseFeeRaw: '0', creatorQuoteFeeRaw: null, priceUsd: null }),
+    ]);
+    expect(agg).toHaveLength(0);
+  });
+  it('sums fiat only from entries with a real indexed price', () => {
+    const agg = aggregateCreatorEarnings([
+      entry({ creatorBaseFeeRaw: '1000000000', creatorQuoteFeeRaw: null, priceUsd: 2 }),
+      entry({ creatorBaseFeeRaw: '1000000000', creatorQuoteFeeRaw: null, priceUsd: null }),
+    ]);
+    const base = agg.find((a) => a.symbol === 'SEED')!;
+    // 1 token @ $2 from the priced entry; the unpriced entry adds tokens only.
+    expect(base.usdTotal).toBe(2);
+    expect(base.fiatComplete).toBe(false);
+  });
+  it('reports null fiat when no entry has a price', () => {
+    const agg = aggregateCreatorEarnings([
+      entry({ creatorBaseFeeRaw: '1000000000', creatorQuoteFeeRaw: null, priceUsd: null }),
+    ]);
+    const base = agg.find((a) => a.symbol === 'SEED')!;
+    expect(base.usdTotal).toBeNull();
+    expect(base.fiatComplete).toBe(false);
+  });
+  it('marks fiat complete when every entry is priced', () => {
+    const agg = aggregateCreatorEarnings([
+      entry({ creatorBaseFeeRaw: '1000000000', creatorQuoteFeeRaw: null, priceUsd: 2 }),
+    ]);
+    expect(agg.find((a) => a.symbol === 'SEED')!.fiatComplete).toBe(true);
+  });
+  it('never invents fiat for quote fees', () => {
+    const agg = aggregateCreatorEarnings([entry({ creatorBaseFeeRaw: null })]);
+    const sol = agg.find((a) => a.symbol === 'SOL')!;
+    expect(sol.usdTotal).toBeNull();
+  });
+});
+
+describe('buildClaimCreatorFeesTx', () => {
+  beforeEach(() => {
+    mockClaim.mockReset();
+    mockedGetDbcClient.mockReturnValue({ creator: { claimCreatorTradingFee: mockClaim } } as never);
+  });
+
+  it('calls the SDK creator claim with the creator as creator and payer', async () => {
+    const fakeTx = { fake: 'tx' };
+    mockClaim.mockResolvedValue(fakeTx);
+    const pool = randomAddress();
+    const creator = randomAddress();
+    const tx = await buildClaimCreatorFeesTx({ poolAddress: pool, creator });
+    expect(tx).toBe(fakeTx);
+    expect(mockClaim).toHaveBeenCalledTimes(1);
+    const params = mockClaim.mock.calls[0][0];
+    expect((params.creator as PublicKey).toBase58()).toBe(creator);
+    expect((params.payer as PublicKey).toBase58()).toBe(creator);
+    expect((params.pool as PublicKey).toBase58()).toBe(pool);
+    // Caps claim everything accrued: u64 max for both.
+    expect((params.maxBaseAmount as BN).toString()).toBe('18446744073709551615');
+    expect((params.maxQuoteAmount as BN).toString()).toBe('18446744073709551615');
+    expect(params.receiver).toBeUndefined();
+  });
+});
+
+describe('creator fee persistence (db/states)', () => {
+  let db: ReturnType<typeof useTempDb>;
+  beforeEach(() => {
+    db = useTempDb();
+  });
+  afterEach(() => db.cleanup());
+
+  it('round-trips raw fee strings exactly', () => {
+    const addr = randomAddress();
+    recordPoolSample(
+      addr,
+      {
+        price: 1,
+        quoteReserve: 1,
+        baseReserve: 1,
+        progress: 1,
+        graduated: false,
+        hasSwap: true,
+        marketCap: 1,
+        baseDecimals: 9,
+        quoteDecimals: 9,
+        migrationQuoteThreshold: 1,
+        creatorBaseFeeRaw: '18446744073709551615',
+        creatorQuoteFeeRaw: '999',
+      },
+      1000,
+    );
+    const s = getPoolState(addr)!;
+    expect(s.creatorBaseFeeRaw).toBe('18446744073709551615');
+    expect(s.creatorQuoteFeeRaw).toBe('999');
+  });
+
+  it('upserts fees on resample and preserves them on failed samples', () => {
+    const addr = randomAddress();
+    recordPoolSample(
+      addr,
+      {
+        price: 1,
+        quoteReserve: 1,
+        baseReserve: 1,
+        progress: 1,
+        graduated: false,
+        hasSwap: true,
+        marketCap: 1,
+        baseDecimals: 9,
+        quoteDecimals: 9,
+        migrationQuoteThreshold: 1,
+        creatorBaseFeeRaw: '500',
+        creatorQuoteFeeRaw: '600',
+      },
+      1000,
+    );
+    recordPoolSample(addr, null, 2000); // failed sample: last good kept
+    expect(getPoolState(addr)!.creatorBaseFeeRaw).toBe('500');
+    recordPoolSample(
+      addr,
+      {
+        price: 2,
+        quoteReserve: 2,
+        baseReserve: 2,
+        progress: 2,
+        graduated: false,
+        hasSwap: true,
+        marketCap: 2,
+        baseDecimals: 9,
+        quoteDecimals: 9,
+        migrationQuoteThreshold: 2,
+        creatorBaseFeeRaw: '700',
+        creatorQuoteFeeRaw: '800',
+      },
+      3000,
+    );
+    const s = getPoolState(addr)!;
+    expect(s.creatorBaseFeeRaw).toBe('700');
+    expect(s.creatorQuoteFeeRaw).toBe('800');
+  });
+
+  it('normalizes missing fee fields to null', () => {
+    const addr = randomAddress();
+    recordPoolSample(
+      addr,
+      {
+        price: 1,
+        quoteReserve: 1,
+        baseReserve: 1,
+        progress: 1,
+        graduated: false,
+        hasSwap: true,
+        marketCap: 1,
+        baseDecimals: 9,
+        quoteDecimals: 9,
+        migrationQuoteThreshold: 1,
+      },
+      1000,
+    );
+    const s = getPoolState(addr)!;
+    expect(s.creatorBaseFeeRaw).toBeNull();
+    expect(s.creatorQuoteFeeRaw).toBeNull();
+  });
+});

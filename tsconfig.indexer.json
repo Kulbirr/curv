@@ -1,0 +1,32 @@
+{
+  "compilerOptions": {
+    "incremental": false,
+    "jsx": "react-jsx",
+    "lib": [
+      "ES2022",
+      "DOM"
+    ],
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "noEmit": false,
+    "outDir": "dist-indexer",
+    "plugins": [],
+    "rootDir": "src",
+    "target": "ES2022",
+    "types": [
+      "node"
+    ]
+  },
+  "exclude": [
+    "node_modules",
+    "spike"
+  ],
+  "extends": "./tsconfig.json",
+  "include": [
+    "src/indexer.ts",
+    "src/lib/db/**/*.ts",
+    "src/lib/pool-state.ts",
+    "src/lib/solana.ts",
+    "src/lib/pool-registry.ts"
+  ]
+}

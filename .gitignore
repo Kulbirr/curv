@@ -1,0 +1,16 @@
+node_modules/
+.next/
+out/
+dist/
+dist-grinder/
+dist-indexer/
+coverage/
+*.tsbuildinfo
+.env
+.env*.local
+*.db
+*.db-shm
+*.db-wal
+data/
+.DS_Store
+*.log

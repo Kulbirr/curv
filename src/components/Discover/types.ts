@@ -1,0 +1,50 @@
+/**
+ * Pool summary contract served by GET /api/pools.
+ *
+ * All numeric money values are denominated in QUOTE tokens unless the field
+ * name ends in `Usd`. A null value means unknown — the UI must render a dash,
+ * never a fabricated number.
+ */
+export interface PoolSummary {
+  poolAddress: string
+  baseSymbol: string
+  baseName: string
+  /** Base token mint — exact-match key for holdings. */
+  baseMint: string
+  /** Quote token mint. */
+  quoteMint: string
+  quoteSymbol: string
+  imageUrl: string | null
+  description: string | null
+  /** Wallet that created the pool. */
+  creator: string
+  /** Price in quote tokens (e.g. SOL per base token). */
+  price: number | null
+  /** Price in USD. Preferred for display when present. */
+  priceUsd: number | null
+  /**
+   * 24h price change in PERCENT units (e.g. 31.52 renders as "+31.52%").
+   * NOTE: unit assumption — confirm against the /api/pools implementation.
+   */
+  change24h: number | null
+  /** Bonding-curve fill, 0-100. */
+  progress: number | null
+  graduated: boolean
+  /** Market cap in quote tokens. */
+  marketCap: number | null
+  /** Market cap in USD. Preferred for display when present. */
+  marketCapUsd: number | null
+  /** 24h volume in quote tokens. */
+  volume24h: number | null
+  /** Pool creation time (epoch; used for sorting only). */
+  createdAt: number
+  /** True while the backend is still refreshing this pool's numbers. */
+  stale: boolean
+  /** True when the pool account was verified as a real DBC pool on-chain. */
+  verified: boolean
+}
+
+export interface PoolsResponse {
+  network: 'devnet' | 'mainnet-beta'
+  pools: PoolSummary[]
+}
