@@ -282,10 +282,13 @@ function decodeSeedBuffer(v: { __buffer_base64: string } | null): Buffer | null 
 }
 
 /**
- * One-time import of the SQLite-era data (data/postgres-seed.json,
- * produced by scripts/export-postgres-seed.ts). Runs only when the pools
- * table is empty, so a restart never duplicates indexed data. Skipped
- * entirely in tests.
+ * One-time import of the SQLite-era data. Source is either the
+ * CURV_SEED_B64 env var (base64 of the seed JSON — the Vercel path, since
+ * the seed file is gitignored and never deployed) or
+ * data/postgres-seed.json (produced by scripts/export-postgres-seed.ts).
+ * Runs only when the pools table is empty, so a restart never duplicates
+ * indexed data. Every INSERT is ON CONFLICT DO NOTHING, so concurrent
+ * first-boots on serverless can't fail each other. Skipped in tests.
  *
  * Uses a single dedicated connection for the whole import: BEGIN/COMMIT
  * issued through the pool could land on different connections and would
@@ -293,35 +296,42 @@ function decodeSeedBuffer(v: { __buffer_base64: string } | null): Buffer | null 
  */
 async function runSeedImport(): Promise<void> {
   if (!seedImportAllowed) return;
+  const fromEnv = process.env.CURV_SEED_B64;
   const seedPath = path.join(DATA_DIR, 'postgres-seed.json');
-  if (!fs.existsSync(seedPath)) return;
+  let raw: string | null = null;
+  if (fromEnv) {
+    raw = Buffer.from(fromEnv, 'base64').toString('utf8');
+  } else if (fs.existsSync(seedPath)) {
+    raw = fs.readFileSync(seedPath, 'utf8');
+  } else {
+    return;
+  }
+  const seed = JSON.parse(raw) as {
+    pools?: SeedPool[];
+    pool_states?: SeedState[];
+    ticks?: SeedTick[];
+    nonces?: SeedNonce[];
+    pool_verifications?: SeedVerification[];
+    rate_limits?: SeedRateLimit[];
+    vanity_pool?: SeedVanityMint[];
+  };
+  const pools = Array.isArray(seed.pools) ? seed.pools : [];
+  const states = Array.isArray(seed.pool_states) ? seed.pool_states : [];
+  const ticks = Array.isArray(seed.ticks) ? seed.ticks : [];
+  const nonces = Array.isArray(seed.nonces) ? (seed.nonces as SeedNonce[]) : [];
+  const verifications = Array.isArray(seed.pool_verifications)
+    ? (seed.pool_verifications as SeedVerification[])
+    : [];
+  const rateLimits = Array.isArray(seed.rate_limits)
+    ? (seed.rate_limits as SeedRateLimit[])
+    : [];
+  const vanity = Array.isArray(seed.vanity_pool)
+    ? (seed.vanity_pool as SeedVanityMint[])
+    : [];
   const client = await getPool().connect();
   try {
     const countRes = await client.query('SELECT COUNT(*) AS c FROM pools');
     if (Number(countRes.rows[0]?.c ?? 0) !== 0) return;
-    const raw = fs.readFileSync(seedPath, 'utf8');
-    const seed = JSON.parse(raw) as {
-      pools?: SeedPool[];
-      pool_states?: SeedState[];
-      ticks?: SeedTick[];
-      nonces?: SeedNonce[];
-      pool_verifications?: SeedVerification[];
-      rate_limits?: SeedRateLimit[];
-      vanity_pool?: SeedVanityMint[];
-    };
-    const pools = Array.isArray(seed.pools) ? seed.pools : [];
-    const states = Array.isArray(seed.pool_states) ? seed.pool_states : [];
-    const ticks = Array.isArray(seed.ticks) ? seed.ticks : [];
-    const nonces = Array.isArray(seed.nonces) ? (seed.nonces as SeedNonce[]) : [];
-    const verifications = Array.isArray(seed.pool_verifications)
-      ? (seed.pool_verifications as SeedVerification[])
-      : [];
-    const rateLimits = Array.isArray(seed.rate_limits)
-      ? (seed.rate_limits as SeedRateLimit[])
-      : [];
-    const vanity = Array.isArray(seed.vanity_pool)
-      ? (seed.vanity_pool as SeedVanityMint[])
-      : [];
     await client.query('BEGIN');
     try {
       for (const p of pools) {
