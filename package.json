@@ -81,7 +81,7 @@
   },
   "pnpm": {
     "overrides": {
-      "uuid": "9.0.1"
+      "rpc-websockets>uuid": "9.0.1"
     }
   }
 }
