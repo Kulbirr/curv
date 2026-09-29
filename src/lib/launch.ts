@@ -111,9 +111,9 @@ export function presetCurve(preset: CurvePresetId, startPrice: number): CurveDes
   return { prices, liquidityWeights };
 }
 
-/** Target starting valuation for Quick launches: $8,000 fully-diluted at
- *  the 1B default supply, pump.fun-like (it launches near $4-8k). */
-export const QUICK_TARGET_START_FDV_USD = 8000;
+/** Target starting valuation for Quick launches: $3,000 fully-diluted at
+ *  the 1B default supply. */
+export const QUICK_TARGET_START_FDV_USD = 3000;
 
 /** Default token supply for Quick launches. */
 export const QUICK_DEFAULT_SUPPLY = 1_000_000_000;
@@ -122,8 +122,9 @@ export const QUICK_DEFAULT_SUPPLY = 1_000_000_000;
  * Quick-launch default starting price (quote UI units per token) for a
  * quote asset priced at quoteUsdPrice USD. Scaling by the quote price
  * keeps every pair near the same starting valuation: on SOL pairs the
- * exponential preset then graduates near 100 SOL, like pump.fun's
- * 85-115 SOL. Falls back to $1 per quote unit when the price is unknown.
+ * exponential preset then graduates near ~37 SOL (the curve shape is
+ * unchanged, so graduation scales with the $3k start). Falls back to $1
+ * per quote unit when the price is unknown.
  */
 export function quickDefaultStartPrice(quoteUsdPrice?: number | null): number {
   const usd =

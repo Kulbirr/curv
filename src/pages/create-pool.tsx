@@ -203,7 +203,7 @@ export default function CreatePool() {
   /** USD price of the selected quote asset, for scaling Quick defaults. */
   const quoteUsdForDefault =
     quoteSel === 'SOL' ? (solUsd ?? 200) : quoteSel === 'USDC' ? 1 : (pickedAsset?.usdPrice ?? 1)
-  /** Quick-launch curve, scaled so every pair starts near $8k valuation. */
+  /** Quick-launch curve, scaled so every pair starts near $3k valuation. */
   const quickCurve = useMemo(
     () => presetCurve('exponential', quickDefaultStartPrice(quoteUsdForDefault)),
     [quoteUsdForDefault]
@@ -213,8 +213,8 @@ export default function CreatePool() {
   const [manualQuote, setManualQuote] = useState(false)
   const [baseDecimals, setBaseDecimals] = useState<6 | 9>(6)
   const [totalSupply, setTotalSupply] = useState('1000000000')
-  const [startFeeBps, setStartFeeBps] = useState('100')
-  const [endFeeBps, setEndFeeBps] = useState('100')
+  const [startFeeBps, setStartFeeBps] = useState('119')
+  const [endFeeBps, setEndFeeBps] = useState('119')
   // ---- Fee schedule decay ----
   const [feePeriods, setFeePeriods] = useState('60')
   const [feeDuration, setFeeDuration] = useState('60')
@@ -518,8 +518,8 @@ export default function CreatePool() {
             prices: priceNums,
             liquidityWeights: weights.map((w) => parseFloat(w)),
           },
-      startingFeeBps: quick ? 100 : parseInt(startFeeBps, 10),
-      endingFeeBps: quick ? 100 : parseInt(endFeeBps, 10),
+      startingFeeBps: quick ? 119 : parseInt(startFeeBps, 10),
+      endingFeeBps: quick ? 119 : parseInt(endFeeBps, 10),
       econ: quick
         ? {
             feeSchedulerPeriods: 60,
@@ -585,8 +585,8 @@ export default function CreatePool() {
   const feeRows = useMemo(
     () =>
       buildFeeDisclosureRows({
-        startingFeeBps: mode === 'quick' ? 100 : parseInt(startFeeBps, 10) || 0,
-        endingFeeBps: mode === 'quick' ? 100 : parseInt(endFeeBps, 10) || 0,
+        startingFeeBps: mode === 'quick' ? 119 : parseInt(startFeeBps, 10) || 0,
+        endingFeeBps: mode === 'quick' ? 119 : parseInt(endFeeBps, 10) || 0,
         quoteSymbol,
         econ: resolveEcon(
           buildSpec('https://placeholder.invalid/metadata.json')
@@ -1340,11 +1340,11 @@ export default function CreatePool() {
                     </strong>
                     <span className="text-neutral-400">
                       {' '}
-                      (≈$8k starting valuation)
+                      (≈$3k starting valuation)
                     </span>
                   </li>
                   <li>
-                    Trading fee <strong>1%</strong> flat, like pump.fun
+                    Trading fee <strong>1.19%</strong> flat
                   </li>
                   <li>
                     <strong>Automatic graduation</strong> to DAMM v2 when the

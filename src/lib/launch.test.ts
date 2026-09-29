@@ -168,13 +168,13 @@ describe('buildCurveParams', () => {
     expect(params.migrationQuoteThreshold.gt(new BN(0))).toBe(true);
   });
 
-  it('carries the 37.5% creator fee share into the SDK fee config', async () => {
+  it('carries the 31.51% creator fee share into the SDK fee config', async () => {
     const params = buildCurveParams(validSpec());
     // The SDK's buildCurveWithCustomSqrtPrices flattens the fee config:
     // creatorTradingFeePercentage lands top-level, in percent of the
-    // non-protocol fee share (37.5% of the 80% after Meteora's 20% cut
-    // is ~0.3% of volume at the 1% flat trading fee).
-    expect(params.creatorTradingFeePercentage).toBe(37.5);
+    // non-protocol fee share (31.51% of the 80% after Meteora's 20% cut
+    // is exactly 0.30% of volume at the 1.19% flat trading fee).
+    expect(params.creatorTradingFeePercentage).toBe(31.51);
   });
 
   it('throws the first validation error on an invalid spec', async () => {
@@ -216,7 +216,7 @@ describe('creator economics overrides', () => {
 
   it('never lets the spec override the locked creator cuts', async () => {
     const e = resolveEcon(validSpec({ econ: {} }));
-    expect(e.creatorTradingFeePercent).toBe(37.5);
+    expect(e.creatorTradingFeePercent).toBe(31.51);
     expect(e.creatorMigrationFeePercent).toBe(50);
     expect(e.poolCreationFeeSol).toBe(0.02);
   });
@@ -342,37 +342,38 @@ describe('scaleCurveToGraduationTarget', () => {
 });
 
 describe('quickDefaultStartPrice', () => {
-  it('targets ~$8k starting valuation at 1B supply for any quote asset', async () => {
-    // SOL at $200: 4e-8 SOL/token * 1B = 40 SOL = $8,000.
-    expect(quickDefaultStartPrice(200)).toBeCloseTo(4e-8, 12);
-    // USDC at $1: 8e-6 USDC/token * 1B = $8,000.
-    expect(quickDefaultStartPrice(1)).toBeCloseTo(8e-6, 12);
+  it('targets ~$3k starting valuation at 1B supply for any quote asset', async () => {
+    // SOL at $200: 1.5e-8 SOL/token * 1B = 15 SOL = $3,000.
+    expect(quickDefaultStartPrice(200)).toBeCloseTo(1.5e-8, 12);
+    // USDC at $1: 3e-6 USDC/token * 1B = $3,000.
+    expect(quickDefaultStartPrice(1)).toBeCloseTo(3e-6, 12);
     // Unknown price falls back to $1/quote-unit rather than breaking.
-    expect(quickDefaultStartPrice(null)).toBeCloseTo(8e-6, 12);
-    expect(quickDefaultStartPrice(0)).toBeCloseTo(8e-6, 12);
-    expect(quickDefaultStartPrice(-5)).toBeCloseTo(8e-6, 12);
+    expect(quickDefaultStartPrice(null)).toBeCloseTo(3e-6, 12);
+    expect(quickDefaultStartPrice(0)).toBeCloseTo(3e-6, 12);
+    expect(quickDefaultStartPrice(-5)).toBeCloseTo(3e-6, 12);
   });
 
-  it('graduates a SOL pair near 100 SOL, like pump.fun', async () => {
+  it('graduates a SOL pair near ~37 SOL on the $3k-start curve', async () => {
     const spec = validSpec({
       curve: presetCurve('exponential', quickDefaultStartPrice(200)),
     });
     const threshold = graduationThresholdQuote(spec);
-    // pump.fun graduates near 85-115 SOL; the Quick default must land
-    // in a usable range, not hundreds of thousands of SOL.
-    expect(threshold).toBeGreaterThan(50);
-    expect(threshold).toBeLessThan(200);
+    // Graduation scales with the starting valuation (curve shape is
+    // unchanged): $3k start graduates near ~37 SOL, not hundreds of
+    // thousands of SOL.
+    expect(threshold).toBeGreaterThan(20);
+    expect(threshold).toBeLessThan(60);
   });
 
-  it('graduates a USDC pair near $20k of reserves', async () => {
+  it('graduates a USDC pair near $7.4k of reserves', async () => {
     const spec = validSpec({
       quoteDecimals: 6,
       quoteSymbol: 'USDC',
       curve: presetCurve('exponential', quickDefaultStartPrice(1)),
     });
     const threshold = graduationThresholdQuote(spec);
-    expect(threshold).toBeGreaterThan(10000);
-    expect(threshold).toBeLessThan(40000);
+    expect(threshold).toBeGreaterThan(4000);
+    expect(threshold).toBeLessThan(12000);
   });
 });
 

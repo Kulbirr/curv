@@ -7,16 +7,17 @@ describe('LAUNCH_FEE_CONFIG', () => {
     // poolCreationFee is converted via convertToLamports (SOL), the
     // migration feePercentage is divided by 100 (percent), and
     // creatorTradingFeePercentage is validated by the SDK as 0-100
-    // (percent of the non-protocol fee share) — 37.5 means the creator
-    // keeps 37.5% of the 80% left after Meteora's 20% protocol cut,
-    // which is ~0.3% of volume at the 1% flat trading fee.
+    // (percent of the non-protocol fee share) — 31.51 means the creator
+    // keeps 31.51% of the 80% left after Meteora's 20% protocol cut,
+    // which is exactly 0.30% of volume at the 1.19% flat trading fee
+    // (pump.fun creator parity); Curv keeps ~0.652%.
     // poolCreationFeeSol is 0.02: pump.fun parity, and the fee is a
     // per-config Curv setting, not a Meteora protocol mandate.
     expect(LAUNCH_FEE_CONFIG.poolCreationFeeSol).toBe(0.02);
     expect(LAUNCH_FEE_CONFIG.migrationFeePercent).toBe(10);
     expect(LAUNCH_FEE_CONFIG.creatorMigrationFeePercent).toBe(50);
     expect(LAUNCH_FEE_CONFIG.migratedPoolFeeBps).toBe(120);
-    expect(LAUNCH_FEE_CONFIG.creatorTradingFeePercent).toBe(37.5);
+    expect(LAUNCH_FEE_CONFIG.creatorTradingFeePercent).toBe(31.51);
     expect(LAUNCH_FEE_CONFIG.migrationOption).toBe('DAMM v2');
   });
 
@@ -28,7 +29,7 @@ describe('LAUNCH_FEE_CONFIG', () => {
 });
 
 describe('buildFeeDisclosureRows', () => {
-  const rows = buildFeeDisclosureRows({ startingFeeBps: 100, endingFeeBps: 100, quoteSymbol: 'SOL' });
+  const rows = buildFeeDisclosureRows({ startingFeeBps: 119, endingFeeBps: 119, quoteSymbol: 'SOL' });
   const byLabel = (label: string) => rows.find((r) => r.label === label)!;
 
   it('discloses the 0.02 SOL pool creation fee', async () => {
@@ -36,14 +37,14 @@ describe('buildFeeDisclosureRows', () => {
     expect(byLabel('Pool creation fee').hint).toContain('Curv receives 90%');
   });
 
-  it('renders the flat 1% default trading fee', async () => {
-    expect(byLabel('Trading fees').value).toBe('1.00% flat');
+  it('renders the flat 1.19% default trading fee', async () => {
+    expect(byLabel('Trading fees').value).toBe('1.19% flat');
   });
 
   it('renders a decaying fee schedule when configured', async () => {
     const decaying = buildFeeDisclosureRows({ startingFeeBps: 500, endingFeeBps: 100, quoteSymbol: 'SOL' });
     expect(decaying.find((r) => r.label === 'Trading fees')!.value).toBe('5.00% → 1.00%');
-    expect(decaying.find((r) => r.label === 'Your share of trading fees')!.value).toBe('~1.50% of volume');
+    expect(decaying.find((r) => r.label === 'Your share of trading fees')!.value).toBe('~1.26% of volume');
   });
 
   it('discloses the creator trading-fee share honestly', async () => {
@@ -118,16 +119,16 @@ describe('buildFeeDisclosureRows with creator overrides', () => {
 });
 
 describe('effectiveTradeFeeSplit', () => {
-  it('splits a flat 1% fee into protocol, creator, and platform shares', async () => {
-    const split = effectiveTradeFeeSplit(100);
-    // Trader pays 1% of volume in total.
-    expect(split.trader).toBeCloseTo(1, 6);
-    // Meteora takes 20% of the 1% trading fee: 0.20% of volume.
-    expect(split.protocol).toBeCloseTo(0.2, 6);
-    // The creator keeps 37.5% of the remaining 80%: ~0.30% of volume.
-    expect(split.creator).toBeCloseTo(0.3, 6);
-    // Curv keeps the other 62.5% of the remaining 80%: ~0.50% of volume.
-    expect(split.platform).toBeCloseTo(0.5, 6);
+  it('splits the flat 1.19% fee into protocol, creator, and platform shares', async () => {
+    const split = effectiveTradeFeeSplit(119);
+    // Trader pays 1.19% of volume in total.
+    expect(split.trader).toBeCloseTo(1.19, 6);
+    // Meteora takes 20% of the 1.19% trading fee: 0.238% of volume.
+    expect(split.protocol).toBeCloseTo(0.238, 6);
+    // The creator keeps 31.51% of the remaining 80%: exactly 0.30% of volume.
+    expect(split.creator).toBeCloseTo(0.3, 2);
+    // Curv keeps the other 68.49% of the remaining 80%: ~0.652% of volume.
+    expect(split.platform).toBeCloseTo(0.652, 2);
     // The shares add back up to the full trading fee.
     expect(split.protocol + split.creator + split.platform).toBeCloseTo(split.trader, 6);
   });
@@ -135,7 +136,7 @@ describe('effectiveTradeFeeSplit', () => {
   it('scales with the starting fee when the schedule decays', async () => {
     const split = effectiveTradeFeeSplit(500);
     expect(split.trader).toBeCloseTo(5, 6);
-    expect(split.creator).toBeCloseTo(1.5, 6);
-    expect(split.platform).toBeCloseTo(2.5, 6);
+    expect(split.creator).toBeCloseTo(1.2604, 6);
+    expect(split.platform).toBeCloseTo(2.7396, 6);
   });
 });

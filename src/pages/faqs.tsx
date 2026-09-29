@@ -36,7 +36,7 @@ const FAQS: { q: string; a: string }[] = [
   },
   {
     q: 'Quick launch or Pro designer?',
-    a: 'Quick launch uses battle tested defaults: 1B supply, an exponential curve starting near $8k valuation (scaled to your quote asset, graduating near 100 SOL on SOL pairs), a flat 1% trading fee like pump.fun, a 0.02 SOL creation fee, and automatic graduation. The Pro designer gives you full control over the curve shape, fee schedule, and graduation settings.',
+    a: 'Quick launch uses battle tested defaults: 1B supply, an exponential curve starting near $3k valuation (scaled to your quote asset, graduating near 37 SOL on SOL pairs), a flat 1.19% trading fee, a 0.02 SOL creation fee, and automatic graduation. The Pro designer gives you full control over the curve shape, fee schedule, and graduation settings.',
   },
   {
     q: 'What is a vanity mint?',

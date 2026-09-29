@@ -16,8 +16,8 @@
  *   remaining 80% is split between creator and the fee claimer (Curv)
  *   by creatorTradingFeePercentage.
  * - creatorTradingFeePercent: percent of the non-protocol trading fee
- *   that goes to the creator. 37.5% of 80% of a 1% fee = 0.30% of trade
- *   volume to the creator (pump.fun parity); Curv keeps ~0.50%.
+ *   that goes to the creator. 31.51% of 80% of a 1.19% fee = 0.30% of
+ *   trade volume to the creator (pump.fun parity); Curv keeps ~0.652%.
  *   The creator claims with a signed transaction via claimCreatorTradingFee.
  * - migrationFeePercent / creatorMigrationFeePercent: the SDK divides
  *   feePercentage by 100 (percent), and creatorFeePercentage is a
@@ -28,14 +28,15 @@ export const LAUNCH_FEE_CONFIG = {
   /** Pool creation fee baked into Curv's DBC config (SOL), matching
    *  pump.fun's 0.02 SOL. 90% goes to Curv as fee claimer. */
   poolCreationFeeSol: 0.02,
-  /** Flat ~1% trading fee like pump.fun: 60 periods with start == end. */
+  /** Flat 1.19% trading fee: 60 periods with start == end. */
   feeSchedulerPeriods: 60,
   feeSchedulerTotalDuration: 60,
   /** Extra dynamic fee on top of the scheduled base fee. */
   dynamicFeeEnabled: true,
   /** Creator's cut of the non-protocol trading fee, in percent.
-   *  37.5 here = ~0.30% of each trade's volume at the default 1% fee. */
-  creatorTradingFeePercent: 37.5,
+   *  31.51 here = exactly 0.30% of each trade's volume at the 1.19%
+   *  flat fee (pump.fun creator parity). */
+  creatorTradingFeePercent: 31.51,
   /** Which token trade fees are collected in. */
   collectFeeMode: 'quote token',
   /** Where the pool migrates at graduation. */
