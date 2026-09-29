@@ -8,6 +8,7 @@ import {
   buildWithdrawPartnerMigrationFeeTx,
   getPartnerClaimable,
   loadFeeWalletKeypair,
+  sendSigned,
 } from '@/lib/claim-partner-fees';
 
 /**
@@ -95,15 +96,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       tx = await buildClaimPartnerPoolCreationFeeTx({ poolAddress, feeReceiver: feeClaimer });
     }
 
-    tx.feePayer = feeWallet.publicKey;
-    const { blockhash } = await connection.getLatestBlockhash();
-    tx.recentBlockhash = blockhash;
-    tx.sign(feeWallet);
-    const signature = await connection.sendRawTransaction(tx.serialize(), {
-      skipPreflight: false,
-    });
-    return res.status(200).json({ signature, claimed: true, kind, poolAddress });
+    // Send with the fee wallet and wait for on-chain confirmation before
+    // reporting success. A submitted-but-unconfirmed transaction still
+    // returns its signature so it can be inspected afterwards.
+    const signature = await sendSigned(connection, tx, feeWallet);
+    return res.status(200).json({ signature, claimed: true, confirmed: true, kind, poolAddress });
   } catch (e) {
-    return res.status(502).json({ error: `Claim failed: ${(e as Error).message}` });
+    const err = e as Error & { signature?: string };
+    return res.status(502).json({
+      error: `Claim failed: ${err.message}`,
+      signature: err.signature ?? null,
+      claimed: false,
+      kind,
+      poolAddress,
+    });
   }
 }

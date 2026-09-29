@@ -117,7 +117,31 @@ export function loadFeeWalletKeypair(): Keypair {
   return Keypair.fromSecretKey(bs58.decode(secret.trim()));
 }
 
-async function sendSigned(
+/**
+ * Poll getSignatureStatus until the signature is confirmed/finalized.
+ * Throws when the transaction failed on-chain or after 60s without
+ * confirmation.
+ */
+export async function confirmSignature(connection: Connection, signature: string): Promise<void> {
+  const start = Date.now();
+  for (;;) {
+    const { value } = await connection.getSignatureStatus(signature, {
+      searchTransactionHistory: false,
+    });
+    if (value?.err) throw new Error('Transaction failed on-chain');
+    if (value?.confirmationStatus === 'confirmed' || value?.confirmationStatus === 'finalized') return;
+    if (Date.now() - start > 60_000) throw new Error('Timed out waiting for confirmation');
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+}
+
+/**
+ * Sign with the fee wallet, send, and await on-chain confirmation.
+ * Returns the signature. When confirmation fails after the transaction was
+ * submitted, the thrown error carries the signature so the caller can
+ * still report it for later inspection.
+ */
+export async function sendSigned(
   connection: Connection,
   tx: Transaction,
   signer: Keypair,
@@ -132,17 +156,13 @@ async function sendSigned(
     skipPreflight: false,
   });
   onStatus?.('confirming');
-  const start = Date.now();
-  for (;;) {
-    const { value } = await connection.getSignatureStatus(sig, {
-      searchTransactionHistory: false,
-    });
-    if (value?.err) throw new Error('Transaction failed on-chain');
-    if (value?.confirmationStatus === 'confirmed' || value?.confirmationStatus === 'finalized')
-      return sig;
-    if (Date.now() - start > 60_000) throw new Error('Timed out waiting for confirmation');
-    await new Promise((r) => setTimeout(r, 1000));
+  try {
+    await confirmSignature(connection, sig);
+  } catch (e) {
+    (e as Error & { signature?: string }).signature = sig;
+    throw e;
   }
+  return sig;
 }
 
 /**

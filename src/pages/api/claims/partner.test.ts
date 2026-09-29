@@ -50,6 +50,9 @@ function mockRpc(opts: { feeClaimer?: string; partnerBase?: string; partnerQuote
   mockGetConnection.mockReturnValue({
     getLatestBlockhash: vi.fn(async () => ({ blockhash: 'B'.repeat(44), lastValidBlockHeight: 1 })),
     sendRawTransaction: vi.fn(async () => 'sig123'),
+    getSignatureStatus: vi.fn(async () => ({
+      value: { confirmationStatus: 'confirmed', err: null },
+    })),
   } as unknown as Connection);
 }
 
@@ -156,6 +159,34 @@ describe('POST /api/claims/partner', () => {
     expect(res.statusCode).toBe(200);
     expect(res.body.claimed).toBe(true);
     expect(mockGetDbcClient().partner.claimPartnerPoolCreationFee).toHaveBeenCalled();
+  });
+
+  it('reports a confirmed claim', async () => {
+    mockRpc();
+    const { req, res } = post({ poolAddress, kind: 'trading' });
+    await handler(req, res);
+    expect(res.statusCode).toBe(200);
+    expect(res.body.confirmed).toBe(true);
+    expect(mockGetConnection().getSignatureStatus).toHaveBeenCalledWith('sig123', {
+      searchTransactionHistory: false,
+    });
+  });
+
+  it('returns 502 with the signature when the transaction fails on-chain', async () => {
+    mockRpc();
+    mockGetConnection.mockReturnValue({
+      getLatestBlockhash: vi.fn(async () => ({ blockhash: 'B'.repeat(44), lastValidBlockHeight: 1 })),
+      sendRawTransaction: vi.fn(async () => 'sig123'),
+      getSignatureStatus: vi.fn(async () => ({
+        value: { confirmationStatus: 'processed', err: { InstructionError: [0, 'Custom'] } },
+      })),
+    } as unknown as Connection);
+    const { req, res } = post({ poolAddress, kind: 'trading' });
+    await handler(req, res);
+    expect(res.statusCode).toBe(502);
+    expect(res.body.claimed).toBe(false);
+    expect(res.body.signature).toBe('sig123');
+    expect(res.body.error).toMatch(/failed on-chain/i);
   });
 
   it('fails loudly when the fee wallet secret is missing', async () => {
