@@ -203,9 +203,11 @@ export function getPool(): Pool {
       // names resolve there first, public stays untouched.
       options: '-c search_path=curv,public',
       // Small pool: serverless instances multiply connections, and
-      // managed Postgres tiers cap them.
+      // managed Postgres tiers cap them. PG_IDLE_TIMEOUT_MS lets
+      // long-lived workers (e.g. the vanity grinder) keep connections
+      // warm instead of churning them; defaults to 10s.
       max: numEnv('PG_POOL_MAX', 5),
-      idleTimeoutMillis: 10_000,
+      idleTimeoutMillis: numEnv('PG_IDLE_TIMEOUT_MS', 10_000),
       connectionTimeoutMillis: 10_000,
     });
     pool.on('error', (err) => console.error('[db] unexpected pool error', err));
