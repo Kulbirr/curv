@@ -198,7 +198,7 @@ describe('creator economics overrides', () => {
     expect(e.feeSchedulerPeriods).toBe(60);
     expect(e.feeSchedulerTotalDuration).toBe(60);
     expect(e.dynamicFeeEnabled).toBe(true);
-    expect(e.migrationFeePercent).toBe(10);
+    expect(e.migrationFeePercent).toBe(8);
     expect(e.migratedPoolFeeBps).toBe(120);
     expect(e.migratedPoolDynamicFee).toBe(true);
   });
@@ -217,7 +217,7 @@ describe('creator economics overrides', () => {
   it('never lets the spec override the locked creator cuts', async () => {
     const e = resolveEcon(validSpec({ econ: {} }));
     expect(e.creatorTradingFeePercent).toBe(31.51);
-    expect(e.creatorMigrationFeePercent).toBe(50);
+    expect(e.creatorMigrationFeePercent).toBe(25);
     expect(e.poolCreationFeeSol).toBe(0.02);
   });
 

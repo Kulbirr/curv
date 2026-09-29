@@ -42,9 +42,11 @@ export const LAUNCH_FEE_CONFIG = {
   /** Where the pool migrates at graduation. */
   migrationOption: 'DAMM v2',
   /** Fee taken from the migrating liquidity at graduation (percent). */
-  migrationFeePercent: 10,
-  /** Creator's share of the migration fee (percent of the fee). */
-  creatorMigrationFeePercent: 50,
+  migrationFeePercent: 8,
+  /** Creator's share of the migration fee (percent of the fee).
+   *  25 here = 2% of the migrating liquidity at the 8% migration fee;
+   *  Curv keeps the other 6%. */
+  creatorMigrationFeePercent: 25,
   /** Base fee of the DAMM v2 pool after graduation (basis points). */
   migratedPoolFeeBps: 120,
   /** The DAMM v2 pool also charges a dynamic fee on top. */
@@ -156,8 +158,8 @@ export function buildFeeDisclosureRows(input: FeeDisclosureInput): FeeDisclosure
     },
     {
       label: 'Migration fee',
-      value: `${c.migrationFeePercent}% (you keep ${c.creatorMigrationFeePercent}%)`,
-      hint: `At graduation, ${c.migrationFeePercent}% of the migrating liquidity is taken as a fee, half of that fee goes to you as the creator.`,
+      value: `${c.migrationFeePercent}% (you keep ${two((c.migrationFeePercent * c.creatorMigrationFeePercent) / 100).replace(/\.00$/, '')}% of liquidity)`,
+      hint: `At graduation, ${c.migrationFeePercent}% of the migrating liquidity is taken as a fee, ${c.creatorMigrationFeePercent}% of that fee goes to you as the creator.`,
     },
     {
       label: 'After graduation',

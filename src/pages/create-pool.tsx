@@ -525,7 +525,7 @@ export default function CreatePool() {
             feeSchedulerPeriods: 60,
             feeSchedulerTotalDuration: 60,
             dynamicFeeEnabled: true,
-            migrationFeePercent: 10,
+            migrationFeePercent: 8,
             migratedPoolFeeBps: 120,
             migratedPoolDynamicFee: true,
           }

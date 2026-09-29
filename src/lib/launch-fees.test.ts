@@ -14,8 +14,8 @@ describe('LAUNCH_FEE_CONFIG', () => {
     // poolCreationFeeSol is 0.02: pump.fun parity, and the fee is a
     // per-config Curv setting, not a Meteora protocol mandate.
     expect(LAUNCH_FEE_CONFIG.poolCreationFeeSol).toBe(0.02);
-    expect(LAUNCH_FEE_CONFIG.migrationFeePercent).toBe(10);
-    expect(LAUNCH_FEE_CONFIG.creatorMigrationFeePercent).toBe(50);
+    expect(LAUNCH_FEE_CONFIG.migrationFeePercent).toBe(8);
+    expect(LAUNCH_FEE_CONFIG.creatorMigrationFeePercent).toBe(25);
     expect(LAUNCH_FEE_CONFIG.migratedPoolFeeBps).toBe(120);
     expect(LAUNCH_FEE_CONFIG.creatorTradingFeePercent).toBe(31.51);
     expect(LAUNCH_FEE_CONFIG.migrationOption).toBe('DAMM v2');
@@ -58,7 +58,7 @@ describe('buildFeeDisclosureRows', () => {
   });
 
   it('discloses the migration fee and the creator cut', async () => {
-    expect(byLabel('Migration fee').value).toBe('10% (you keep 50%)');
+    expect(byLabel('Migration fee').value).toBe('8% (you keep 2% of liquidity)');
   });
 
   it('discloses the post-graduation DAMM v2 fee', async () => {
@@ -104,7 +104,7 @@ describe('buildFeeDisclosureRows with creator overrides', () => {
       quoteSymbol: 'SOL',
       econ: { ...LAUNCH_FEE_CONFIG, migrationFeePercent: 20 },
     });
-    expect(rows.find((r) => r.label === 'Migration fee')!.value).toBe('20% (you keep 50%)');
+    expect(rows.find((r) => r.label === 'Migration fee')!.value).toBe('20% (you keep 5% of liquidity)');
   });
 
   it('reflects an overridden post-graduation pool fee', async () => {
