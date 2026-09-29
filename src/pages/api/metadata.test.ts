@@ -3,9 +3,11 @@ import handler from './metadata';
 import { mockReqRes } from '@/test-support/http';
 
 // Rate limiting needs a database; unit tests mock it out.
-const mockHitRateLimit = vi.fn(async () => ({ allowed: true, remaining: 19 }));
+const mockHitRateLimit = vi.hoisted(() =>
+  vi.fn(async (): Promise<{ allowed: boolean; count: number }> => ({ allowed: true, count: 1 }))
+);
 vi.mock('@/lib/db/rate-limits', () => ({
-  hitRateLimit: (...args: unknown[]) => mockHitRateLimit(...args),
+  hitRateLimit: mockHitRateLimit,
 }));
 
 // Capture every command the route "uploads".
@@ -98,7 +100,7 @@ describe('POST /api/metadata', () => {
 
   it('returns 429 when the per-IP upload rate limit is hit', async () => {
     setR2Env();
-    mockHitRateLimit.mockResolvedValueOnce({ allowed: false, remaining: 0 });
+    mockHitRateLimit.mockResolvedValueOnce({ allowed: false, count: 20 });
     const { req, res } = mockReqRes('POST', { body: validBody() });
     await handler(req, res);
     expect(res.statusCode).toBe(429);
