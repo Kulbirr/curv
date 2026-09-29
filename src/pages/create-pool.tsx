@@ -993,17 +993,19 @@ export default function CreatePool() {
         >
           {(
             [
-              { id: 'SOL', label: 'SOL', sub: 'Native', glyph: '◎' },
+              { id: 'SOL', label: 'SOL', sub: 'Native', icon: '/tokens/sol.png', glyph: '' },
               {
                 id: 'USDC',
                 label: 'USDC',
                 sub: isDevnet() ? 'Devnet stablecoin' : 'Stablecoin',
-                glyph: '$',
+                icon: '/tokens/usdc.png',
+                glyph: '',
               },
               {
                 id: 'custom',
                 label: 'Custom',
                 sub: 'Any SPL mint',
+                icon: '',
                 glyph: '⌁',
               },
             ] as const
@@ -1015,7 +1017,17 @@ export default function CreatePool() {
               aria-pressed={quoteSel === q.id}
               className={quoteSel === q.id ? 'selected' : ''}
             >
-              <span className="sc-type-icon">{q.glyph}</span>
+              {q.icon ? (
+                <img
+                  src={q.icon}
+                  alt=""
+                  width={25}
+                  height={25}
+                  className="sc-type-icon-img"
+                />
+              ) : (
+                <span className="sc-type-icon">{q.glyph}</span>
+              )}
               <strong>{q.label}</strong>
               <small>{q.sub}</small>
             </button>

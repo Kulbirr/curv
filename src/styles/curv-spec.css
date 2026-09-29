@@ -3657,6 +3657,13 @@ select {
   color: #38ee81;
   font-size: 14px;
 }
+.sc-type-icon-img {
+  width: 25px;
+  height: 25px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
 .sc-token-type-options strong {
   font-size: 11px;
 }
