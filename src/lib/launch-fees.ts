@@ -53,15 +53,28 @@ export const LAUNCH_FEE_CONFIG = {
   migratedPoolFeeBps: 120,
   /** The DAMM v2 pool also charges a dynamic fee on top. */
   migratedPoolDynamicFee: true,
-  /** Curv's share of the DAMM v2 LP tokens at graduation (percent).
-   *  7 here = ~0.084% of post-graduation volume at the 1.20% pool fee,
-   *  slightly above pump.fun's 0.05% protocol cut. */
-  partnerLiquidityPercent: 7,
-  /** Creator's share of the DAMM v2 LP tokens at graduation (percent).
-   *  Locked permanently like the partner share: the creator can never
-   *  pull this liquidity, but keeps earning the pool's trading fees on it
-   *  (another ~0.084% of post-graduation volume at the 1.20% pool fee). */
-  creatorLiquidityPercent: 7,
+  /** Curv's permanently locked share of the DAMM v2 LP tokens at graduation
+   *  (percent of total graduated liquidity).
+   *
+   *  Meteora treats the six liquidity buckets (partner claimable, partner
+   *  locked, creator claimable, creator locked, partner vesting, creator
+   *  vesting) as ADDITIVE shares of the graduated pool that must sum to
+   *  exactly 100, and requires at least 10% locked or vesting. A "locked 7%
+   *  each" split only accounts for 14%, so it is not a valid config. The
+   *  50/50 split here preserves the equal partner/creator parity of that
+   *  intent while satisfying the 100% rule, and keeps 100% of graduated
+   *  liquidity permanently locked: neither Curv nor the creator can ever
+   *  withdraw it, so a graduated pool cannot be rugged. Claimable (liquid)
+   *  buckets stay 0 for the same reason.
+   *
+   *  50 here = 50% of the graduated pool's trading fees, i.e. ~0.60% of
+   *  post-graduation volume at the 1.20% DAMM v2 pool fee. */
+  partnerLockedLiquidityPercent: 50,
+  /** Creator's permanently locked share of the DAMM v2 LP tokens at
+   *  graduation (percent of total graduated liquidity). Same 50% /
+   *  ~0.60%-of-volume economics as the partner share: the creator can never
+   *  pull this liquidity, but keeps earning the pool's trading fees on it. */
+  creatorLockedLiquidityPercent: 50,
 } as const;
 
 export interface FeeDisclosureInput {
@@ -87,8 +100,8 @@ export interface ResolvedEcon {
   creatorMigrationFeePercent: number;
   migratedPoolFeeBps: number;
   migratedPoolDynamicFee: boolean;
-  partnerLiquidityPercent: number;
-  creatorLiquidityPercent: number;
+  partnerLockedLiquidityPercent: number;
+  creatorLockedLiquidityPercent: number;
 }
 
 /** The defaults as a mutable effective-economics object. */

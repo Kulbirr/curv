@@ -264,10 +264,17 @@ export function buildCurveParams(
       },
     },
     liquidityDistribution: {
-      partnerLiquidityPercentage: econ.partnerLiquidityPercent,
-      partnerPermanentLockedLiquidityPercentage: 100,
-      creatorLiquidityPercentage: econ.creatorLiquidityPercent,
-      creatorPermanentLockedLiquidityPercentage: 100,
+      // Meteora reads these four as additive shares of the graduated pool's
+      // LP that must sum to exactly 100 (plus any vesting shares). The
+      // claimable buckets are withdrawable after migration, so they stay 0:
+      // 100% of graduated liquidity is permanently locked between Curv and
+      // the creator, and neither side can ever pull it.
+      partnerLiquidityPercentage: 0,
+      partnerPermanentLockedLiquidityPercentage:
+        econ.partnerLockedLiquidityPercent,
+      creatorLiquidityPercentage: 0,
+      creatorPermanentLockedLiquidityPercentage:
+        econ.creatorLockedLiquidityPercent,
     },
     lockedVesting: {
       totalLockedVestingAmount: 0,

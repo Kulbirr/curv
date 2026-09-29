@@ -177,6 +177,41 @@ describe('buildCurveParams', () => {
     expect(params.creatorTradingFeePercentage).toBe(31.51);
   });
 
+  it('emits a valid Meteora liquidity distribution (buckets sum to 100)', async () => {
+    // Regression: the old config passed partnerLiquidityPercentage=7 with
+    // partnerPermanentLockedLiquidityPercentage=100 (and the same for the
+    // creator), which sums to 214. Meteora reads these four buckets as
+    // additive shares of the graduated pool's LP that must total exactly
+    // 100, so PartnerService.createConfigAndPool rejected every launch with
+    // "Sum of LP percentages must equal 100".
+    const params = buildCurveParams(validSpec());
+    const total =
+      params.partnerLiquidityPercentage +
+      params.partnerPermanentLockedLiquidityPercentage +
+      params.creatorLiquidityPercentage +
+      params.creatorPermanentLockedLiquidityPercentage;
+    expect(total).toBe(100);
+  });
+
+  it('locks 100% of graduated liquidity with nothing claimable', async () => {
+    // Neither Curv nor the creator may hold withdrawable (claimable) LP:
+    // a claimable share is a rug vector on the graduated pool.
+    const params = buildCurveParams(validSpec());
+    expect(params.partnerLiquidityPercentage).toBe(0);
+    expect(params.creatorLiquidityPercentage).toBe(0);
+    expect(params.partnerPermanentLockedLiquidityPercentage).toBe(50);
+    expect(params.creatorPermanentLockedLiquidityPercentage).toBe(50);
+  });
+
+  it('keeps at least 10% of graduated LP permanently locked', async () => {
+    // Meteora's minimum locked-liquidity rule for new configs.
+    const params = buildCurveParams(validSpec());
+    const locked =
+      params.partnerPermanentLockedLiquidityPercentage +
+      params.creatorPermanentLockedLiquidityPercentage;
+    expect(locked).toBeGreaterThanOrEqual(10);
+  });
+
   it('throws the first validation error on an invalid spec', async () => {
     expect(() => buildCurveParams(validSpec({ name: '' }))).toThrow('Token name is required');
   });
@@ -201,8 +236,8 @@ describe('creator economics overrides', () => {
     expect(e.migrationFeePercent).toBe(8);
     expect(e.migratedPoolFeeBps).toBe(120);
     expect(e.migratedPoolDynamicFee).toBe(true);
-    expect(e.partnerLiquidityPercent).toBe(7);
-    expect(e.creatorLiquidityPercent).toBe(7);
+    expect(e.partnerLockedLiquidityPercent).toBe(50);
+    expect(e.creatorLockedLiquidityPercent).toBe(50);
   });
 
   it('resolveEcon merges overrides over the defaults', async () => {
