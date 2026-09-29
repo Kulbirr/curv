@@ -10,9 +10,9 @@ import { execute, query, transaction } from './index';
  *
  * Exactly-once claim under concurrency: claimVanityMint runs
  * SELECT ... FOR UPDATE SKIP LOCKED + UPDATE inside one transaction, so
- * concurrent claimants each lock a distinct ready keypair — two handouts
+ * concurrent claimants each lock a distinct ready keypair, two handouts
  * can never receive the same keypair. The secret is wiped (set to NULL)
- * in the same statement that marks the row consumed — a crash between
+ * in the same statement that marks the row consumed, a crash between
  * claim and handout cannot leak it twice.
  *
  * SQL stays in the portable SQLite/Postgres subset (BLOB -> BYTEA).
@@ -46,7 +46,7 @@ export async function storeVanityMint(
 /**
  * Atomically claim one ready keypair: oldest first, marked consumed and
  * its secret wiped in the same transaction. Returns null when the pool
- * is dry — callers must fall back to the client-side grind.
+ * is dry, callers must fall back to the client-side grind.
  *
  * Concurrency: SELECT ... FOR UPDATE SKIP LOCKED means concurrent
  * claimants each lock a distinct ready row instead of piling onto the

@@ -6,7 +6,7 @@
  * launchpad plus their off-chain metadata (name, symbol, image).
  *
  * Storage is now the database layer in ./db (SQLite today, Postgres
- * tomorrow) — the old JSON file (data/pools.json) is migrated into the DB
+ * tomorrow), the old JSON file (data/pools.json) is migrated into the DB
  * automatically on first open. The exported surface is unchanged.
  */
 

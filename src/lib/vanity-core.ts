@@ -14,7 +14,7 @@ const BASE58_ALPHABET_SIZE = 58;
 
 /**
  * Exact, case-sensitive suffix match on a base58 address.
- * "curv" must be the literal tail — "CURV", "Curv" or a mid-string
+ * "curv" must be the literal tail, "CURV", "Curv" or a mid-string
  * occurrence do not count.
  */
 export function matchesVanitySuffix(address: string, suffix: string): boolean {

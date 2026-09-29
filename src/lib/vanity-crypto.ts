@@ -7,7 +7,7 @@ import { createCipheriv, createDecipheriv, randomBytes } from 'crypto';
  * whose secrets are stored in the vanity_pool table. Those secrets are
  * encrypted with AES-256-GCM under a 32-byte key supplied as hex in the
  * VANITY_POOL_KEY environment variable. Everything fails closed when the
- * variable is unset or malformed — the grinder refuses to start and the
+ * variable is unset or malformed, the grinder refuses to start and the
  * handout endpoint returns 503.
  *
  * Blob layout: 12-byte IV || 32-byte auth tag || ciphertext (64 bytes for

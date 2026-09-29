@@ -90,7 +90,7 @@ function pct(bps: number): string {
 /**
  * Rows for the launch review page's fee-disclosure box. Every number
  * comes from LAUNCH_FEE_CONFIG (the same constants the on-chain config
- * is built from) or from the user's own fee-schedule inputs — nothing
+ * is built from) or from the user's own fee-schedule inputs, nothing
  * is invented here.
  */
 export function buildFeeDisclosureRows(input: FeeDisclosureInput): FeeDisclosureRow[] {
@@ -116,7 +116,7 @@ export function buildFeeDisclosureRows(input: FeeDisclosureInput): FeeDisclosure
     {
       label: 'Your share of trading fees',
       value: `${c.creatorTradingFeePercent}%`,
-      hint: `You earn ${c.creatorTradingFeePercent}% of every bonding-curve trade, accrued in the traded tokens. Claim it any time with your creator wallet — claiming is a small Solana transaction you sign.`,
+      hint: `You earn ${c.creatorTradingFeePercent}% of every bonding-curve trade, accrued in the traded tokens. Claim it any time with your creator wallet, claiming is a small Solana transaction you sign.`,
     },
     {
       label: 'Graduation',
@@ -126,7 +126,7 @@ export function buildFeeDisclosureRows(input: FeeDisclosureInput): FeeDisclosure
     {
       label: 'Migration fee',
       value: `${c.migrationFeePercent}% (you keep ${c.creatorMigrationFeePercent}%)`,
-      hint: `At graduation, ${c.migrationFeePercent}% of the migrating liquidity is taken as a fee — half of that fee goes to you as the creator.`,
+      hint: `At graduation, ${c.migrationFeePercent}% of the migrating liquidity is taken as a fee, half of that fee goes to you as the creator.`,
     },
     {
       label: 'After graduation',
@@ -138,7 +138,7 @@ export function buildFeeDisclosureRows(input: FeeDisclosureInput): FeeDisclosure
     {
       label: 'Network fees',
       value: 'Small',
-      hint: 'You also pay Solana network fees for the launch transaction itself — a few cents, varying with the accounts created.',
+      hint: 'You also pay Solana network fees for the launch transaction itself, a few cents, varying with the accounts created.',
     },
   ];
 }

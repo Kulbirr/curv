@@ -47,7 +47,7 @@ export function formatSignedChangePct(
 /**
  * Money display that prefers the USD-denominated field and falls back to the
  * quote-denominated value with its quote symbol (e.g. "87K SOL").
- * Returns "-" when neither is known — never invents a number.
+ * Returns "-" when neither is known, never invents a number.
  */
 export function formatMoneyValue(
   usdValue: number | null | undefined,

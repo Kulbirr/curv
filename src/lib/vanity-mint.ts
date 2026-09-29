@@ -13,9 +13,9 @@ export { VANITY_SUFFIX, estimateVanityMintAttempts, matchesVanitySuffix };
  *
  * Every token launched through the app gets a mint address ending in
  * VANITY_SUFFIX (like pump.fun's "...pump"). Nothing on-chain enforces
- * this — it is purely cosmetic branding. The grind runs client-side in the
+ * this, it is purely cosmetic branding. The grind runs client-side in the
  * user's browser; the keypair never leaves browser memory, is never sent
- * to any server, never logged, and never persisted — exactly the same
+ * to any server, never logged, and never persisted, exactly the same
  * handling as the ephemeral mint keypair the launch flow already used.
  *
  * Security invariants (covered by tests in vanity-mint.test.ts):
@@ -45,7 +45,7 @@ export class VanityGrindAbortedError extends Error {
 
 export interface GrindVanityMintOptions {
   suffix?: string;
-  /** Injected for tests — production always uses Keypair.generate(). */
+  /** Injected for tests, production always uses Keypair.generate(). */
   generate?: () => Keypair;
   onProgress?: (p: VanityProgress) => void;
   signal?: AbortSignal;
@@ -140,7 +140,7 @@ type WorkerCtor = new (url: URL) => Worker;
  * Progress is aggregated and throttled so the UI isn't spammed.
  *
  * Falls back to the single-threaded grind when Web Workers are unavailable
- * (SSR, tests, old browsers) or when a worker fails to start — the caller
+ * (SSR, tests, old browsers) or when a worker fails to start, the caller
  * can't tell the difference apart from speed.
  */
 export async function grindVanityMintParallel(
@@ -194,7 +194,7 @@ export async function grindVanityMintParallel(
       if (settled) return;
       settled = true;
       teardown();
-      // Worker path broken (bad bundle, CSP, …) — single-threaded fallback.
+      // Worker path broken (bad bundle, CSP, …), single-threaded fallback.
       grindVanityMint({ suffix, onProgress, signal }).then(resolve, reject);
     };
 

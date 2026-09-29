@@ -86,7 +86,7 @@ async function attemptFetch(
  * Tries the primary RPC (Helius when configured); on network failure,
  * timeout, HTTP 429 or 5xx it retries once against the public fallback
  * endpoint. Solana RPC errors ride inside HTTP 200 bodies, so only
- * transport-level failures trigger the fallback — a valid RPC error
+ * transport-level failures trigger the fallback, a valid RPC error
  * response is returned as-is.
  * A dead RPC endpoint must fail fast; a hung request that only rejects at
  * the application level would leak the socket and degrade every later call.

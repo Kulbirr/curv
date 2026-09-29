@@ -6,7 +6,7 @@ import { execute, query } from './index';
  * Wired into POST /api/pools: the signature is claimed (atomically)
  * after the wallet signature verifies, before the pool registers. The
  * PRIMARY KEY + ON CONFLICT DO NOTHING makes the check-and-set a single
- * atomic statement, so concurrent replays — even across API instances —
+ * atomic statement, so concurrent replays, even across API instances ,
  * cannot both succeed.
  *
  * SQL stays in the portable SQLite/Postgres subset (no INSERT OR IGNORE).
@@ -19,7 +19,7 @@ import { execute, query } from './index';
 
 /**
  * Atomically claim a signature. Returns true when this is the first use
- * (claim recorded), false when the signature was already seen — i.e. a
+ * (claim recorded), false when the signature was already seen, i.e. a
  * replay. Safe under concurrency: the PRIMARY KEY + ON CONFLICT makes the
  * check-and-set a single atomic statement.
  */

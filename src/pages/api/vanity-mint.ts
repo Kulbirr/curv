@@ -24,7 +24,7 @@ import { decryptSecret } from '@/lib/vanity-crypto';
  * after its one use. Secrets are encrypted at rest (AES-256-GCM) and
  * wiped from the pool row at handout.
  *
- * Rate limit: 5 handouts/hour per IP — a pre-ground keypair costs ~11.3M
+ * Rate limit: 5 handouts/hour per IP, a pre-ground keypair costs ~11.3M
  * grind attempts, so the pool must not be drainable by one actor.
  * Empty pool -> 503 with an honest message; the client falls back to its
  * local background grind.
@@ -61,7 +61,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
   if (!claim) {
     return res.status(503).json({
-      error: 'Vanity mint pool is empty — grinding continues, use the local grind fallback',
+      error: 'Vanity mint pool is empty, grinding continues, use the local grind fallback',
     });
   }
 

@@ -34,7 +34,7 @@ function StackedBar({ buyShare }: { buyShare: number }) {
 /**
  * Compact 24h buy/sell stats with green/red stacked comparison bars.
  * Direction is inferred from indexed quote-reserve movement, not
- * per-trade data — always labeled an estimate, and hidden entirely when
+ * per-trade data, always labeled an estimate, and hidden entirely when
  * the history is too thin to be honest about (stats === null).
  */
 export default function TradeStats({ stats, quoteSymbol }: Props) {

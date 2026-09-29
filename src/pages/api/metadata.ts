@@ -7,7 +7,7 @@ import { randomUUID } from 'crypto';
  *
  * GET  → { configured: boolean } so the launch UI can decide whether to
  *        offer hosted metadata or ask for an external URI.
- * POST → { uri } — uploads the metadata JSON (and optional image) to R2.
+ * POST → { uri }, uploads the metadata JSON (and optional image) to R2.
  *
  * R2 credentials stay server-side. If R2 is not configured the route
  * returns 503 and the launch flow falls back to a user-supplied URI.

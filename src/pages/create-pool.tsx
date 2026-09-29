@@ -78,7 +78,7 @@ const STATUS_LABEL: Record<
 
 /** Compact USD formatting for price hints in the launch summary. */
 function formatUsd(n: number): string {
-  if (!Number.isFinite(n) || n < 0) return '—'
+  if (!Number.isFinite(n) || n < 0) return ','
   if (n >= 1000)
     return `$${n.toLocaleString('en-US', { maximumFractionDigits: 0 })}`
   if (n >= 0.01) return `$${n.toFixed(2)}`
@@ -221,7 +221,7 @@ export default function CreatePool() {
   // ---- Vanity mint (instant pool handout, local grind fallback) ----
   // At wizard start we first try POST /api/vanity-mint for a pre-ground
   // "...curv" keypair (the grinder keeps the pool topped up, so this is
-  // instant). On any failure — 503 pool dry, 429, network — we fall back
+  // instant). On any failure, 503 pool dry, 429, network, we fall back
   // to the local background grind that starts when the wizard opens and
   // usually finishes while the user designs the curve.
   const [vanityProgress, setVanityProgress] = useState<VanityProgress | null>(
@@ -251,7 +251,7 @@ export default function CreatePool() {
     vanityPromiseRef.current = p
     p.then(
       (res) => {
-        // Stale result from a superseded grind run — ignore it.
+        // Stale result from a superseded grind run, ignore it.
         if (vanityPromiseRef.current !== p || vanityRunRef.current !== run)
           return
         vanityKeypairRef.current = res.keypair
@@ -331,7 +331,7 @@ export default function CreatePool() {
 
   // Description as it will be stored: the stock reference ticker is recorded
   // as plain text when the Tokenized Stock type is picked. It is a label on
-  // the token page — it does not move the curve.
+  // the token page, it does not move the curve.
   const fullDescription = useMemo(() => {
     const base = description.trim()
     const ref =
@@ -560,7 +560,7 @@ export default function CreatePool() {
 
   // Fee disclosure: every number comes from the effective economics (the
   // same constants the on-chain config is built from) or the user's own
-  // fee-schedule inputs — nothing invented.
+  // fee-schedule inputs, nothing invented.
   const feeRows = useMemo(
     () =>
       buildFeeDisclosureRows({
@@ -751,7 +751,7 @@ export default function CreatePool() {
       await new Promise((r) => setTimeout(r, 2000))
     }
     throw new Error(
-      'Transaction was sent but confirmation timed out — check Solscan before retrying.'
+      'Transaction was sent but confirmation timed out, check Solscan before retrying.'
     )
   }
 
@@ -839,7 +839,7 @@ export default function CreatePool() {
         baseMintKeypair,
       })
       const poolAddr = built.poolAddress.toBase58()
-      // The mint keypair is now committed to this launch — grind a fresh
+      // The mint keypair is now committed to this launch, grind a fresh
       // one in the background in case the user launches again.
       startVanityGrind()
 
@@ -852,7 +852,7 @@ export default function CreatePool() {
         signed = await signTransaction(built.transaction)
       } catch {
         throw new Error(
-          'Wallet signing was rejected — no transaction was sent.'
+          'Wallet signing was rejected, no transaction was sent.'
         )
       }
 
@@ -900,7 +900,7 @@ export default function CreatePool() {
         const j = await regRes.json().catch(() => ({}))
         throw new Error(
           `Pool was created on-chain but registration failed: ${j.error || regRes.status}. ` +
-            `Your pool is live at ${poolAddr} — save this address.`
+            `Your pool is live at ${poolAddr}, save this address.`
         )
       }
 
@@ -1004,14 +1004,6 @@ export default function CreatePool() {
               onSelect={handleAssetSelect}
               selectedMint={customMint}
             />
-            {pickedAsset?.tokenProgram === 'Token-2022' && (
-              <p className="mb-2 rounded border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-200/90">
-                {pickedAsset.symbol} is a Token-2022 mint. Curv has not verified
-                DBC support for Token-2022 quote mints yet, so the launch
-                transaction may fail. Prove it with a devnet mock before
-                mainnet.
-              </p>
-            )}
             <button
               type="button"
               onClick={() => setManualQuote((v) => !v)}
@@ -1072,7 +1064,7 @@ export default function CreatePool() {
   return (
     <Page>
       <Head>
-        <title>Launch a Token — Curv</title>
+        <title>Launch a Token, Curv</title>
         <meta
           name="description"
           content="Design your own bonding curve and launch a token on Meteora DBC."
@@ -1089,7 +1081,7 @@ export default function CreatePool() {
           </p>
         </section>
 
-        {/* Network banner — never hardcode mainnet */}
+        {/* Network banner, never hardcode mainnet */}
         <div
           className={cn(
             'rounded-lg border p-3 text-sm',
@@ -1107,7 +1099,7 @@ export default function CreatePool() {
           ) : (
             <>
               You are launching on <strong>MAINNET</strong>. This is real money
-              — review every parameter before signing.
+             , review every parameter before signing.
             </>
           )}
         </div>
@@ -1319,7 +1311,7 @@ export default function CreatePool() {
                   </li>
                   <li>
                     Trading fee <strong>5%</strong> easing to{' '}
-                    <strong>1%</strong> as volume grows
+                    <strong>1%</strong> over 60 slots
                   </li>
                   <li>
                     <strong>Automatic graduation</strong> to DAMM v2 when the
@@ -1408,7 +1400,7 @@ export default function CreatePool() {
                       { label: 'Points', value: String(prices.length) },
                       {
                         label: 'Start',
-                        value: `${Number.isFinite(priceNums[0]) ? fmtNum(priceNums[0]) : '—'} ${quoteSymbol}`,
+                        value: `${Number.isFinite(priceNums[0]) ? fmtNum(priceNums[0]) : ','} ${quoteSymbol}`,
                       },
                       {
                         label: 'End',
@@ -1416,7 +1408,7 @@ export default function CreatePool() {
                           priceNums.length &&
                           Number.isFinite(priceNums[priceNums.length - 1])
                             ? fmtNum(priceNums[priceNums.length - 1])
-                            : '—'
+                            : ','
                         } ${quoteSymbol}`,
                       },
                       {
@@ -1424,7 +1416,7 @@ export default function CreatePool() {
                         value:
                           curveMultiple !== null
                             ? `${curveMultiple.toFixed(2)}×`
-                            : '—',
+                            : ',',
                       },
                     ].map((s) => (
                       <div
@@ -1549,7 +1541,7 @@ export default function CreatePool() {
                   </div>
                   <Field
                     label="Total supply (tokens)"
-                    hint="1,000 – 1,000,000,000,000,000"
+                    hint="1,000 to 1,000,000,000,000,000"
                   >
                     <input
                       inputMode="numeric"
@@ -1800,9 +1792,9 @@ export default function CreatePool() {
                     )}
                     <div>
                       <p className="font-semibold text-neutral-100">
-                        {name || '—'}
+                        {name || ','}
                       </p>
-                      <p className="text-neutral-400">${symbol || '—'}</p>
+                      <p className="text-neutral-400">${symbol || ','}</p>
                     </div>
                   </div>
                   {fullDescription && (
@@ -1823,12 +1815,12 @@ export default function CreatePool() {
                     {presetName} · {prices.length} points
                   </p>
                   <p className="mt-1 text-neutral-400">
-                    {Number.isFinite(priceNums[0]) ? fmtNum(priceNums[0]) : '—'}{' '}
+                    {Number.isFinite(priceNums[0]) ? fmtNum(priceNums[0]) : ','}{' '}
                     →{' '}
                     {priceNums.length &&
                     Number.isFinite(priceNums[priceNums.length - 1])
                       ? fmtNum(priceNums[priceNums.length - 1])
-                      : '—'}{' '}
+                      : ','}{' '}
                     {quoteSymbol}
                     {curveMultiple !== null && (
                       <span className="ml-1 font-semibold text-primary">
@@ -1851,10 +1843,10 @@ export default function CreatePool() {
                   <p className="mt-1 text-neutral-400">
                     Fees: {((parseInt(startFeeBps, 10) || 0) / 100).toFixed(2)}%
                     → {((parseInt(endFeeBps, 10) || 0) / 100).toFixed(2)}% over{' '}
-                    {feePeriods || '—'} periods{dynamicFee ? ' + dynamic' : ''}
+                    {feePeriods || ','} periods{dynamicFee ? ' + dynamic' : ''}
                   </p>
                   <p className="mt-1 text-neutral-400">
-                    Migration fee: {migrationFeePct || '—'}% · DAMM v2:{' '}
+                    Migration fee: {migrationFeePct || ','}% · DAMM v2:{' '}
                     {((parseInt(dammFeeBps, 10) || 0) / 100).toFixed(2)}%
                     {dammDynamicFee ? ' + dynamic' : ''}
                   </p>
@@ -1969,7 +1961,7 @@ export default function CreatePool() {
                         onClick={() => vanityCtrlRef.current?.abort()}
                         className="mt-2 underline hover:text-neutral-200"
                       >
-                        Skip — launch with a random address instead
+                        Skip, launch with a random address instead
                       </button>
                     </div>
                   )}
@@ -2060,7 +2052,7 @@ export default function CreatePool() {
                   </div>
                   <span className="sc-preview-stock-badge">
                     {tokenType === 'Tokenized Stock'
-                      ? `Stocks · ${underlying.trim() || '—'}`
+                      ? `Stocks · ${underlying.trim() || ','}`
                       : 'Memecoin'}
                   </span>
                 </div>
@@ -2069,7 +2061,7 @@ export default function CreatePool() {
                     Mcap<strong>$0</strong>
                   </span>
                   <span>
-                    24h<strong>—</strong>
+                    24h<strong>,</strong>
                   </span>
                 </div>
                 <div className="sc-progress">
@@ -2141,8 +2133,8 @@ export default function CreatePool() {
               <p className="mt-2 text-xs leading-relaxed text-neutral-500">
                 Your coin&rsquo;s address ends in &ldquo;{VANITY_SUFFIX}&rdquo;
                 {vanitySource === 'pool'
-                  ? ' — claimed instantly from the pre-ground pool.'
-                  : ' — ground locally, never leaves your browser.'}
+                  ? ', claimed instantly from the pre-ground pool.'
+                  : ', ground locally, never leaves your browser.'}
               </p>
             </section>
 

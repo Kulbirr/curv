@@ -81,7 +81,7 @@ export default function PoolHeader({ state, points, volume24h }: Props) {
         ? '#f05f67'
         : '#737d76';
   const changeArrow = !changeKnown ? '' : changeValue > 0 ? '▲ ' : changeValue < 0 ? '▼ ' : '';
-  const changeText = changeKnown ? `${changeArrow}${Math.abs(changeValue).toFixed(1)}%` : '—';
+  const changeText = changeKnown ? `${changeArrow}${Math.abs(changeValue).toFixed(1)}%` : '--';
 
   const graduation = graduationDisplay(state.quoteReserve, state.migrationQuoteThreshold);
 
@@ -172,7 +172,7 @@ export default function PoolHeader({ state, points, volume24h }: Props) {
         </div>
         <div>
           <span>Holders</span>
-          <strong>—</strong>
+          <strong>--</strong>
         </div>
       </section>
     </>

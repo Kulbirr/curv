@@ -81,7 +81,7 @@ export default function PresetsPage() {
   return (
     <Page>
       <Head>
-        <title>Curve Presets — Curv</title>
+        <title>Curve Presets, Curv</title>
       </Head>
       <main className="sc-presets-page">
         <section className="sc-presets-heading">

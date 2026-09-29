@@ -1,10 +1,10 @@
 /**
- * StockCurve pool-state indexer — the single process that reads the chain.
+ * StockCurve pool-state indexer, the single process that reads the chain.
  *
  * Every INDEXER_POLL_MS (default 10s) it iterates all registered pools and
  * calls fetchPoolLiveState ONCE per pool, then persists:
  *   - the full sample into pool_states (the read model all user-facing
- *     APIs serve from — zero live RPC per user request), and
+ *     APIs serve from, zero live RPC per user request), and
  *   - a price/reserve tick into ticks (chart history + estimates).
  *
  * A failed sample never overwrites the last good one; the API keeps
@@ -21,7 +21,7 @@
  * is portable). Scale by sharding pools across indexer replicas; the
  * ON CONFLICT upserts make overlapping coverage idempotent.
  *
- * Solana data access is REST polling only — never WebSocket subscriptions.
+ * Solana data access is REST polling only, never WebSocket subscriptions.
  */
 
 import { ensureSchema } from './lib/db';

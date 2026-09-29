@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
-import { isDevnet } from '@/lib/solana'
 import { searchQuoteAssets, type QuoteAsset } from '@/lib/quote-directory'
 
 /**
- * Searchable verified quote-asset picker for the launch form.
+ * Searchable quote-asset picker for the launch form.
  *
  * Lists mainnet mints from the xStocks issuer registry enriched with
  * Jupiter prices. Selecting an asset prefills the custom mint, decimals
@@ -27,6 +26,8 @@ interface DirectoryResponse {
 }
 
 function fmtUsd(n: number): string {
+  if (n >= 1_000_000)
+    return `$${(n / 1_000_000).toFixed(2)}M`
   if (n >= 1000)
     return `$${n.toLocaleString('en-US', { maximumFractionDigits: 0 })}`
   if (n >= 1) return `$${n.toFixed(2)}`
@@ -39,7 +40,7 @@ function AssetLogo({ asset }: { asset: QuoteAsset }) {
     return (
       <span
         aria-hidden="true"
-        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-neutral-800 text-sm text-neutral-400"
+        className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-neutral-800 text-lg font-semibold text-neutral-400"
       >
         {asset.symbol.slice(0, 1)}
       </span>
@@ -51,8 +52,24 @@ function AssetLogo({ asset }: { asset: QuoteAsset }) {
       alt=""
       loading="lazy"
       onError={() => setFailed(true)}
-      className="h-8 w-8 shrink-0 rounded-full bg-neutral-800"
+      className="h-12 w-12 shrink-0 rounded-2xl bg-neutral-800 object-cover"
     />
+  )
+}
+
+function SkeletonRow() {
+  return (
+    <div className="flex animate-pulse items-center gap-4 px-3 py-3">
+      <div className="h-12 w-12 shrink-0 rounded-2xl bg-neutral-800/70" />
+      <div className="min-w-0 flex-1 space-y-2">
+        <div className="h-4 w-2/5 rounded bg-neutral-800/70" />
+        <div className="h-3 w-1/4 rounded bg-neutral-800/50" />
+      </div>
+      <div className="shrink-0 space-y-2">
+        <div className="h-4 w-20 rounded bg-neutral-800/70" />
+        <div className="ml-auto h-3 w-16 rounded bg-neutral-800/50" />
+      </div>
+    </div>
   )
 }
 
@@ -64,7 +81,6 @@ export function QuoteAssetPicker({
   selectedMint: string
 }) {
   const [assets, setAssets] = useState<QuoteAsset[]>([])
-  const [source, setSource] = useState<'live' | 'fallback' | null>(null)
   const [failed, setFailed] = useState(false)
   const [query, setQuery] = useState('')
 
@@ -77,7 +93,6 @@ export function QuoteAssetPicker({
         const json = (await res.json()) as DirectoryResponse
         if (cancelled) return
         setAssets(Array.isArray(json.assets) ? json.assets : [])
-        setSource(json.source === 'fallback' ? 'fallback' : 'live')
       } catch {
         if (!cancelled) setFailed(true)
       }
@@ -87,51 +102,47 @@ export function QuoteAssetPicker({
     }
   }, [])
 
-  const results = useMemo(
-    () => searchQuoteAssets(assets, query),
-    [assets, query]
-  )
-  const devnet = isDevnet()
+  const results = useMemo(() => searchQuoteAssets(assets, query), [assets, query])
 
   return (
-    <div className="mb-4 rounded-lg border border-neutral-800 bg-neutral-950/60 p-3">
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <p className="text-sm font-medium text-neutral-200">Verified assets</p>
-        {source === 'fallback' && (
-          <span className="text-xs text-amber-300/80">offline snapshot</span>
-        )}
+    <div className="mb-5">
+      <div className="relative mb-3">
+        <svg
+          aria-hidden="true"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-neutral-500"
+        >
+          <circle cx="11" cy="11" r="7" />
+          <path d="m20 20-3.5-3.5" />
+        </svg>
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search tokens"
+          aria-label="Search quote assets"
+          className="h-12 w-full rounded-2xl border border-neutral-800 bg-neutral-900/70 pl-12 pr-4 text-[15px] text-neutral-100 placeholder:text-neutral-600 focus:border-neutral-600 focus:outline-none"
+        />
       </div>
-      {devnet && (
-        <p className="mb-2 rounded border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-200/90">
-          These mints live on mainnet. Curv is on devnet, so pick one to prefill
-          the form, then swap in your devnet test mint — or enter a mint
-          manually below.
-        </p>
-      )}
-      <input
-        type="text"
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        placeholder="Search symbol, name or mint…"
-        aria-label="Search verified quote assets"
-        className="mb-2 w-full rounded-md border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-600 focus:border-neutral-600 focus:outline-none"
-      />
-      <div
-        className="max-h-64 overflow-y-auto"
-        role="listbox"
-        aria-label="Quote assets"
-      >
+      <div role="listbox" aria-label="Quote assets">
         {failed ? (
-          <p className="px-1 py-3 text-sm text-neutral-500">
+          <p className="px-3 py-6 text-center text-sm text-neutral-500">
             Directory unreachable. Enter the mint manually below.
           </p>
         ) : assets.length === 0 ? (
-          <p className="px-1 py-3 text-sm text-neutral-500">
-            Loading verified assets…
-          </p>
+          <>
+            <SkeletonRow />
+            <SkeletonRow />
+            <SkeletonRow />
+            <SkeletonRow />
+          </>
         ) : results.length === 0 ? (
-          <p className="px-1 py-3 text-sm text-neutral-500">
-            No match. Enter the mint manually below.
+          <p className="px-3 py-6 text-center text-sm text-neutral-500">
+            No assets found. Enter the mint manually below.
           </p>
         ) : (
           results.map((a) => {
@@ -152,44 +163,43 @@ export function QuoteAssetPicker({
                     tokenProgram: a.tokenProgram,
                   })
                 }
-                className={`flex w-full items-center gap-3 rounded-md px-2 py-2 text-left transition-colors hover:bg-neutral-900 ${
-                  selected
-                    ? 'bg-neutral-900 ring-1 ring-inset ring-emerald-500/50'
-                    : ''
+                className={`flex w-full items-center gap-4 rounded-2xl px-3 py-3 text-left transition-colors hover:bg-white/[0.04] ${
+                  selected ? 'bg-white/[0.05]' : ''
                 }`}
               >
                 <AssetLogo asset={a} />
                 <span className="min-w-0 flex-1">
-                  <span className="flex items-center gap-2">
-                    <strong className="text-sm text-neutral-100">
-                      {a.symbol}
-                    </strong>
-                    <span className="rounded bg-neutral-800 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-neutral-400">
-                      mainnet
-                    </span>
-                    {a.source === 'xstocks' && (
-                      <span className="rounded bg-sky-500/15 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-sky-300">
-                        xStock
-                      </span>
-                    )}
-                    {a.tokenProgram === 'Token-2022' && (
-                      <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-amber-300">
-                        Token-2022
-                      </span>
-                    )}
-                  </span>
-                  <span className="block truncate text-xs text-neutral-500">
+                  <span className="block truncate text-[15px] font-semibold text-white">
                     {a.name}
                   </span>
-                </span>
-                <span className="shrink-0 text-right">
-                  <span className="block text-sm text-neutral-200">
-                    {a.usdPrice != null ? fmtUsd(a.usdPrice) : '—'}
+                  <span className="block text-[13px] text-neutral-500">
+                    {a.symbol}
                   </span>
-                  {a.liquidityUsd != null && a.liquidityUsd > 0 && (
-                    <span className="block text-[11px] text-neutral-500">
-                      liq {fmtUsd(a.liquidityUsd)}
+                </span>
+                <span className="flex shrink-0 items-center gap-2">
+                  <span className="text-right">
+                    <span className="block text-[15px] font-semibold text-white">
+                      {a.usdPrice != null ? fmtUsd(a.usdPrice) : ''}
                     </span>
+                    {a.liquidityUsd != null && a.liquidityUsd > 0 && (
+                      <span className="block text-[13px] text-neutral-500">
+                        Liquidity · {fmtUsd(a.liquidityUsd)}
+                      </span>
+                    )}
+                  </span>
+                  {selected && (
+                    <svg
+                      aria-hidden="true"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className="h-5 w-5 text-emerald-400"
+                    >
+                      <path d="M20 6 9 17l-5-5" />
+                    </svg>
                   )}
                 </span>
               </button>
@@ -197,8 +207,8 @@ export function QuoteAssetPicker({
           })
         )}
       </div>
-      <p className="mt-2 text-[11px] text-neutral-600">
-        Token data: xStocks by Backed · Prices powered by Jupiter
+      <p className="mt-3 text-center text-[11px] text-neutral-600">
+        Prices powered by Jupiter
       </p>
     </div>
   )

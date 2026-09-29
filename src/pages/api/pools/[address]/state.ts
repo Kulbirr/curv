@@ -12,7 +12,7 @@ export const config = {
 };
 
 /**
- * GET /api/pools/[address]/state — indexed on-chain state for one pool.
+ * GET /api/pools/[address]/state, indexed on-chain state for one pool.
  *
  * Served from the background indexer's persisted samples: zero live
  * Solana RPC calls per request. State older than STALE_AFTER_MS is

@@ -14,7 +14,7 @@ const STARTED_AT = Date.now();
 
 /**
  * Public liveness probe for uptime monitoring (UptimeRobot etc.).
- * Cheap by design: one indexed COUNT, one getSlot. No auth — it exposes
+ * Cheap by design: one indexed COUNT, one getSlot. No auth, it exposes
  * only aggregate counts and redacted endpoint hosts, never keys.
  */
 export default async function handler(

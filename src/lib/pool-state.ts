@@ -38,7 +38,7 @@ export interface PoolLiveState {
   migrationQuoteThreshold: number | null;
   /**
    * Accrued creator trading fees in RAW integer units (decimal string, never
-   * floats — u64 values can exceed float precision). Null when unreadable.
+   * floats, u64 values can exceed float precision). Null when unreadable.
    * Base fee accrues in base tokens, quote fee in quote tokens.
    */
   creatorBaseFeeRaw: string | null;
@@ -86,7 +86,7 @@ function bnToRawString(v: unknown): string | null {
   if (v === null || v === undefined) return null;
   try {
     // BN instances stringify exactly; plain numbers pass through.
-    // Raw strings only — never floats, so u64 precision is preserved.
+    // Raw strings only, never floats, so u64 precision is preserved.
     const s = typeof v === 'object' ? (v as { toString(radix?: number): string }).toString(10) : String(v);
     return /^\d+$/.test(s) ? s : null;
   } catch {

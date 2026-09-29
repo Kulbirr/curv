@@ -6,7 +6,7 @@ import { setVerification } from './db/verifications';
  * Field-by-field on-chain verification of pool registrations.
  *
  * The old check only confirmed that the submitted address deserializes as
- * a DBC pool — an attacker could register someone else's pool (or a pool
+ * a DBC pool, an attacker could register someone else's pool (or a pool
  * whose config/mints don't match the submission) and it would pass.
  *
  * Now, when the RPC is reachable, every submitted field is compared
@@ -18,7 +18,7 @@ import { setVerification } from './db/verifications';
  *
  * Any mismatch is positive evidence of a bad submission → REJECTED, the
  * pool is not registered. An unreachable RPC (or a pool/config account
- * that simply isn't visible yet — real RPC lag right after launch) is
+ * that simply isn't visible yet, real RPC lag right after launch) is
  * inconclusive, never a pass: the pool registers with the honest
  * `unverified` label. Absence of evidence is not evidence of fraud.
  *
@@ -95,7 +95,7 @@ export async function verifyPoolRegistration(
   if (mismatches.length > 0) {
     return {
       status: 'rejected',
-      detail: `On-chain mismatch in: ${mismatches.join(', ')} — submission does not describe this pool`,
+      detail: `On-chain mismatch in: ${mismatches.join(', ')}, submission does not describe this pool`,
     };
   }
   return {
@@ -107,7 +107,7 @@ export async function verifyPoolRegistration(
 /**
  * Run verification and persist the outcome in pool_verifications.
  * Rejected pools are recorded as `unverified` with the rejection reason
- * in the detail — they are never registered, and the record explains why.
+ * in the detail, they are never registered, and the record explains why.
  */
 export async function verifyAndRecord(input: PoolRegistrationFields): Promise<VerificationOutcome> {
   const outcome = await verifyPoolRegistration(input);

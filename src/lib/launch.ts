@@ -257,7 +257,7 @@ export function buildCurveParams(
 /**
  * Graduation threshold for a spec, in quote UI units (e.g. SOL): the quote
  * reserve level at which the pool migrates to DAMM v2. Computed with the
- * real DBC SDK math from the curve and effective economics — never an
+ * real DBC SDK math from the curve and effective economics, never an
  * estimate. Returns null when the spec is invalid.
  */
 export function graduationThresholdQuote(spec: LaunchSpec): number | null {

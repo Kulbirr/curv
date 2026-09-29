@@ -20,7 +20,7 @@ export function usePoolState(poolAddress: string | null) {
     enabled: !!poolAddress,
     refetchInterval: 2000,
     refetchIntervalInBackground: false,
-    // A 404 means "not registered" — retrying won't help.
+    // A 404 means "not registered", retrying won't help.
     retry: (count, err) => (err as Error).message !== 'Pool not registered' && count < 2,
     staleTime: 1500,
   });

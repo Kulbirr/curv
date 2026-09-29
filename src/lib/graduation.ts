@@ -2,7 +2,7 @@
  * Graduation progress math for the pool detail page.
  *
  * The bar shows how far the pool's quote reserve has climbed toward the
- * configured migration threshold — both real values from the indexed
+ * configured migration threshold, both real values from the indexed
  * DBC state. Never fabricate either input; nulls stay null.
  */
 

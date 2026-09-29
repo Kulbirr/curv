@@ -21,7 +21,7 @@ function agoText(sampledAt: number | null, now: number): string {
 }
 
 /**
- * Creator earnings panel — rendered ONLY when the connected wallet is the
+ * Creator earnings panel, rendered ONLY when the connected wallet is the
  * pool's creator. Everyone else sees nothing (not an error).
  *
  * Shows the 0.3% trading fees accrued on-chain in base + quote tokens and

@@ -39,7 +39,7 @@ function GraduationCard({ state }: { state: PoolStateResponse }) {
       <div className="sc-pool-section-head">
         <h2>Bonding curve progress</h2>
         <strong className="sc-number sc-green-text">
-          {pct === null ? '—' : `${pct.toFixed(1)}%`}
+          {pct === null ? ',' : `${pct.toFixed(1)}%`}
         </strong>
       </div>
       <div className="sc-progress sc-pool-progress">
@@ -50,13 +50,13 @@ function GraduationCard({ state }: { state: PoolStateResponse }) {
           <b>
             {typeof state.quoteReserve === 'number'
               ? formatMoneyValue(null, state.quoteReserve, state.quoteSymbol)
-              : '—'}
+              : ','}
           </b>{' '}
           /{' '}
           <b>
             {typeof state.migrationQuoteThreshold === 'number'
               ? formatMoneyValue(null, state.migrationQuoteThreshold, state.quoteSymbol)
-              : '—'}
+              : ','}
           </b>{' '}
           to graduation
         </span>
@@ -84,7 +84,7 @@ function CurveInfoCard({ state }: { state: PoolStateResponse }) {
         <strong>
           {typeof state.migrationQuoteThreshold === 'number'
             ? formatMoneyValue(null, state.migrationQuoteThreshold, state.quoteSymbol)
-            : '—'}
+            : ','}
         </strong>
       </div>
       <div>
@@ -169,7 +169,7 @@ function PositionCard({
           typeof state.price === 'number' ? amountNum * state.price : null,
           state.quoteSymbol
         )
-      : '—';
+      : ',';
 
   return (
     <section className="sc-position-card" aria-label="Your position">
@@ -190,7 +190,7 @@ function PositionCard({
             <strong>
               {amountText} ${state.baseSymbol}
             </strong>
-            <b style={{ color: '#737d76' }}>—</b>
+            <b style={{ color: '#737d76' }}>,</b>
           </div>
           <div className="sc-position-value">{valueText} value</div>
         </>

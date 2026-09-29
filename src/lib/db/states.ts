@@ -1,7 +1,7 @@
 import { query } from './index';
 
 /**
- * Latest sampled on-chain state per pool — the read model every user-facing
+ * Latest sampled on-chain state per pool, the read model every user-facing
  * API serves from. Written ONLY by the background indexer
  * (src/indexer.ts), which calls fetchPoolLiveState once per pool per
  * interval. API routes never write here and never read the chain.

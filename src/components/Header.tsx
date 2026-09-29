@@ -29,12 +29,14 @@ const NAV_LINKS = [
   { label: 'Launch', href: '/create-pool' },
   { label: 'Presets', href: '/presets' },
   { label: 'Portfolio', href: '/portfolio' },
+  { label: 'FAQs', href: '/faqs' },
 ];
 
 function activeForPath(pathname: string): string {
   if (pathname === '/create-pool') return 'Launch';
   if (pathname === '/presets') return 'Presets';
   if (pathname === '/portfolio') return 'Portfolio';
+  if (pathname === '/faqs') return 'FAQs';
   return 'Discover';
 }
 

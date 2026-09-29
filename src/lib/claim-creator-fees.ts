@@ -12,7 +12,7 @@ import { rawToUi } from './swap-math';
  * the claim transaction the creator signs with their own wallet.
  *
  * Amounts stay in raw integer (BN/decimal-string) space until display
- * formatting — never floats.
+ * formatting, never floats.
  */
 
 const U64_MAX = new BN('18446744073709551615');
@@ -82,7 +82,7 @@ export async function claimCreatorFeesFlow(args: {
 /**
  * Visibility rule for the Creator earnings panel. Pure and tested:
  * only the pool's creator, with a connected wallet, sees it. Everyone
- * else gets null — not an error state.
+ * else gets null, not an error state.
  */
 export function shouldShowCreatorEarnings(args: {
   connected: boolean;
@@ -145,7 +145,7 @@ export interface AggregatedEarning {
 
 /**
  * Sum accrued creator fees across pools, grouped by token mint.
- * Pure BN addition on raw strings — no float math.
+ * Pure BN addition on raw strings, no float math.
  */
 export function aggregateCreatorEarnings(entries: EarningsEntry[]): AggregatedEarning[] {
   const byMint = new Map<string, AggregatedEarning & { _missingFiat: boolean }>();

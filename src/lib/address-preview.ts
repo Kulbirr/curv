@@ -1,12 +1,12 @@
 /**
- * "Paste an address to preview" — header search helper.
+ * "Paste an address to preview", header search helper.
  *
  * A pasted base58 address is checked against our own pool registry via
  * the indexed state endpoint (zero live RPC per visitor). Outcomes:
  * - invalid: not a plausible Solana address at all.
- * - pool: a tracked Curv pool — jump straight to its page.
- * - unknown: valid address, but not a Curv pool — said honestly.
- * - error: the check itself failed (network/API) — never mislabeled
+ * - pool: a tracked Curv pool, jump straight to its page.
+ * - unknown: valid address, but not a Curv pool, said honestly.
+ * - error: the check itself failed (network/API), never mislabeled
  *   as "unknown".
  */
 

@@ -388,7 +388,7 @@ export default function TradePanel({ poolAddress, state }: Props) {
           <div className="sc-trade-input-heading">
             <label htmlFor="pool-amount">Amount</label>
             <span>
-              {balance ? `${rawToUi(balance.raw, balance.decimals)} ${inputSymbol}` : '—'}
+              {balance ? `${rawToUi(balance.raw, balance.decimals)} ${inputSymbol}` : '--'}
               {balance && balance.raw.gt(new BN(0)) && (
                 <button
                   type="button"
@@ -456,7 +456,7 @@ export default function TradePanel({ poolAddress, state }: Props) {
                 ? 'quoting…'
                 : quote
                   ? `${quote.outputUi} ${outputSymbol}`
-                  : '—'}
+                  : '--'}
             </strong>
           </div>
           {quote && (

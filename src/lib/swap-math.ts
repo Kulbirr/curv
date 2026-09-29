@@ -54,7 +54,7 @@ export type SwapSide = 'buy' | 'sell';
  * Price impact vs the live spot price (quote tokens per base token),
  * in percent. Positive = worse than spot (you paid/received through the
  * curve). Null when it cannot be computed honestly (no spot price, or
- * zero amounts). Display only — never used in a transaction.
+ * zero amounts). Display only, never used in a transaction.
  */
 export function priceImpactPct(
   side: SwapSide,

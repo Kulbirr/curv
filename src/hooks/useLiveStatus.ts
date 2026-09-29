@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 export type LiveStatus = 'live' | 'reconnecting' | 'stale' | 'error' | 'idle';
 
 export interface LiveStatusInput {
-  /** From query.dataUpdatedAt — 0 when nothing has loaded yet. */
+  /** From query.dataUpdatedAt, 0 when nothing has loaded yet. */
   dataUpdatedAt: number;
   /** From query.isFetching. */
   isFetching: boolean;

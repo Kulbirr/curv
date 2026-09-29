@@ -7,7 +7,7 @@
  * workers as soon as one reports a match.
  *
  * The found secret key is posted back to the main thread of the same page
- * only (structured clone, stays in browser memory) — never to any server.
+ * only (structured clone, stays in browser memory), never to any server.
  */
 
 // Minimal worker-scope typing so this file typechecks without the

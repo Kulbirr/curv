@@ -6,7 +6,7 @@ import { query, transaction } from './index';
  * pools belong to the launchpad plus their off-chain metadata.
  *
  * The chain stays the source of truth for all money state (price,
- * reserves, graduation) — that lives in pool_states, written only by the
+ * reserves, graduation), that lives in pool_states, written only by the
  * background indexer. This table never stores prices.
  */
 
@@ -34,7 +34,7 @@ export interface TrackedPool {
    * True only when every submitted field (config, creator, baseMint,
    * quoteMint) matched the on-chain accounts at registration time.
    * False when the RPC was unreachable during registration (honest
-   * `unverified` label) — a mismatch is rejected outright and never
+   * `unverified` label), a mismatch is rejected outright and never
    * registered.
    */
   verified: boolean;

@@ -4,7 +4,7 @@ import { chunkArray } from './states';
 /**
  * Persistent price-tick store for live charts and derived estimates.
  *
- * Every tick is a real on-chain sample written by the background indexer —
+ * Every tick is a real on-chain sample written by the background indexer ,
  * never synthesized, never interpolated. Gaps in history mean the indexer
  * was not running, and the API reports that honestly via `complete: false`.
  *
@@ -153,7 +153,7 @@ export interface TradeStats24h {
  * Estimated 24h buy/sell split, derived from real on-chain samples: a
  * positive quote-reserve delta between consecutive ticks means buys
  * outweighed sells in that window, a negative delta the reverse. This is
- * direction inferred from reserve movement, not per-trade data — callers
+ * direction inferred from reserve movement, not per-trade data, callers
  * must label it an estimate. Same honesty guardrails as getVolume24h:
  * null when history is too thin (fewer than 2 ticks or under 1 hour of
  * coverage) to say anything meaningful.

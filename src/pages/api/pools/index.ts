@@ -37,7 +37,7 @@ export interface PoolSummary {
   poolAddress: string;
   baseSymbol: string;
   baseName: string;
-  /** Base token mint — lets clients (e.g. Portfolio) match holdings exactly. */
+  /** Base token mint, lets clients (e.g. Portfolio) match holdings exactly. */
   baseMint: string;
   /** Quote token mint. */
   quoteMint: string;
@@ -147,7 +147,7 @@ async function handleGet(_req: NextApiRequest, res: NextApiResponse) {
   }
   const pools = await listTrackedPools();
   // Quote USD prices are cached 60s in memory and short-circuit to null on
-  // devnet without any network call — one lookup per distinct quote mint.
+  // devnet without any network call, one lookup per distinct quote mint.
   const quoteMints = [...new Set(pools.map((p) => p.quoteMint))];
   const quoteUsdByMint = new Map<string, number | null>();
   await Promise.all(
@@ -194,7 +194,7 @@ async function handlePost(req: NextApiRequest, res: NextApiResponse) {
   //    naming the problem. This also normalizes every address to base58
   //    and rejects cross-network quote mints (e.g. mainnet USDC on devnet).
   const parsed = validateRegistrationBody(req.body);
-  // NOTE: compare with `=== false`, not `!parsed.ok` — this project's
+  // NOTE: compare with `=== false`, not `!parsed.ok`, this project's
   // tsconfig disables strictNullChecks, under which TS does not narrow
   // discriminated unions on falsy checks.
   if (parsed.ok === false) return res.status(400).json({ error: parsed.error });
@@ -221,7 +221,7 @@ async function handlePost(req: NextApiRequest, res: NextApiResponse) {
   }
 
   // 4. Persistent replay protection: the claim is one atomic INSERT, so a
-  //    replayed signature can never be accepted twice — even concurrently,
+  //    replayed signature can never be accepted twice, even concurrently,
   //    even on another instance.
   await pruneNonces(now - REGISTRATION_TTL_MS);
   await pruneRateLimits(now);

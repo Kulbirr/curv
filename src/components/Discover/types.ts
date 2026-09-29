@@ -2,14 +2,14 @@
  * Pool summary contract served by GET /api/pools.
  *
  * All numeric money values are denominated in QUOTE tokens unless the field
- * name ends in `Usd`. A null value means unknown — the UI must render a dash,
+ * name ends in `Usd`. A null value means unknown, the UI must render a dash,
  * never a fabricated number.
  */
 export interface PoolSummary {
   poolAddress: string
   baseSymbol: string
   baseName: string
-  /** Base token mint — exact-match key for holdings. */
+  /** Base token mint, exact-match key for holdings. */
   baseMint: string
   /** Quote token mint. */
   quoteMint: string
@@ -24,7 +24,7 @@ export interface PoolSummary {
   priceUsd: number | null
   /**
    * 24h price change in PERCENT units (e.g. 31.52 renders as "+31.52%").
-   * NOTE: unit assumption — confirm against the /api/pools implementation.
+   * NOTE: unit assumption, confirm against the /api/pools implementation.
    */
   change24h: number | null
   /** Bonding-curve fill, 0-100. */

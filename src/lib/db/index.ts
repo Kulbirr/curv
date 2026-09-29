@@ -25,7 +25,7 @@ import path from 'path';
  * Schema note: the Postgres host is shared with other projects, so every
  * Curv table lives in the `curv` schema. The production pool sets
  * search_path=curv,public and the schema DDL starts with
- * CREATE SCHEMA IF NOT EXISTS curv — unqualified names in the
+ * CREATE SCHEMA IF NOT EXISTS curv, unqualified names in the
  * repositories resolve into curv and public is never touched.
  *
  * Async note: pg is async-only, so every repository function returns a
@@ -33,13 +33,13 @@ import path from 'path';
  * mechanical change at call sites is await.
  *
  * Tables:
- *   pools              — the pool registry (replaces data/pools.json)
- *   pool_states        — latest successfully sampled on-chain state per pool
- *   ticks              — price/reserve samples feeding charts + estimates
- *   nonces             — single-use registration signatures (replay protection)
- *   pool_verifications — per-pool verification state
- *   rate_limits        — DB-backed fixed-window rate limit counters
- *   vanity_pool        — pre-ground "...curv" mint keypairs for instant launch
+ *   pools             , the pool registry (replaces data/pools.json)
+ *   pool_states       , latest successfully sampled on-chain state per pool
+ *   ticks             , price/reserve samples feeding charts + estimates
+ *   nonces            , single-use registration signatures (replay protection)
+ *   pool_verifications, per-pool verification state
+ *   rate_limits       , DB-backed fixed-window rate limit counters
+ *   vanity_pool       , pre-ground "...curv" mint keypairs for instant launch
  *                        (secrets encrypted at rest; wiped on handout)
  */
 
@@ -216,7 +216,7 @@ export function getPool(): Pool {
 /**
  * The query surface the repositories use. In production this is the
  * shared pool; inside transaction() callers receive a dedicated client
- * instead — never mix the two inside one transaction.
+ * instead, never mix the two inside one transaction.
  */
 export function getDb(): DbClient {
   return getPool();
@@ -300,7 +300,7 @@ function decodeSeedBuffer(v: { __buffer_base64: string } | null): Buffer | null 
 
 /**
  * One-time import of the SQLite-era data. Source is either the
- * CURV_SEED_B64 env var (base64 of the seed JSON — the Vercel path, since
+ * CURV_SEED_B64 env var (base64 of the seed JSON, the Vercel path, since
  * the seed file is gitignored and never deployed) or
  * data/postgres-seed.json (produced by scripts/export-postgres-seed.ts).
  * Runs only when the pools table is empty, so a restart never duplicates
@@ -418,7 +418,7 @@ async function runSeedImport(): Promise<void> {
         );
       }
       for (const m of vanity) {
-        // Encrypted blob only — never decrypted here. Consumed rows keep
+        // Encrypted blob only, never decrypted here. Consumed rows keep
         // their NULL secret exactly as exported.
         await client.query(
           `INSERT INTO vanity_pool (pubkey, secret_encrypted, created_at, consumed, consumed_at)
@@ -499,7 +499,7 @@ export async function execute(text: string, params?: unknown[]): Promise<number>
  * Run fn inside a transaction on a dedicated client: registry writes are
  * atomic, so a crash between the duplicate check and the insert can never
  * leave a half-written registry. Use the `db` handed to fn for every
- * statement inside — never getDb()/getPool() in there, or the statements
+ * statement inside, never getDb()/getPool() in there, or the statements
  * land on a different connection outside the transaction.
  */
 export async function transaction<T>(fn: (db: DbClient) => Promise<T>): Promise<T> {

@@ -11,7 +11,7 @@ export const config = {
 /**
  * GET /api/pools/[address]/history?from=&to=&points=
  * Bucketed real price samples for the live chart. `complete: false` means
- * the indexer was not running for the whole window — the chart should
+ * the indexer was not running for the whole window, the chart should
  * render the gap honestly instead of interpolating.
  */
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
