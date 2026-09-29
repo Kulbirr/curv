@@ -10,7 +10,8 @@ describe('LAUNCH_FEE_CONFIG', () => {
     // (percent of the non-protocol fee share) — 31.51 means the creator
     // keeps 31.51% of the 80% left after Meteora's 20% protocol cut,
     // which is exactly 0.30% of volume at the 1.19% flat trading fee
-    // (6x pump.fun's 0.05% creator share); Curv keeps ~0.652%.
+    // Flat 0.30%; pump.fun's creator rate is dynamic 0.95% to 0.05% by
+    // market cap, so no fixed multiple is asserted. Curv keeps ~0.652%.
     // poolCreationFeeSol is 0.02: pump.fun parity, and the fee is a
     // per-config Curv setting, not a Meteora protocol mandate.
     expect(LAUNCH_FEE_CONFIG.poolCreationFeeSol).toBe(0.02);
