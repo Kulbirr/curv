@@ -474,6 +474,14 @@ export function ensureSchema(db?: DbClient): Promise<void> {
 /**
  * Run one query against the pool, creating the schema on first use.
  * This is what repository functions call for single statements.
+ *
+ * Managed Postgres (Aiven) terminates idle connections server-side, so a
+ * pooled client can be dead by the time it is checked out ("Connection
+ * terminated unexpectedly"). pg evicts the dead client, so retrying the
+ * same statement on a fresh connection is safe and turns a transient
+ * blip into a success instead of a 500 or a dead worker. Retries apply
+ * only to connection-level failures, never to query errors, and the
+ * callers' statements are all idempotent (SELECTs, ON CONFLICT upserts).
  */
 export async function query<T = Record<string, any>>(
   text: string,
@@ -481,20 +489,63 @@ export async function query<T = Record<string, any>>(
 ): Promise<T[]> {
   const db = getPool();
   await ensureSchema(db);
-  const res = await db.query(text, params);
+  const res = await _queryWithRetry(() => db.query(text, params));
   return res.rows as T[];
 }
 
 /**
  * Run a statement and return the affected row count (INSERT/UPDATE/DELETE).
  * This is what repository functions call when they need to know whether
- * a write landed (claim-once semantics).
+ * a write landed (claim-once semantics). Same connection-error retry as
+ * query(): a dead pooled client is evicted and the statement is re-issued
+ * on a fresh connection.
  */
 export async function execute(text: string, params?: unknown[]): Promise<number> {
   const db = getPool();
   await ensureSchema(db);
-  const res = await db.query(text, params);
+  const res = await _queryWithRetry(() => db.query(text, params));
   return res.rowCount ?? 0;
+}
+
+/** True when err is a dead/broken connection, not a failed query. Exported for unit tests. */
+export function _isConnectionError(err: unknown): boolean {
+  const msg =
+    err instanceof Error ? `${err.message} ${(err as { code?: unknown }).code ?? ''}` : String(err);
+  return (
+    /Connection terminated unexpectedly/i.test(msg) ||
+    /Connection ended unexpectedly/i.test(msg) ||
+    /ECONNRESET/i.test(msg) ||
+    /terminating connection/i.test(msg) ||
+    /server closed the connection/i.test(msg) ||
+    /connection reset by peer/i.test(msg)
+  );
+}
+
+/**
+ * Run fn (one pooled query) with retries on connection-level failures.
+ * Each failed attempt evicts one dead client from the pool, so a few
+ * retries are enough even when the server killed every idle connection
+ * at once. Gives up after MAX_QUERY_ATTEMPTS so a genuinely down
+ * database still surfaces instead of hanging forever.
+ */
+const MAX_QUERY_ATTEMPTS = 5;
+
+/** Exported as _queryWithRetry for unit tests. */
+export async function _queryWithRetry<T>(fn: () => Promise<T>): Promise<T> {
+  let lastErr: unknown = null;
+  for (let attempt = 1; attempt <= MAX_QUERY_ATTEMPTS; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastErr = err;
+      if (!_isConnectionError(err) || attempt === MAX_QUERY_ATTEMPTS) throw err;
+      console.error(
+        `[db] connection lost (attempt ${attempt}/${MAX_QUERY_ATTEMPTS}), retrying:`,
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+  throw lastErr;
 }
 
 /**

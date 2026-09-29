@@ -24,11 +24,15 @@
  *   sqlite3 data/stockcurve.db \
  *     "SELECT SUM(consumed=0), SUM(consumed=1) FROM vanity_pool;"
  * The process is idempotent: kill and restart any time; it tops up what
- * is missing. It performs zero network I/O and never touches the chain.
+ * is missing. A dead database never kills the worker: DB calls retry on
+ * lost connections (see queryWithRetry in src/lib/db/index.ts), a
+ * keep-alive ping runs every few minutes through the long CPU-bound
+ * grind, and a genuinely unreachable database just makes the loop wait
+ * and retry instead of exiting.
  */
 
 import { Keypair } from '@solana/web3.js';
-import { getDb } from '../src/lib/db/index';
+import { getDb, query } from '../src/lib/db/index';
 import { pruneConsumedVanityMints, storeVanityMint, vanityPoolStats } from '../src/lib/db/vanity-pool';
 import { VANITY_SUFFIX, matchesVanitySuffix } from '../src/lib/vanity-core';
 import { encryptSecret, getVanityPoolKey } from '../src/lib/vanity-crypto';
@@ -37,9 +41,24 @@ const TARGET = Math.max(1, parseInt(process.env.VANITY_POOL_TARGET ?? '50', 10) 
 const TOPUP_MS = Math.max(5_000, parseInt(process.env.VANITY_GRIND_TOPUP_MS ?? '30000', 10) || 30_000);
 const CONSUMED_RETENTION_MS = 24 * 60 * 60_000;
 const LOG_EVERY = 30_000;
+// A managed Postgres (Aiven) terminates idle connections server-side,
+// and one grind takes ~78 minutes of pure CPU with zero DB traffic.
+// Ping the DB on this interval during the grind so pooled connections
+// never sit idle long enough to be killed. Failures are swallowed: the
+// query layer retries on dead connections anyway, and a failed ping
+// simply evicts a dead client.
+const KEEPALIVE_MS = 4 * 60_000;
+// When the database is genuinely unreachable, wait this long between
+// retries instead of crash-looping (the watchdog would restart us every
+// 15 minutes anyway).
+const DB_RETRY_MS = 60_000;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+function dbErrorMessage(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
 }
 
 interface GrindResult {
@@ -99,15 +118,30 @@ async function main(): Promise<void> {
 
   for (;;) {
     if (stopping) break;
-    const stats = await vanityPoolStats();
+    // A dead database must never kill the worker: log, wait, retry the
+    // loop. The watchdog restarts actually-dead processes; a DB blip is
+    // not a reason to exit.
+    let stats;
+    try {
+      stats = await vanityPoolStats();
+    } catch (e) {
+      console.error(`[grind-pool] db error on stats, retrying in 60s: ${dbErrorMessage(e)}`);
+      await sleep(DB_RETRY_MS);
+      continue;
+    }
     if (stats.ready >= TARGET) {
-      await pruneConsumedVanityMints(Date.now() - CONSUMED_RETENTION_MS);
+      try {
+        await pruneConsumedVanityMints(Date.now() - CONSUMED_RETENTION_MS);
+      } catch (e) {
+        console.error(`[grind-pool] db error on prune, skipping: ${dbErrorMessage(e)}`);
+      }
       await sleep(TOPUP_MS);
       continue;
     }
     const need = TARGET - stats.ready;
     console.log(`[grind-pool] ready=${stats.ready} consumed=${stats.consumed} — grinding ${need} more`);
     let lastLogAt = 0;
+    let lastKeepaliveAt = 0;
     const res = await grindOne(
       (attempts, elapsedMs) => {
         const now = Date.now();
@@ -118,13 +152,34 @@ async function main(): Promise<void> {
             `[grind-pool] ${attempts.toLocaleString('en-US')} attempts (${rate.toLocaleString('en-US')}/s)`,
           );
         }
+        // Keep one pooled connection warm through the long CPU-bound
+        // grind. Fire-and-forget with a swallow: a failure just evicts a
+        // dead client, the query layer retries on the real calls anyway.
+        if (now - lastKeepaliveAt >= KEEPALIVE_MS) {
+          lastKeepaliveAt = now;
+          query('SELECT 1').catch(() => {});
+        }
       },
       () => stopping,
     );
     if (!res || stopping) break;
     const pubkey = res.keypair.publicKey.toBase58();
     const encrypted = encryptSecret(Buffer.from(res.keypair.secretKey));
-    await storeVanityMint(pubkey, encrypted, Date.now());
+    // The keypair cost ~78 minutes of CPU: never drop it on a DB blip.
+    // Retry the store until it lands or we are asked to stop.
+    for (;;) {
+      try {
+        await storeVanityMint(pubkey, encrypted, Date.now());
+        break;
+      } catch (e) {
+        console.error(
+          `[grind-pool] db error on store of ${pubkey}, retrying in 60s: ${dbErrorMessage(e)}`,
+        );
+        await sleep(DB_RETRY_MS);
+        if (stopping) break;
+      }
+    }
+    if (stopping) break;
     const rate = res.durationMs > 0 ? Math.round((res.attempts / res.durationMs) * 1000) : 0;
     console.log(
       `[grind-pool] stored ${pubkey} — ${res.attempts.toLocaleString('en-US')} attempts ` +
