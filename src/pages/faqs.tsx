@@ -16,7 +16,7 @@ const FAQS: { q: string; a: string }[] = [
   },
   {
     q: 'What do creators earn?',
-    a: 'Creators earn about 0.3% of every bonding curve trade, like pump.fun creators, plus 2% of the migrating liquidity collected at graduation. Earnings accrue automatically and you claim them with a signed transaction from your creator wallet.',
+    a: 'Creators earn about 0.3% of every bonding curve trade, six times pump.fun's creator share, plus 2% of the migrating liquidity collected at graduation. Earnings accrue automatically and you claim them with a signed transaction from your creator wallet.',
   },
   {
     q: 'What is graduation?',

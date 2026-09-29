@@ -35,7 +35,7 @@ export const LAUNCH_FEE_CONFIG = {
   dynamicFeeEnabled: true,
   /** Creator's cut of the non-protocol trading fee, in percent.
    *  31.51 here = exactly 0.30% of each trade's volume at the 1.19%
-   *  flat fee (pump.fun creator parity). */
+   *  flat fee (6x pump.fun's 0.05% creator share). */
   creatorTradingFeePercent: 31.51,
   /** Which token trade fees are collected in. */
   collectFeeMode: 'quote token',
@@ -154,7 +154,7 @@ export function buildFeeDisclosureRows(input: FeeDisclosureInput): FeeDisclosure
     {
       label: 'Your share of trading fees',
       value: `~${two(split.creator)}% of volume`,
-      hint: `You earn about ${two(split.creator)}% of every bonding-curve trade's volume, like pump.fun creators. Claim it any time with your creator wallet, claiming is a small Solana transaction you sign.`,
+      hint: `You earn about ${two(split.creator)}% of every bonding-curve trade's volume, six times pump.fun's creator share. Claim it any time with your creator wallet, claiming is a small Solana transaction you sign.`,
     },
     {
       label: 'Graduation',
