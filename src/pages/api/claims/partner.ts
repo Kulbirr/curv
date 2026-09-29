@@ -64,12 +64,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   // Safety: only claim for pools whose on-chain feeClaimer is our wallet.
   // Claiming anyone else's pool would just burn our transaction fee.
+  // Note: feeClaimer lives on the pool's config account, not the pool state.
   try {
     const client = getDbcClient();
     const pool: unknown = await client.state.getPool(new PublicKey(poolAddress));
     if (!pool) return res.status(404).json({ error: 'Pool not found on-chain' });
     const ps = ((pool as { poolState?: unknown }).poolState ?? pool) as Record<string, unknown>;
-    const onChainClaimer = ps['feeClaimer'];
+    const configAddr = ps['config'];
+    if (!configAddr) return res.status(502).json({ error: 'Pool has no config account' });
+    const cfg: unknown = await client.state.getPoolConfig(
+      configAddr instanceof PublicKey ? configAddr : new PublicKey(String(configAddr)),
+    );
+    const cs = ((cfg as { config?: unknown }).config ?? cfg) as Record<string, unknown>;
+    const onChainClaimer = cs['feeClaimer'];
     const onChainClaimerStr =
       onChainClaimer && typeof onChainClaimer === 'object'
         ? (onChainClaimer as { toBase58?: () => string }).toBase58?.()

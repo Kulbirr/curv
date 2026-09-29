@@ -24,9 +24,10 @@ function mockRpc(opts: { feeClaimer?: string; partnerBase?: string; partnerQuote
   mockGetDbcClient.mockReturnValue({
     state: {
       getPool: vi.fn(async () => ({
-        poolState: {
-          feeClaimer: new PublicKey(opts.feeClaimer ?? FEE_WALLET_B58),
-        },
+        poolState: { config: new PublicKey(randomAddress()) },
+      })),
+      getPoolConfig: vi.fn(async () => ({
+        config: { feeClaimer: new PublicKey(opts.feeClaimer ?? FEE_WALLET_B58) },
       })),
       getPoolFeeMetrics: vi.fn(async () => ({
         current: {
