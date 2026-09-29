@@ -9,7 +9,7 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
-    include: ['src/**/*.test.ts'],
+    include: ['src/**/*.test.ts', 'tests/**/*.test.ts'],
     testTimeout: 30_000,
     // Each test file runs in its own worker: the DB singleton in
     // src/lib/db can be pointed at a temp file per file safely.

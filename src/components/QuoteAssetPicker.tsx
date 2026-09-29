@@ -172,8 +172,13 @@ export function QuoteAssetPicker({
                   <span className="block truncate text-[15px] font-semibold text-white">
                     {a.name}
                   </span>
-                  <span className="block text-[13px] text-neutral-500">
-                    {a.symbol}
+                  <span className="flex items-center gap-2 text-[13px] text-neutral-500">
+                    <span className="truncate">{a.symbol}</span>
+                    {a.tokenProgram === 'Token-2022' && (
+                      <span className="shrink-0 rounded border border-neutral-700 px-1.5 py-0.5 text-[10px] font-medium text-neutral-400">
+                        Token-2022
+                      </span>
+                    )}
                   </span>
                 </span>
                 <span className="flex shrink-0 items-center gap-2">

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import handler from './history';
+import handler from '@/pages/api/pools/[address]/history';
 import { insertPool } from '@/lib/db/pools';
 import { recordTick } from '@/lib/db/ticks';
 import { SOL_MINT } from '@/lib/quote-assets';

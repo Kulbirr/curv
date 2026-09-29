@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import handler from './state';
+import handler from '@/pages/api/pools/[address]/state';
 import { insertPool } from '@/lib/db/pools';
 import { recordPoolSample } from '@/lib/db/states';
 import { recordTick } from '@/lib/db/ticks';

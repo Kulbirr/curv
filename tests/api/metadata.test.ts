@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import handler from './metadata';
+import handler from '@/pages/api/metadata';
 import { mockReqRes } from '@/test-support/http';
 
 // Rate limiting needs a database; unit tests mock it out.

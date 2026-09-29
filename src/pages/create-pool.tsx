@@ -30,7 +30,8 @@ import {
   type LaunchSpec,
 } from '@/lib/launch'
 import { getConnection, isDevnet, SOLANA_NETWORK } from '@/lib/solana'
-import { getUsdcMint } from '@/lib/quote-assets'
+import { getUsdcMint, inspectQuoteMint } from '@/lib/quote-assets'
+import type { QuoteMintProgram } from '@/lib/quote-assets'
 import { cn } from '@/lib/utils'
 import { Keypair } from '@solana/web3.js'
 import {
@@ -183,6 +184,32 @@ export default function CreatePool() {
   const [customSymbol, setCustomSymbol] = useState('')
   /** Asset chosen from the verified directory (drives warnings + price hints). */
   const [pickedAsset, setPickedAsset] = useState<PickedQuoteAsset | null>(null)
+  /** On-chain token-program inspection of the custom quote mint. */
+  const [mintSupport, setMintSupport] = useState<QuoteMintProgram | null>(null)
+  useEffect(() => {
+    if (quoteSel !== 'custom') {
+      setMintSupport(null)
+      return
+    }
+    const mint = customMint.trim()
+    if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(mint)) {
+      setMintSupport(null)
+      return
+    }
+    let cancelled = false
+    const t = setTimeout(async () => {
+      try {
+        const res = await inspectQuoteMint(getConnection(), mint)
+        if (!cancelled) setMintSupport(res)
+      } catch {
+        if (!cancelled) setMintSupport(null)
+      }
+    }, 600)
+    return () => {
+      cancelled = true
+      clearTimeout(t)
+    }
+  }, [quoteSel, customMint])
   /** Live SOL USD price for scaling Quick defaults; falls back to 200. */
   const [solUsd, setSolUsd] = useState<number | null>(null)
   useEffect(() => {
@@ -956,6 +983,51 @@ export default function CreatePool() {
     mode === 'quick' ? [...tokenErrors, ...quoteErrors] : allErrors
   const deployCost = feeRows.length > 0 ? feeRows[0].value : '0 SOL'
 
+  // ---- per-field errors (drive red invalid-field highlighting) ----
+  const findErr = (errs: string[], pred: (e: string) => boolean) =>
+    errs.find(pred)
+  const nameErr = findErr(tokenErrors, (e) => e.includes('Token name'))
+  const tokenSymbolErr = findErr(tokenErrors, (e) =>
+    e.includes('Symbol must')
+  )
+  const underlyingErr = findErr(tokenErrors, (e) => e.includes('Underlying'))
+  const descriptionErr = findErr(tokenErrors, (e) =>
+    e.includes('Description')
+  )
+  const supplyErr = findErr(econErrors, (e) => e.includes('Total supply'))
+  const startFeeErr = findErr(econErrors, (e) => e.includes('Starting fee'))
+  const endFeeErr = findErr(econErrors, (e) => e.includes('Ending fee'))
+  const feePeriodsErr = findErr(econErrors, (e) =>
+    e.includes('Fee decay periods')
+  )
+  const feeDurationErr = findErr(econErrors, (e) =>
+    e.includes('Fee decay duration')
+  )
+  const migrationFeeErr = findErr(econErrors, (e) =>
+    e.includes('Migration fee')
+  )
+  const dammFeeErr = findErr(econErrors, (e) => e.includes('Post-graduation'))
+  const priceErrAt = (i: number): string | undefined => {
+    const v = priceNums[i]
+    if (!Number.isFinite(v) || v <= 0)
+      return `Price point ${i + 1} must be a positive number`
+    if (i > 0 && v <= priceNums[i - 1])
+      return 'Price points must strictly increase toward migration'
+    return undefined
+  }
+  const weightErrAt = (i: number): string | undefined => {
+    const v = parseFloat(weights[i])
+    if (!Number.isFinite(v) || v <= 0)
+      return 'Liquidity weights must be positive numbers'
+    return undefined
+  }
+  const manualUriErr =
+    metadataConfigured === false &&
+    manualUri.trim() &&
+    !/^https:\/\/[^/]+\/.+/.test(manualUri.trim())
+      ? 'Enter a valid https metadata JSON URI'
+      : undefined
+
   /** Fill the custom quote fields from a verified directory asset. */
   function handleAssetSelect(a: PickedQuoteAsset) {
     setCustomMint(a.mint)
@@ -1085,6 +1157,34 @@ export default function CreatePool() {
             {shorten(quoteMint)}
           </p>
         )}
+        {quoteSel === 'custom' && mintSupport?.kind === 'token-2022' && (
+          <div
+            role={mintSupport.transferHook ? 'alert' : 'note'}
+            className={
+              mintSupport.transferHook
+                ? 'sc-form-error mt-3'
+                : 'mt-3 text-xs text-neutral-400'
+            }
+          >
+            {mintSupport.transferHook ? (
+              <>
+                This mint enforces a transfer hook, which Curv does not support
+                as a quote pair yet. Launching with it will fail on-chain.
+              </>
+            ) : mintSupport.hookCheckFailed ? (
+              <>
+                Token-2022 quote detected, but its extensions could not be
+                verified. Transfer-hook mints are not supported as a quote
+                pair; confirm on devnet before launching.
+              </>
+            ) : (
+              <>
+                Token-2022 quote detected. Supported for launch and trading.
+                Transfer-hook mints are not supported.
+              </>
+            )}
+          </div>
+        )}
         <ErrorList errors={quoteErrors} />
       </>
     )
@@ -1182,7 +1282,13 @@ export default function CreatePool() {
               </div>
               <div className="sc-builder-identity-row">
                 <div>
-                  <label className="sc-builder-image">
+                  <label
+                    className={
+                      imageError
+                        ? 'sc-builder-image sc-field-invalid'
+                        : 'sc-builder-image'
+                    }
+                  >
                     <input
                       type="file"
                       accept="image/png,image/jpeg,image/webp,image/gif"
@@ -1208,17 +1314,15 @@ export default function CreatePool() {
                     </button>
                   )}
                 </div>
-                <label className="sc-builder-field">
-                  <span>Token Name</span>
+                <Field label="Token Name" error={nameErr}>
                   <input
                     value={name}
                     maxLength={32}
                     onChange={(e) => setName(e.target.value)}
                     placeholder="e.g. Curve Coin"
                   />
-                </label>
-                <label className="sc-builder-field">
-                  <span>Ticker / Symbol</span>
+                </Field>
+                <Field label="Ticker / Symbol" error={tokenSymbolErr}>
                   <div className="sc-builder-input-prefix">
                     <b>$</b>
                     <input
@@ -1232,10 +1336,13 @@ export default function CreatePool() {
                       placeholder="CURV"
                     />
                   </div>
-                </label>
+                </Field>
               </div>
-              <label className="sc-builder-field sc-builder-description">
-                <span>Description</span>
+              <Field
+                label="Description"
+                error={descriptionErr}
+                className="sc-builder-description"
+              >
                 <textarea
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
@@ -1243,7 +1350,7 @@ export default function CreatePool() {
                   placeholder="Tell traders what this token is about…"
                   rows={3}
                 />
-              </label>
+              </Field>
               <p className="mt-2 text-xs text-neutral-500">
                 Artwork is optional. PNG, JPEG, WebP or GIF, max 2 MB. Uploaded
                 only when you launch.
@@ -1283,8 +1390,12 @@ export default function CreatePool() {
                 ))}
               </div>
               {tokenType === 'Tokenized Stock' && (
-                <label className="sc-builder-field sc-underlying-field">
-                  <span>Underlying Ticker</span>
+                <Field
+                  label="Underlying Ticker"
+                  hint="Shown as a reference on your token page. It does not move your curve."
+                  error={underlyingErr}
+                  className="sc-underlying-field"
+                >
                   <input
                     value={underlying}
                     maxLength={6}
@@ -1295,11 +1406,7 @@ export default function CreatePool() {
                     }
                     placeholder="E.G. AAPL, TSLA, NVDA"
                   />
-                  <small>
-                    Shown as a reference on your token page. It does not move
-                    your curve.
-                  </small>
-                </label>
+                </Field>
               )}
             </section>
 
@@ -1497,7 +1604,7 @@ export default function CreatePool() {
                       </div>
                       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-5">
                         {prices.map((p, i) => (
-                          <Field key={i} label={`P${i + 1}`}>
+                          <Field key={i} label={`P${i + 1}`} error={priceErrAt(i)}>
                             <input
                               inputMode="decimal"
                               value={p}
@@ -1518,7 +1625,11 @@ export default function CreatePool() {
                       </p>
                       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-5">
                         {weights.map((w, i) => (
-                          <Field key={i} label={`P${i + 1}→P${i + 2}`}>
+                          <Field
+                            key={i}
+                            label={`P${i + 1}→P${i + 2}`}
+                            error={weightErrAt(i)}
+                          >
                             <input
                               inputMode="decimal"
                               value={w}
@@ -1579,6 +1690,7 @@ export default function CreatePool() {
                   <Field
                     label="Total supply (tokens)"
                     hint="1,000 to 1,000,000,000,000,000"
+                    error={supplyErr}
                   >
                     <input
                       inputMode="numeric"
@@ -1612,6 +1724,7 @@ export default function CreatePool() {
                       <Field
                         label="Starting fee (basis points)"
                         hint="Fee at launch, decays exponentially"
+                        error={startFeeErr}
                       >
                         <input
                           inputMode="numeric"
@@ -1646,6 +1759,7 @@ export default function CreatePool() {
                       <Field
                         label="Ending fee (basis points)"
                         hint="Fee floor once the schedule decays"
+                        error={endFeeErr}
                       >
                         <input
                           inputMode="numeric"
@@ -1663,6 +1777,7 @@ export default function CreatePool() {
                   <Field
                     label="Fee decay periods"
                     hint="Steps the fee decays over. 1 or more."
+                    error={feePeriodsErr}
                   >
                     <input
                       inputMode="numeric"
@@ -1675,6 +1790,7 @@ export default function CreatePool() {
                   <Field
                     label="Fee decay duration (slots)"
                     hint="Total decay time, at least the periods above. About 0.4s per slot."
+                    error={feeDurationErr}
                   >
                     <input
                       inputMode="numeric"
@@ -1762,6 +1878,7 @@ export default function CreatePool() {
                   <Field
                     label="Migration fee (%)"
                     hint="Taken from the migrating liquidity at graduation. 0-99."
+                    error={migrationFeeErr}
                   >
                     <input
                       inputMode="numeric"
@@ -1776,6 +1893,7 @@ export default function CreatePool() {
                   <Field
                     label="Post-graduation pool fee (bps)"
                     hint="Base fee on the DAMM v2 pool after graduation. 10-1000."
+                    error={dammFeeErr}
                   >
                     <input
                       inputMode="numeric"
@@ -1921,6 +2039,7 @@ export default function CreatePool() {
                   <Field
                     label="Metadata JSON URI"
                     hint="Metadata hosting is not configured on this server. Paste a public https URL to your token metadata JSON."
+                    error={manualUriErr}
                   >
                     <input
                       placeholder="https://…/metadata.json"

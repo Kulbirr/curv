@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Keypair } from '@solana/web3.js';
 import { randomBytes } from 'crypto';
-import handler, { VANITY_HANDOUT_LIMIT } from './vanity-mint';
+import handler, { VANITY_HANDOUT_LIMIT } from '@/pages/api/vanity-mint';
 import { storeVanityMint } from '@/lib/db/vanity-pool';
 import { VANITY_POOL_KEY_ENV, encryptSecret } from '@/lib/vanity-crypto';
 import { mockReqRes } from '@/test-support/http';

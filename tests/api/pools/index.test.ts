@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Keypair, PublicKey } from '@solana/web3.js';
 import bs58 from 'bs58';
 import nacl from 'tweetnacl';
-import handler from './index';
+import handler from '@/pages/api/pools/index';
 import { getDbcClient } from '@/lib/solana';
 import { buildRegistrationMessage } from '@/lib/signatures';
 import { insertPool } from '@/lib/db/pools';

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import handler from './health';
+import handler from '@/pages/api/health';
 import { getConnection, getRpcStatus } from '@/lib/solana';
 import { mockReqRes } from '@/test-support/http';
 import { useTempDb } from '@/test-support/db';

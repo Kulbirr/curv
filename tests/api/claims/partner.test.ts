@@ -3,7 +3,7 @@ import { BN } from '@coral-xyz/anchor';
 import { Connection, Keypair, PublicKey, Transaction } from '@solana/web3.js';
 import bs58 from 'bs58';
 import type { DynamicBondingCurveClient } from '@meteora-ag/dynamic-bonding-curve-sdk';
-import handler from './partner';
+import handler from '@/pages/api/claims/partner';
 import { getConnection, getDbcClient } from '@/lib/solana';
 import { mockReqRes } from '@/test-support/http';
 import { randomAddress } from '@/test-support/db';

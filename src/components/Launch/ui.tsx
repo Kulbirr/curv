@@ -9,15 +9,20 @@ export function Field({
   label,
   hint,
   error,
+  className,
   children,
 }: {
   label: string;
   hint?: string;
   error?: string;
+  className?: string;
   children: ReactNode;
 }) {
+  const cls = ['sc-builder-field', className, error ? 'sc-field-invalid' : '']
+    .filter(Boolean)
+    .join(' ');
   return (
-    <label className="sc-builder-field">
+    <label className={cls} aria-invalid={error ? true : undefined}>
       <span>{label}</span>
       {children}
       {hint && !error && <small>{hint}</small>}

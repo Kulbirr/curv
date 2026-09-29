@@ -1,4 +1,11 @@
 import type { SolanaNetwork } from './solana';
+import { Connection, PublicKey } from '@solana/web3.js';
+import {
+  TOKEN_2022_PROGRAM_ID,
+  TOKEN_PROGRAM_ID,
+  getMint,
+  getTransferHook,
+} from '@solana/spl-token';
 
 /**
  * Network-aware quote asset constants.
@@ -32,4 +39,50 @@ export function isCrossNetworkKnownMint(mint: string, network: SolanaNetwork): b
     return mint === DEVNET_USDC_MINT;
   }
   return mint === MAINNET_USDC_MINT;
+}
+
+/**
+ * What the chain says about a prospective quote mint.
+ *
+ * The DBC SDK auto-detects the quote mint's token program at pool-creation
+ * and swap time, so plain Token-2022 quotes work. Transfer-hook mints do
+ * not: they need a separate SDK path (`createConfigAndPoolWithTransferHook`)
+ * that Curv has not wired up. `unknown` means the mint does not exist on
+ * this network or the RPC call failed; it is not an error by itself because
+ * the directory lists mainnet assets while the app may run on devnet.
+ */
+export type QuoteMintProgram =
+  | { kind: 'native' }
+  | { kind: 'spl' }
+  | { kind: 'token-2022'; transferHook: string | null; hookCheckFailed: boolean }
+  | { kind: 'unknown' };
+
+export async function inspectQuoteMint(
+  connection: Connection,
+  mint: string,
+): Promise<QuoteMintProgram> {
+  let mintPk: PublicKey;
+  try {
+    mintPk = new PublicKey(mint);
+  } catch {
+    return { kind: 'unknown' };
+  }
+  if (mintPk.equals(new PublicKey(SOL_MINT))) return { kind: 'native' };
+  const info = await connection.getAccountInfo(mintPk).catch((): null => null);
+  if (!info) return { kind: 'unknown' };
+  if (info.owner.equals(TOKEN_PROGRAM_ID)) return { kind: 'spl' };
+  if (!info.owner.equals(TOKEN_2022_PROGRAM_ID)) return { kind: 'unknown' };
+  try {
+    const mintData = await getMint(connection, mintPk, 'confirmed', TOKEN_2022_PROGRAM_ID);
+    const hook = getTransferHook(mintData);
+    return {
+      kind: 'token-2022',
+      transferHook: hook ? hook.programId.toBase58() : null,
+      hookCheckFailed: false,
+    };
+  } catch {
+    // The mint is Token-2022 but its extensions could not be read; callers
+    // must treat the transfer-hook question as unanswered, not as "none".
+    return { kind: 'token-2022', transferHook: null, hookCheckFailed: true };
+  }
 }

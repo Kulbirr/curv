@@ -3603,6 +3603,29 @@ select {
   border-color: #38bf69;
   outline: 0;
 }
+
+/* Invalid-field highlighting: red border + subtle red tint, kept dark-terminal. */
+.sc-field-invalid input,
+.sc-field-invalid textarea,
+.sc-field-invalid select,
+.sc-field-invalid .sc-builder-input-prefix {
+  border-color: #e5484d;
+  background: rgba(229, 72, 77, 0.08);
+}
+.sc-field-invalid input:focus,
+.sc-field-invalid textarea:focus,
+.sc-field-invalid select:focus,
+.sc-field-invalid .sc-builder-input-prefix:focus-within {
+  border-color: #e5484d;
+  outline: 0;
+}
+.sc-field-invalid > span:first-child {
+  color: #ff9d9d;
+}
+.sc-field-invalid.sc-builder-image {
+  border-color: #e5484d;
+  background: rgba(229, 72, 77, 0.08);
+}
 .sc-builder-input-prefix {
   display: flex;
   min-height: 39px;
