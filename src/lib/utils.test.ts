@@ -24,8 +24,14 @@ describe('getBaseUrl', () => {
     expect((await import('./utils')).getBaseUrl()).toBe('http://localhost:3000');
     vi.resetModules();
   });
+  it('prefers the canonical app URL when set', async () => {
+    vi.stubEnv('NEXT_PUBLIC_APP_URL', 'https://curvpad.fun/');
+    vi.resetModules();
+    expect((await import('./utils')).getBaseUrl()).toBe('https://curvpad.fun');
+    vi.resetModules();
+  });
   it('falls back to the production default', async () => {
     vi.stubEnv('NEXT_PUBLIC_VERCEL_BRANCH_URL', '');
-    expect(getBaseUrl()).toBe('https://jup.ag');
+    expect(getBaseUrl()).toBe('https://curvpad.fun');
   });
 });

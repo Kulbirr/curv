@@ -16,17 +16,20 @@ export function assertNever(_arg: never, message = 'Unknown error occured.'): ne
 export const getBaseUrl = () => {
   if (process.env.NODE_ENV === 'development') {
     return `http://localhost:3000`;
-  } else {
-    let url = process.env.NEXT_PUBLIC_VERCEL_BRANCH_URL;
-
-    if (url?.includes('vercel.app')) {
-      url = `https://${process.env.NEXT_PUBLIC_VERCEL_BRANCH_URL}`;
-    } else {
-      url = `https://jup.ag`;
-    }
-
-    return typeof window === 'undefined' ? url : window.location.origin;
   }
+  // Canonical production URL wins when set (https://curvpad.fun).
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+  if (appUrl) {
+    return appUrl.replace(/\/+$/, '');
+  }
+  if (typeof window !== 'undefined') {
+    return window.location.origin;
+  }
+  const branchUrl = process.env.NEXT_PUBLIC_VERCEL_BRANCH_URL;
+  if (branchUrl) {
+    return `https://${branchUrl}`;
+  }
+  return 'https://curvpad.fun';
 };
 
 /**
