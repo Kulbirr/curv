@@ -2,6 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import handler from './metadata';
 import { mockReqRes } from '@/test-support/http';
 
+// Rate limiting needs a database; unit tests mock it out.
+const mockHitRateLimit = vi.fn(async () => ({ allowed: true, remaining: 19 }));
+vi.mock('@/lib/db/rate-limits', () => ({
+  hitRateLimit: (...args: unknown[]) => mockHitRateLimit(...args),
+}));
+
 // Capture every command the route "uploads".
 const sentCommands: { input: Record<string, unknown> }[] = [];
 vi.mock('@aws-sdk/client-s3', () => ({
@@ -88,6 +94,15 @@ describe('POST /api/metadata', () => {
     const { req, res } = mockReqRes('POST', { body: validBody() });
     await handler(req, res);
     expect(res.statusCode).toBe(503);
+  });
+
+  it('returns 429 when the per-IP upload rate limit is hit', async () => {
+    setR2Env();
+    mockHitRateLimit.mockResolvedValueOnce({ allowed: false, remaining: 0 });
+    const { req, res } = mockReqRes('POST', { body: validBody() });
+    await handler(req, res);
+    expect(res.statusCode).toBe(429);
+    expect(sentCommands).toHaveLength(0);
   });
 
   it('uploads metadata without an image: 201 with the public URI', async () => {

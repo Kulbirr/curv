@@ -1,6 +1,8 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { randomUUID } from 'crypto';
+import { getClientIp } from '@/lib/api-validation';
+import { hitRateLimit } from '@/lib/db/rate-limits';
 
 /**
  * Token metadata hosting.
@@ -52,6 +54,14 @@ interface MetadataBody {
 async function handlePost(req: NextApiRequest, res: NextApiResponse) {
   if (!isConfigured()) {
     return res.status(503).json({ error: 'Metadata hosting is not configured on this server' });
+  }
+  // One launch uploads one metadata file; bound anonymous uploads so the
+  // R2 bucket cannot be used as free storage by a spammer.
+  const ip = getClientIp(req);
+  const now = Date.now();
+  const hit = await hitRateLimit(`metadata:ip:${ip}`, 20, 60 * 60_000, now);
+  if (!hit.allowed) {
+    return res.status(429).json({ error: 'Too many metadata uploads from this address, try again later' });
   }
   const body = (req.body ?? {}) as MetadataBody;
   const name = typeof body.name === 'string' ? body.name.trim() : '';
