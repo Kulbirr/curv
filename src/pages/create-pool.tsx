@@ -237,12 +237,12 @@ export default function CreatePool() {
   const [launchedPool, setLaunchedPool] = useState<string | null>(null)
   const [notice, setNotice] = useState('')
 
-  // ---- Vanity mint (instant pool handout, local grind fallback) ----
-  // At wizard start we first try POST /api/vanity-mint for a pre-ground
-  // "...curv" keypair (the grinder keeps the pool topped up, so this is
-  // instant). On any failure, 503 pool dry, 429, network, we fall back
-  // to the local background grind that starts when the wizard opens and
-  // usually finishes while the user designs the curve.
+  // ---- Vanity mint (server pool handout at launch, local grind fallback) ----
+  // The page opens with a LOCAL background grind only. A pre-ground
+  // "...curv" keypair is claimed from the server pool at launch
+  // confirmation, never on page open, so casual visits never burn pool
+  // addresses. On any handout failure, 503 pool dry, 429, network, we use
+  // the local grind (usually finished while the user designs the curve).
   const [vanityProgress, setVanityProgress] = useState<VanityProgress | null>(
     null
   )
@@ -255,7 +255,6 @@ export default function CreatePool() {
   )
   const vanityCtrlRef = useRef<AbortController | null>(null)
   const vanityPromiseRef = useRef<Promise<VanityMintResult> | null>(null)
-  const vanityHandoutPromiseRef = useRef<Promise<Keypair | null> | null>(null)
   const vanityKeypairRef = useRef<Keypair | null>(null)
   const vanityRunRef = useRef(0)
 
@@ -287,7 +286,10 @@ export default function CreatePool() {
     )
   }
 
-  async function startVanityGrind() {
+  /** Local-only background grind. The server pool is claimed at launch
+   *  confirmation, never here, so opening the wizard costs the pool
+   *  nothing. */
+  function startVanityGrind() {
     const run = vanityRunRef.current + 1
     vanityRunRef.current = run
     vanityCtrlRef.current?.abort()
@@ -295,25 +297,13 @@ export default function CreatePool() {
     setVanityProgress(null)
     setVanitySource(null)
     vanityKeypairRef.current = null
-    // Instant path first: claim a pre-ground keypair from the server pool.
-    const handoutPromise = fetchVanityHandout()
-    vanityHandoutPromiseRef.current = handoutPromise
-    const handed = await handoutPromise
-    if (vanityRunRef.current !== run) return // superseded
-    if (handed) {
-      vanityKeypairRef.current = handed
-      setVanityReadyAddress(handed.publicKey.toBase58())
-      setVanitySource('pool')
-      return
-    }
-    // Fallback: grind locally in the background.
     startLocalGrind(run)
   }
 
   useEffect(() => {
     startVanityGrind()
     return () => {
-      vanityRunRef.current += 1 // invalidate any in-flight handout fetch
+      vanityRunRef.current += 1 // invalidate any in-flight grind run
       vanityCtrlRef.current?.abort()
       vanityCtrlRef.current = null
     }
@@ -829,29 +819,32 @@ export default function CreatePool() {
       const errors = validateLaunchSpec(spec)
       if (errors.length > 0) throw new Error(errors[0])
 
-      // 2.5 Vanity mint: prefer the instant pool handout, then the
-      // background grind (usually finished while the user was designing).
-      // If neither is ready, wait here (progress + skip shown below); on
-      // skip or failure use a random mint. Launch is never blocked.
+      // 2.5 Vanity mint: claim a pre-ground address from the server pool
+      // ONLY at launch confirmation, never on page open, so casual visits
+      // never burn pool addresses. Then the background grind (usually
+      // finished while the user was designing). If neither is ready, wait
+      // here (progress + skip shown below); on skip or failure use a
+      // random mint. Launch is never blocked.
       let baseMintKeypair: Keypair
-      if (vanityKeypairRef.current) {
-        baseMintKeypair = vanityKeypairRef.current
-      } else {
-        setStatus('grinding')
-        try {
-          const handed = await vanityHandoutPromiseRef.current
-          if (handed) {
-            vanityKeypairRef.current = handed
-            baseMintKeypair = handed
-          } else {
-            const vp = vanityPromiseRef.current
-            baseMintKeypair = vp ? (await vp).keypair : Keypair.generate()
-          }
-        } catch {
-          baseMintKeypair = Keypair.generate()
-        } finally {
-          setVanityProgress(null)
+      setStatus('grinding')
+      try {
+        const handed = await fetchVanityHandout()
+        if (handed) {
+          // Pool keypair won: stop the local grind, it is no longer needed.
+          vanityCtrlRef.current?.abort()
+          vanityCtrlRef.current = null
+          vanityKeypairRef.current = handed
+          setVanityReadyAddress(handed.publicKey.toBase58())
+          setVanitySource('pool')
+          baseMintKeypair = handed
+        } else {
+          const vp = vanityPromiseRef.current
+          baseMintKeypair = vp ? (await vp).keypair : Keypair.generate()
         }
+      } catch {
+        baseMintKeypair = Keypair.generate()
+      } finally {
+        setVanityProgress(null)
       }
 
       // 3. Build the real createConfigAndPool transaction (fresh config
@@ -862,8 +855,9 @@ export default function CreatePool() {
         baseMintKeypair,
       })
       const poolAddr = built.poolAddress.toBase58()
-      // The mint keypair is now committed to this launch, grind a fresh
-      // one in the background in case the user launches again.
+      // The mint keypair is now committed to this launch, restart the
+      // LOCAL grind in the background in case the user launches again.
+      // This claims nothing from the server pool.
       startVanityGrind()
 
       // 4. User signs as fee payer in their wallet

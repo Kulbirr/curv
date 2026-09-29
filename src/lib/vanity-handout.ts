@@ -3,8 +3,10 @@ import { Keypair } from '@solana/web3.js';
 /**
  * Client-side handout fetch for instant launch.
  *
- * At wizard start the app tries POST /api/vanity-mint for a pre-ground
- * "...curv" keypair. Any failure mode, 503 (pool dry), 429 (rate
+ * At launch confirmation the app tries POST /api/vanity-mint for a
+ * pre-ground "...curv" keypair. The claim happens only when the user
+ * commits to a launch, never on page open, so casual visits never burn
+ * pool addresses. Any failure mode, 503 (pool dry), 429 (rate
  * limited), network error, malformed body, resolves to null and the
  * caller falls back to the local background grind. The handout path is
  * best-effort by design: a launch must never be blocked by the pool.

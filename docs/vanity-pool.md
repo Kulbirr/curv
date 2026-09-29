@@ -14,8 +14,9 @@ pool.
 - `src/lib/vanity-crypto.ts` — AES-256-GCM at-rest encryption.
 - `src/pages/api/vanity-mint.ts` — handout endpoint (5/hour per IP).
 - `src/lib/vanity-handout.ts` — client fetch helper (null on any failure).
-- `src/pages/create-pool.tsx` — tries the handout at wizard start, then
-  the local grind.
+- `src/pages/create-pool.tsx` — runs a local background grind on page
+  open, claims the handout only at launch confirmation, then the local
+  grind.
 
 ## Setup
 
