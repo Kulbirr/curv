@@ -1,16 +1,20 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useWallet } from '@jup-ag/wallet-adapter';
 import { useQueryClient } from '@tanstack/react-query';
 import { getConnection, isDevnet } from '@/lib/solana';
 import {
   claimCreatorFeesFlow,
   formatFeeRaw,
+  getCreatorMigrationFeeWithdrawn,
   hasNoAccruedFees,
   shouldShowCreatorEarnings,
+  withdrawCreatorMigrationFeeFlow,
 } from '@/lib/claim-creator-fees';
 import type { PoolStateResponse } from './types';
 
 type Status = 'idle' | 'signing' | 'sending' | 'confirming' | 'confirmed' | 'failed';
+
+type MigrationStatus = 'checking' | 'ready' | 'claimed' | 'unknown';
 
 function agoText(sampledAt: number | null, now: number): string {
   if (sampledAt === null) return 'updated at an unknown time';
@@ -42,8 +46,41 @@ export default function CreatorEarnings({
   const [txSig, setTxSig] = useState<string | null>(null);
   const runningRef = useRef(false);
 
+  // Migration fee (2% at graduation): live on-chain withdraw status, only
+  // relevant once the pool graduated.
+  const [migrationStatus, setMigrationStatus] = useState<MigrationStatus>('checking');
+  const [migrationClaim, setMigrationClaim] = useState<Status>('idle');
+  const [migrationError, setMigrationError] = useState<string | null>(null);
+  const [migrationTxSig, setMigrationTxSig] = useState<string | null>(null);
+  const migrationRunningRef = useRef(false);
+
   const walletAddress = publicKey?.toBase58() ?? null;
-  if (!shouldShowCreatorEarnings({ connected, walletAddress, creator: state.creator })) {
+  const isCreator = shouldShowCreatorEarnings({
+    connected,
+    walletAddress,
+    creator: state.creator,
+  });
+  const showMigration = state.graduated;
+
+  useEffect(() => {
+    if (!isCreator || !showMigration) return;
+    let cancelled = false;
+    setMigrationStatus('checking');
+    getCreatorMigrationFeeWithdrawn(poolAddress)
+      .then((withdrawn) => {
+        if (!cancelled) setMigrationStatus(withdrawn ? 'claimed' : 'ready');
+      })
+      .catch(() => {
+        // Status unknown (RPC hiccup): still offer the claim; the chain is
+        // the source of truth and rejects a double claim.
+        if (!cancelled) setMigrationStatus('unknown');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isCreator, showMigration, poolAddress]);
+
+  if (!isCreator) {
     return null;
   }
 
@@ -84,6 +121,43 @@ export default function CreatorEarnings({
       : status === 'sending'
         ? 'Sending transaction…'
         : status === 'confirming'
+          ? 'Confirming on-chain…'
+          : null;
+
+  const claimMigrationFee = async () => {
+    if (!publicKey || !signTransaction || migrationRunningRef.current) return;
+    migrationRunningRef.current = true;
+    setMigrationError(null);
+    setMigrationTxSig(null);
+    try {
+      const sig = await withdrawCreatorMigrationFeeFlow({
+        connection: getConnection(),
+        signTransaction,
+        poolAddress,
+        creator: publicKey.toBase58(),
+        onStatus: (s) => setMigrationClaim(s),
+      });
+      setMigrationTxSig(sig);
+      setMigrationClaim('confirmed');
+      setMigrationStatus('claimed');
+    } catch (e) {
+      setMigrationError(e instanceof Error ? e.message : 'Claim failed');
+      setMigrationClaim('failed');
+    } finally {
+      migrationRunningRef.current = false;
+    }
+  };
+
+  const migrationBusy =
+    migrationClaim === 'signing' ||
+    migrationClaim === 'sending' ||
+    migrationClaim === 'confirming';
+  const migrationStatusText =
+    migrationClaim === 'signing'
+      ? 'Waiting for wallet signature…'
+      : migrationClaim === 'sending'
+        ? 'Sending transaction…'
+        : migrationClaim === 'confirming'
           ? 'Confirming on-chain…'
           : null;
 
@@ -154,6 +228,61 @@ export default function CreatorEarnings({
         </p>
       )}
       {status === 'failed' && error && <p className="sc-trade-message">{error}</p>}
+
+      {showMigration && (
+        <div className="sc-creator-migration" style={{ marginTop: 18 }}>
+          <h3 style={{ margin: '0 0 6px', fontSize: 11, color: '#c4f0c8' }}>
+            Migration fee
+          </h3>
+          <p style={{ margin: '0 0 10px', fontSize: 9, color: '#778179' }}>
+            Your 2% of the migration fee from this pool&apos;s graduation
+          </p>
+
+          {migrationStatus === 'checking' ? (
+            <p style={{ margin: 0, fontSize: 10, color: '#8c968d' }}>
+              Checking migration fee…
+            </p>
+          ) : migrationStatus !== 'claimed' ? (
+            <div className="sc-creator-earnings-actions">
+              <span>
+                {migrationStatus === 'unknown'
+                  ? 'Status unavailable, claimable on-chain'
+                  : 'Ready to claim'}
+              </span>
+              <button
+                type="button"
+                onClick={claimMigrationFee}
+                disabled={migrationBusy}
+                className="sc-button sc-button-primary"
+              >
+                {migrationBusy ? migrationStatusText : 'Claim migration fee'}
+              </button>
+            </div>
+          ) : migrationClaim !== 'confirmed' ? (
+            <p style={{ margin: 0, fontSize: 10, color: '#8c968d' }}>
+              Migration fee claimed.
+            </p>
+          ) : null}
+
+          {migrationClaim === 'confirmed' && migrationTxSig && (
+            <p className="sc-creator-claim-message">
+              Claimed.{' '}
+              <a
+                href={`https://solscan.io/tx/${migrationTxSig}${isDevnet() ? '?cluster=devnet' : ''}`}
+                target="_blank"
+                rel="noreferrer"
+                style={{ color: '#c4f0c8', textDecoration: 'underline' }}
+              >
+                View transaction
+              </a>
+            </p>
+          )}
+          {migrationClaim === 'failed' && migrationError && (
+            <p className="sc-trade-message">{migrationError}</p>
+          )}
+        </div>
+      )}
+
       <p
         style={{
           margin: '10px 0 0',
@@ -162,8 +291,9 @@ export default function CreatorEarnings({
           color: '#5f6a60',
         }}
       >
-        Claiming sends a transaction you sign in your wallet. Fees land in your wallet in the
-        tokens they accrued in.
+        Claiming sends a transaction you sign in your wallet. Trading fees land in your
+        wallet in the tokens they accrued in. The migration fee lands in your wallet in
+        quote tokens.
       </p>
     </section>
   );

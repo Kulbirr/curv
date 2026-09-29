@@ -35,6 +35,48 @@ export async function buildClaimCreatorFeesTx(args: {
   });
 }
 
+/**
+ * Build the transaction withdrawing the creator's 2% migration fee for a
+ * graduated pool. Signed by the creator's own wallet in the browser, never
+ * by the Curv fee wallet.
+ */
+export async function buildWithdrawCreatorMigrationFeeTx(args: {
+  poolAddress: string;
+  sender: string;
+}): Promise<Transaction> {
+  const client = getDbcClient();
+  return client.creator.creatorWithdrawMigrationFee({
+    pool: new PublicKey(args.poolAddress),
+    sender: new PublicKey(args.sender),
+  });
+}
+
+/**
+ * Bit in the pool's migrationFeeWithdrawStatus set once the creator has
+ * withdrawn their migration fee (bit 1, 0b010; bit 2 is the partner).
+ */
+export const CREATOR_MIGRATION_FEE_WITHDRAWN_BIT = 0b010;
+
+/**
+ * True when the creator already withdrew the 2% migration fee for this
+ * pool. Reads the live pool account; throws when the pool is not found.
+ */
+export async function getCreatorMigrationFeeWithdrawn(
+  poolAddress: string,
+): Promise<boolean> {
+  const client = getDbcClient();
+  const pool = await client.state.getPool(new PublicKey(poolAddress));
+  if (!pool) throw new Error('Pool not found on-chain');
+  // The IDL wraps the struct: { poolState: { ... } }. Handle both shapes,
+  // same as pool-state.ts.
+  const ps = ((pool as unknown as { poolState?: unknown }).poolState ?? pool) as Record<
+    string,
+    unknown
+  >;
+  const status = Number(ps['migrationFeeWithdrawStatus'] ?? 0);
+  return (status & CREATOR_MIGRATION_FEE_WITHDRAWN_BIT) !== 0;
+}
+
 async function pollSignatureStatus(connection: Connection, signature: string): Promise<void> {
   const start = Date.now();
   for (;;) {
@@ -63,6 +105,38 @@ export async function claimCreatorFeesFlow(args: {
   const tx = await buildClaimCreatorFeesTx({
     poolAddress: args.poolAddress,
     creator: args.creator,
+  });
+  tx.feePayer = new PublicKey(args.creator);
+  const { blockhash } = await args.connection.getLatestBlockhash();
+  tx.recentBlockhash = blockhash;
+
+  args.onStatus('signing');
+  const signed = await args.signTransaction(tx);
+  args.onStatus('sending');
+  const sig = await args.connection.sendRawTransaction(signed.serialize(), {
+    skipPreflight: false,
+  });
+  args.onStatus('confirming');
+  await pollSignatureStatus(args.connection, sig);
+  return sig;
+}
+
+/**
+ * Full migration-fee claim flow: build, sign in the connected wallet,
+ * send, confirm. Mirrors claimCreatorFeesFlow above; the only difference
+ * is the instruction (creatorWithdrawMigrationFee) and that it is only
+ * valid after the pool graduated.
+ */
+export async function withdrawCreatorMigrationFeeFlow(args: {
+  connection: Connection;
+  signTransaction: (tx: Transaction) => Promise<Transaction>;
+  poolAddress: string;
+  creator: string;
+  onStatus: (s: 'signing' | 'sending' | 'confirming') => void;
+}): Promise<string> {
+  const tx = await buildWithdrawCreatorMigrationFeeTx({
+    poolAddress: args.poolAddress,
+    sender: args.creator,
   });
   tx.feePayer = new PublicKey(args.creator);
   const { blockhash } = await args.connection.getLatestBlockhash();

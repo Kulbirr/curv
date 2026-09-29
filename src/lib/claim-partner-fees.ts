@@ -48,17 +48,12 @@ export async function buildWithdrawPartnerMigrationFeeTx(args: {
   });
 }
 
-/** Build the transaction withdrawing the creator's 2% migration fee. */
-export async function buildWithdrawCreatorMigrationFeeTx(args: {
-  poolAddress: string;
-  sender: string;
-}): Promise<Transaction> {
-  const client = getDbcClient();
-  return client.creator.creatorWithdrawMigrationFee({
-    pool: new PublicKey(args.poolAddress),
-    sender: new PublicKey(args.sender),
-  });
-}
+/**
+ * The creator's 2% migration-fee withdrawal is creator-signed in the
+ * browser, so its builder lives in claim-creator-fees.ts. Re-exported here
+ * for backward compatibility.
+ */
+export { buildWithdrawCreatorMigrationFeeTx } from './claim-creator-fees';
 
 /** Build the transaction claiming Curv's 90% of the 0.02 SOL pool creation fee. */
 export async function buildClaimPartnerPoolCreationFeeTx(args: {

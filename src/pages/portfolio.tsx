@@ -4,6 +4,7 @@ import { useWallet } from '@jup-ag/wallet-adapter';
 import { useUnifiedWalletContext } from '@jup-ag/wallet-adapter';
 import { useQueries, useQuery } from '@tanstack/react-query';
 import { PublicKey } from '@solana/web3.js';
+import { TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import Page from '@/components/ui/Page/Page';
 import { getConnection, isDevnet } from '@/lib/solana';
 import { DASH } from '@/lib/format/number';
@@ -31,10 +32,18 @@ interface Holding {
 
 async function fetchHoldings(owner: string): Promise<Holding[]> {
   const connection = getConnection();
-  const { value } = await connection.getParsedTokenAccountsByOwner(new PublicKey(owner), {
-    programId: new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA'),
-  });
-  return value
+  const ownerPk = new PublicKey(owner);
+  // Query both token programs: Token-2022 holdings (e.g. xStocks) are
+  // invisible to a classic-SPL-only query.
+  const [spl, t22] = await Promise.all([
+    connection.getParsedTokenAccountsByOwner(ownerPk, {
+      programId: TOKEN_PROGRAM_ID,
+    }),
+    connection.getParsedTokenAccountsByOwner(ownerPk, {
+      programId: TOKEN_2022_PROGRAM_ID,
+    }),
+  ]);
+  return [...spl.value, ...t22.value]
     .map((a) => {
       const info = a.account.data.parsed?.info;
       const amt = info?.tokenAmount;
@@ -463,6 +472,11 @@ export default function Portfolio() {
                                 : `${Math.round(p.progress)}%`}
                           </i>
                         </div>
+                        {p.graduated && (
+                          <p className="mt-1 text-[11px] text-neutral-500">
+                            Your 2% migration fee is ready on the pool page.
+                          </p>
+                        )}
                         <div className="sc-launched-cap">
                           <span>Mcap</span>
                           <strong>

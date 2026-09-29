@@ -1,12 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BN } from '@coral-xyz/anchor';
-import { PublicKey } from '@solana/web3.js';
+import { PublicKey, Transaction } from '@solana/web3.js';
 import {
   aggregateCreatorEarnings,
   buildClaimCreatorFeesTx,
+  buildWithdrawCreatorMigrationFeeTx,
+  CREATOR_MIGRATION_FEE_WITHDRAWN_BIT,
   formatFeeRaw,
+  getCreatorMigrationFeeWithdrawn,
   hasNoAccruedFees,
   shouldShowCreatorEarnings,
+  withdrawCreatorMigrationFeeFlow,
   type EarningsEntry,
 } from './claim-creator-fees';
 import { getPoolState, recordPoolSample } from './db/states';
@@ -173,8 +177,145 @@ describe('buildClaimCreatorFeesTx', () => {
   });
 });
 
-describe('creator fee persistence (db/states)', () => {
-  let db: Awaited<ReturnType<typeof useTempDb>>;
+describe('buildWithdrawCreatorMigrationFeeTx', () => {
+  const mockWithdraw = vi.fn();
+  beforeEach(() => {
+    mockWithdraw.mockReset();
+    mockedGetDbcClient.mockReturnValue({
+      creator: { creatorWithdrawMigrationFee: mockWithdraw },
+    } as never);
+  });
+
+  it('calls the SDK creator migration withdrawal with pool and sender', async () => {
+    const fakeTx = { fake: 'tx' };
+    mockWithdraw.mockResolvedValue(fakeTx);
+    const pool = randomAddress();
+    const sender = randomAddress();
+    const tx = await buildWithdrawCreatorMigrationFeeTx({ poolAddress: pool, sender });
+    expect(tx).toBe(fakeTx);
+    expect(mockWithdraw).toHaveBeenCalledTimes(1);
+    const params = mockWithdraw.mock.calls[0][0];
+    expect((params.pool as PublicKey).toBase58()).toBe(pool);
+    expect((params.sender as PublicKey).toBase58()).toBe(sender);
+  });
+});
+
+describe('getCreatorMigrationFeeWithdrawn', () => {
+  const mockGetPool = vi.fn();
+  beforeEach(() => {
+    mockGetPool.mockReset();
+    mockedGetDbcClient.mockReturnValue({ state: { getPool: mockGetPool } } as never);
+  });
+
+  it('is true when the creator bit is set', async () => {
+    mockGetPool.mockResolvedValue({ migrationFeeWithdrawStatus: 0b010 });
+    await expect(
+      getCreatorMigrationFeeWithdrawn(randomAddress()),
+    ).resolves.toBe(true);
+  });
+
+  it('is true when both creator and partner bits are set', async () => {
+    mockGetPool.mockResolvedValue({ migrationFeeWithdrawStatus: 0b110 });
+    await expect(
+      getCreatorMigrationFeeWithdrawn(randomAddress()),
+    ).resolves.toBe(true);
+  });
+
+  it('is false when only the partner bit is set', async () => {
+    mockGetPool.mockResolvedValue({ migrationFeeWithdrawStatus: 0b100 });
+    await expect(
+      getCreatorMigrationFeeWithdrawn(randomAddress()),
+    ).resolves.toBe(false);
+  });
+
+  it('is false when nothing was withdrawn', async () => {
+    mockGetPool.mockResolvedValue({ migrationFeeWithdrawStatus: 0 });
+    await expect(
+      getCreatorMigrationFeeWithdrawn(randomAddress()),
+    ).resolves.toBe(false);
+  });
+
+  it('throws when the pool is not found on-chain', async () => {
+    mockGetPool.mockResolvedValue(null);
+    await expect(getCreatorMigrationFeeWithdrawn(randomAddress())).rejects.toThrow(
+      'Pool not found on-chain',
+    );
+  });
+
+  it('uses bit 1 (0b010) for the creator', () => {
+    expect(CREATOR_MIGRATION_FEE_WITHDRAWN_BIT).toBe(0b010);
+  });
+});
+
+describe('withdrawCreatorMigrationFeeFlow', () => {
+  const mockWithdraw = vi.fn();
+  const mockGetPool = vi.fn();
+  beforeEach(() => {
+    mockWithdraw.mockReset();
+    mockedGetDbcClient.mockReturnValue({
+      creator: { creatorWithdrawMigrationFee: mockWithdraw },
+      state: { getPool: mockGetPool },
+    } as never);
+  });
+
+  it('builds, signs, sends and confirms, returning the signature', async () => {
+    const pool = randomAddress();
+    const creator = randomAddress();
+    const fakeTx = { serialize: () => Buffer.from('tx-bytes') } as never;
+    mockWithdraw.mockResolvedValue(fakeTx);
+    const statuses = ['signing', 'sending', 'confirming'] as const;
+    const seen: string[] = [];
+    const connection = {
+      getLatestBlockhash: vi.fn().mockResolvedValue({ blockhash: 'bh123' }),
+      sendRawTransaction: vi.fn().mockResolvedValue('sig123'),
+      getSignatureStatus: vi
+        .fn()
+        .mockResolvedValue({ value: { confirmationStatus: 'confirmed', err: null } }),
+    } as never;
+    const signTransaction = vi.fn().mockImplementation(async (tx: never) => tx);
+
+    const sig = await withdrawCreatorMigrationFeeFlow({
+      connection,
+      signTransaction,
+      poolAddress: pool,
+      creator,
+      onStatus: (s) => seen.push(s),
+    });
+
+    expect(sig).toBe('sig123');
+    expect(seen).toEqual([...statuses]);
+    const params = mockWithdraw.mock.calls[0][0];
+    expect((params.pool as PublicKey).toBase58()).toBe(pool);
+    expect((params.sender as PublicKey).toBase58()).toBe(creator);
+    // The flow sets the creator as fee payer and a fresh blockhash.
+    expect((fakeTx as { feePayer: PublicKey }).feePayer.toBase58()).toBe(creator);
+    expect((fakeTx as { recentBlockhash: string }).recentBlockhash).toBe('bh123');
+    expect(signTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('throws when the transaction fails on-chain', async () => {
+    const fakeTx = { serialize: () => Buffer.from('tx-bytes') } as never;
+    mockWithdraw.mockResolvedValue(fakeTx);
+    const connection = {
+      getLatestBlockhash: vi.fn().mockResolvedValue({ blockhash: 'bh123' }),
+      sendRawTransaction: vi.fn().mockResolvedValue('sigBad'),
+      getSignatureStatus: vi
+        .fn()
+        .mockResolvedValue({ value: { confirmationStatus: 'finalized', err: 'err' } }),
+    } as never;
+    await expect(
+      withdrawCreatorMigrationFeeFlow({
+        connection,
+        signTransaction: async (tx: Transaction) => tx,
+        poolAddress: randomAddress(),
+        creator: randomAddress(),
+        onStatus: () => {},
+      }),
+    ).rejects.toThrow('Transaction failed on-chain');
+  });
+});
+
+describe('creator fee persistence (db/states)', () => {  let db: Awaited<ReturnType<typeof useTempDb>>;
   beforeEach(async () => {
     db = await useTempDb();
   });
