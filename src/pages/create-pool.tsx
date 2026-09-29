@@ -2137,50 +2137,6 @@ export default function CreatePool() {
               </dl>
             </section>
 
-            <section
-              className="sc-builder-section sc-mint-address"
-              aria-labelledby="sc-mint-heading"
-            >
-              <div className="sc-live-preview-head">
-                <h2 id="sc-mint-heading">Mint address</h2>
-                <span>
-                  {vanityReadyAddress
-                    ? vanitySource === 'pool'
-                      ? 'Pre-ground'
-                      : 'Ready'
-                    : 'Reserving'}
-                </span>
-              </div>
-              {vanityReadyAddress ? (
-                <p className="mt-3 font-mono text-sm text-neutral-100">
-                  {shorten(vanityReadyAddress)}{' '}
-                  <span className="text-primary">
-                    ends in &ldquo;{VANITY_SUFFIX}&rdquo; ✓
-                  </span>
-                </p>
-              ) : (
-                <p className="mt-3 text-sm text-neutral-400">
-                  Reserving your vanity address…
-                  {vanityProgress && vanityProgress.attemptsPerSecond > 0 && (
-                    <span className="mt-1 block font-mono text-xs">
-                      {vanityProgress.attempts.toLocaleString('en-US')} attempts
-                      ·{' '}
-                      {Math.round(
-                        vanityProgress.attemptsPerSecond
-                      ).toLocaleString('en-US')}
-                      /s · {vanityEta(vanityProgress)}
-                    </span>
-                  )}
-                </p>
-              )}
-              <p className="mt-2 text-xs leading-relaxed text-neutral-500">
-                Your coin&rsquo;s address ends in &ldquo;{VANITY_SUFFIX}&rdquo;
-                {vanitySource === 'pool'
-                  ? ', claimed instantly from the pre-ground pool.'
-                  : ', ground locally, never leaves your browser.'}
-              </p>
-            </section>
-
             <section className="sc-builder-chart-card">
               <div className="sc-builder-chart-title">
                 <h2>Curve Preview</h2>
