@@ -264,7 +264,7 @@ export function buildCurveParams(
       },
     },
     liquidityDistribution: {
-      partnerLiquidityPercentage: 0,
+      partnerLiquidityPercentage: econ.partnerLiquidityPercent,
       partnerPermanentLockedLiquidityPercentage: 100,
       creatorLiquidityPercentage: 0,
       creatorPermanentLockedLiquidityPercentage: 0,

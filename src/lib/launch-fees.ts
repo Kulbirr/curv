@@ -51,6 +51,10 @@ export const LAUNCH_FEE_CONFIG = {
   migratedPoolFeeBps: 120,
   /** The DAMM v2 pool also charges a dynamic fee on top. */
   migratedPoolDynamicFee: true,
+  /** Curv's share of the DAMM v2 LP tokens at graduation (percent).
+   *  7 here = ~0.084% of post-graduation volume at the 1.20% pool fee,
+   *  slightly above pump.fun's 0.05% protocol cut. */
+  partnerLiquidityPercent: 7,
 } as const;
 
 export interface FeeDisclosureInput {
@@ -76,6 +80,7 @@ export interface ResolvedEcon {
   creatorMigrationFeePercent: number;
   migratedPoolFeeBps: number;
   migratedPoolDynamicFee: boolean;
+  partnerLiquidityPercent: number;
 }
 
 /** The defaults as a mutable effective-economics object. */

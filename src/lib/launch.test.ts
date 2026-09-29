@@ -201,6 +201,7 @@ describe('creator economics overrides', () => {
     expect(e.migrationFeePercent).toBe(8);
     expect(e.migratedPoolFeeBps).toBe(120);
     expect(e.migratedPoolDynamicFee).toBe(true);
+    expect(e.partnerLiquidityPercent).toBe(7);
   });
 
   it('resolveEcon merges overrides over the defaults', async () => {
