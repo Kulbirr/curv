@@ -150,11 +150,6 @@ export function buildFeeDisclosureRows(input: FeeDisclosureInput): FeeDisclosure
       hint: `You earn about ${two(split.creator)}% of every bonding-curve trade's volume, like pump.fun creators. Claim it any time with your creator wallet, claiming is a small Solana transaction you sign.`,
     },
     {
-      label: 'Platform fee',
-      value: `~${two(split.platform)}% of volume`,
-      hint: `Curv keeps about ${two(split.platform)}% of every bonding-curve trade's volume as the launchpad fee, claimed to the Curv fee wallet. This is how the platform is funded.`,
-    },
-    {
       label: 'Graduation',
       value: c.migrationOption,
       hint: 'When quote reserves reach your graduation threshold, liquidity migrates automatically.',

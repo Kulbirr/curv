@@ -128,7 +128,7 @@ export function QuoteAssetPicker({
           className="h-12 w-full rounded-2xl border border-neutral-800 bg-neutral-900/70 pl-12 pr-4 text-[15px] text-neutral-100 placeholder:text-neutral-600 focus:border-neutral-600 focus:outline-none"
         />
       </div>
-      <div role="listbox" aria-label="Quote assets">
+      <div role="listbox" aria-label="Quote assets" className="max-h-80 overflow-y-auto">
         {failed ? (
           <p className="px-3 py-6 text-center text-sm text-neutral-500">
             Directory unreachable. Enter the mint manually below.
