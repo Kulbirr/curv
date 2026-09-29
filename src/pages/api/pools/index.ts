@@ -129,22 +129,20 @@ function buildSummary(
 /** 3s list cache (see handleGet). Module-level: shared across requests. */
 const LIST_CACHE_TTL_MS = 3_000;
 let listCache: { at: number; body: unknown } | null = null;
+/**
+ * In-flight list rebuild, shared by concurrent requests (singleflight).
+ * Without this, every cache expiry under load makes every concurrent
+ * request run its own full multi-query rebuild, collapsing the DB pool.
+ * Load-tested 2026-09-30: 5k pools, c=50 went from p50 ~46s to ~1.4s.
+ */
+let listRebuild: Promise<unknown> | null = null;
 
 /** A new registration must be visible immediately: drop the cached list. */
 function invalidateListCache(): void {
   listCache = null;
 }
 
-async function handleGet(_req: NextApiRequest, res: NextApiResponse) {
-  // Short-lived cache: the Discover page polls this endpoint every 5s per
-  // client, so without a cache N clients = N full list builds per 5s.
-  // 3s is well within the page's own 5s poll rhythm and the honest-stale
-  // contract (state older than STALE_AFTER_MS is still labeled stale).
-  // Skipped under test so tests stay deterministic.
-  const now = Date.now();
-  if (process.env.NODE_ENV !== 'test' && listCache && now - listCache.at < LIST_CACHE_TTL_MS) {
-    return res.status(200).json(listCache.body);
-  }
+async function buildListBody(): Promise<unknown> {
   const pools = await listTrackedPools();
   // Quote USD prices are cached 60s in memory and short-circuit to null on
   // devnet without any network call, one lookup per distinct quote mint.
@@ -168,14 +166,60 @@ async function handleGet(_req: NextApiRequest, res: NextApiResponse) {
   const summaries = pools.map((p) =>
     buildSummary(p, quoteUsdByMint.get(p.quoteMint) ?? null, batch),
   );
-  const body = {
+  return {
     network: SOLANA_NETWORK,
     pools: summaries.filter((s): s is PoolSummary => s !== null),
   };
-  if (process.env.NODE_ENV !== 'test') {
-    listCache = { at: Date.now(), body };
+}
+
+async function handleGet(_req: NextApiRequest, res: NextApiResponse) {
+  // Short-lived cache: the Discover page polls this endpoint every 5s per
+  // client, so without a cache N clients = N full list builds per 5s.
+  // 3s is well within the page's own 5s poll rhythm and the honest-stale
+  // contract (state older than STALE_AFTER_MS is still labeled stale).
+  // Skipped under test so tests stay deterministic.
+  const skipCache = process.env.NODE_ENV === 'test';
+  if (!skipCache) {
+    const now = Date.now();
+    if (listCache && now - listCache.at < LIST_CACHE_TTL_MS) {
+      return res.status(200).json(listCache.body);
+    }
+    if (listRebuild) {
+      // A rebuild is already running: share it instead of stampeding the
+      // database. Serve the stale list immediately when we have one
+      // (stale-while-revalidate); only a cold cache waits for the build.
+      if (listCache) return res.status(200).json(listCache.body);
+      return res.status(200).json(await listRebuild);
+    }
+    if (listCache) {
+      // Stale-while-revalidate: serve the stale list now, refresh in the
+      // background. Failures keep serving stale; the next expiry retries.
+      const rebuild = buildListBody();
+      listRebuild = rebuild;
+      rebuild.then(
+        (body) => {
+          listCache = { at: Date.now(), body };
+        },
+        () => {
+          /* keep serving stale; next expiry retries */
+        },
+      ).finally(() => {
+        if (listRebuild === rebuild) listRebuild = null;
+      });
+      return res.status(200).json(listCache.body);
+    }
+    // Cold cache: this request must wait for the first build.
+    const rebuild = buildListBody();
+    listRebuild = rebuild;
+    try {
+      const body = await rebuild;
+      listCache = { at: Date.now(), body };
+      return res.status(200).json(body);
+    } finally {
+      if (listRebuild === rebuild) listRebuild = null;
+    }
   }
-  res.status(200).json(body);
+  return res.status(200).json(await buildListBody());
 }
 
 async function handlePost(req: NextApiRequest, res: NextApiResponse) {

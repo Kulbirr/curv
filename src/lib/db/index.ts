@@ -68,6 +68,7 @@ CREATE TABLE IF NOT EXISTS pools (
   launched_at BIGINT,
   verified BIGINT NOT NULL DEFAULT 0
 );
+CREATE INDEX IF NOT EXISTS idx_pools_created ON pools (created_at DESC);
 
 CREATE TABLE IF NOT EXISTS pool_states (
   pool_address TEXT PRIMARY KEY,
