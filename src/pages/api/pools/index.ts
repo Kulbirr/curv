@@ -128,7 +128,7 @@ function buildSummary(
 
 /** 3s list cache (see handleGet). Module-level: shared across requests. */
 const LIST_CACHE_TTL_MS = 3_000;
-let listCache: { at: number; body: unknown } | null = null;
+let listCache: { at: number; json: string } | null = null;
 /**
  * In-flight list rebuild, shared by concurrent requests (singleflight).
  * Without this, every cache expiry under load makes every concurrent
@@ -180,16 +180,27 @@ async function handleGet(_req: NextApiRequest, res: NextApiResponse) {
   // Skipped under test so tests stay deterministic.
   const skipCache = process.env.NODE_ENV === 'test';
   if (!skipCache) {
+    // Serve the pre-serialized body: JSON.stringify of a 5k-pool list
+    // costs ~50ms of single-threaded CPU, so re-serializing per request
+    // caps throughput. The string is built once per rebuild.
+    const sendJson = (json: string) => {
+      res.setHeader('Content-Type', 'application/json');
+      return res.status(200).send(json);
+    };
+    const cacheBody = (body: unknown) => {
+      listCache = { at: Date.now(), json: JSON.stringify(body) };
+    };
     const now = Date.now();
     if (listCache && now - listCache.at < LIST_CACHE_TTL_MS) {
-      return res.status(200).json(listCache.body);
+      return sendJson(listCache.json);
     }
     if (listRebuild) {
       // A rebuild is already running: share it instead of stampeding the
       // database. Serve the stale list immediately when we have one
       // (stale-while-revalidate); only a cold cache waits for the build.
-      if (listCache) return res.status(200).json(listCache.body);
-      return res.status(200).json(await listRebuild);
+      if (listCache) return sendJson(listCache.json);
+      const body = await listRebuild;
+      return res.status(200).json(body);
     }
     if (listCache) {
       // Stale-while-revalidate: serve the stale list now, refresh in the
@@ -198,7 +209,7 @@ async function handleGet(_req: NextApiRequest, res: NextApiResponse) {
       listRebuild = rebuild;
       rebuild.then(
         (body) => {
-          listCache = { at: Date.now(), body };
+          cacheBody(body);
         },
         () => {
           /* keep serving stale; next expiry retries */
@@ -206,14 +217,14 @@ async function handleGet(_req: NextApiRequest, res: NextApiResponse) {
       ).finally(() => {
         if (listRebuild === rebuild) listRebuild = null;
       });
-      return res.status(200).json(listCache.body);
+      return sendJson(listCache.json);
     }
     // Cold cache: this request must wait for the first build.
     const rebuild = buildListBody();
     listRebuild = rebuild;
     try {
       const body = await rebuild;
-      listCache = { at: Date.now(), body };
+      cacheBody(body);
       return res.status(200).json(body);
     } finally {
       if (listRebuild === rebuild) listRebuild = null;
