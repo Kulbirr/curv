@@ -57,6 +57,11 @@ export const LAUNCH_FEE_CONFIG = {
    *  7 here = ~0.084% of post-graduation volume at the 1.20% pool fee,
    *  slightly above pump.fun's 0.05% protocol cut. */
   partnerLiquidityPercent: 7,
+  /** Creator's share of the DAMM v2 LP tokens at graduation (percent).
+   *  Locked permanently like the partner share: the creator can never
+   *  pull this liquidity, but keeps earning the pool's trading fees on it
+   *  (another ~0.084% of post-graduation volume at the 1.20% pool fee). */
+  creatorLiquidityPercent: 7,
 } as const;
 
 export interface FeeDisclosureInput {
@@ -83,6 +88,7 @@ export interface ResolvedEcon {
   migratedPoolFeeBps: number;
   migratedPoolDynamicFee: boolean;
   partnerLiquidityPercent: number;
+  creatorLiquidityPercent: number;
 }
 
 /** The defaults as a mutable effective-economics object. */

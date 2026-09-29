@@ -16,7 +16,7 @@ const FAQS: { q: string; a: string }[] = [
   },
   {
     q: 'What do creators earn?',
-    a: 'Creators earn a flat 0.3% of every bonding curve trade, plus 2% of the migrating liquidity collected at graduation. Earnings accrue automatically and you claim them with a signed transaction from your creator wallet.',
+    a: 'Creators earn a flat 0.3% of every bonding curve trade, plus 2% of the migrating liquidity collected at graduation, plus a locked 7% share of the graduated pool that keeps earning trading fees. Earnings accrue automatically and you claim them with a signed transaction from your creator wallet.',
   },
   {
     q: 'What is graduation?',

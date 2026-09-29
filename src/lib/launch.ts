@@ -266,8 +266,8 @@ export function buildCurveParams(
     liquidityDistribution: {
       partnerLiquidityPercentage: econ.partnerLiquidityPercent,
       partnerPermanentLockedLiquidityPercentage: 100,
-      creatorLiquidityPercentage: 0,
-      creatorPermanentLockedLiquidityPercentage: 0,
+      creatorLiquidityPercentage: econ.creatorLiquidityPercent,
+      creatorPermanentLockedLiquidityPercentage: 100,
     },
     lockedVesting: {
       totalLockedVestingAmount: 0,
