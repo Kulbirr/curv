@@ -20,7 +20,9 @@ import {
 import {
   buildCurveParams,
   buildLaunchTransaction,
+  formatPriceInput,
   graduationThresholdQuote,
+  quickDefaultStartPrice,
   resolveEcon,
   scaleCurveToGraduationTarget,
   validateLaunchSpec,
@@ -49,8 +51,8 @@ type QuoteSel = 'SOL' | 'USDC' | 'custom'
 type PresetSel = CurvePresetId | 'custom'
 type TokenType = 'Memecoin' | 'Tokenized Stock'
 
-/** The proven defaults every Quick launch builds on. */
-const QUICK_DEFAULT_CURVE = presetCurve('exponential', 0.0001)
+/** Pro designer initial curve: SOL-scaled Quick-style default (sane graduation). */
+const PRO_INITIAL_START = quickDefaultStartPrice(200)
 type LaunchStatus =
   | 'idle'
   | 'uploading'
@@ -74,15 +76,6 @@ const STATUS_LABEL: Record<
   sending: 'Sending transaction…',
   confirming: 'Confirming on-chain…',
   registering: 'Registering pool…',
-}
-
-/** Compact USD formatting for price hints in the launch summary. */
-function formatUsd(n: number): string {
-  if (!Number.isFinite(n) || n < 0) return ','
-  if (n >= 1000)
-    return `$${n.toLocaleString('en-US', { maximumFractionDigits: 0 })}`
-  if (n >= 0.01) return `$${n.toFixed(2)}`
-  return `$${n.toPrecision(2)}`
 }
 
 /**
@@ -175,12 +168,12 @@ export default function CreatePool() {
 
   // ---- Curve ----
   const [preset, setPreset] = useState<PresetSel>('exponential')
-  const [startPrice, setStartPrice] = useState('0.0001')
+  const [startPrice, setStartPrice] = useState(() => formatPriceInput(PRO_INITIAL_START))
   const [prices, setPrices] = useState<string[]>(() =>
-    presetCurve('exponential', 0.0001).prices.map(String)
+    presetCurve('exponential', PRO_INITIAL_START).prices.map(formatPriceInput)
   )
   const [weights, setWeights] = useState<string[]>(() =>
-    new Array(presetCurve('exponential', 0.0001).prices.length - 1).fill('1')
+    new Array(presetCurve('exponential', PRO_INITIAL_START).prices.length - 1).fill('1')
   )
 
   // ---- Economics ----
@@ -190,11 +183,37 @@ export default function CreatePool() {
   const [customSymbol, setCustomSymbol] = useState('')
   /** Asset chosen from the verified directory (drives warnings + price hints). */
   const [pickedAsset, setPickedAsset] = useState<PickedQuoteAsset | null>(null)
+  /** Live SOL USD price for scaling Quick defaults; falls back to 200. */
+  const [solUsd, setSolUsd] = useState<number | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/quote-directory')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (cancelled || !d || !Array.isArray(d.assets)) return
+        const sol = d.assets.find((a: { symbol?: string }) => a.symbol === 'SOL')
+        const p = Number(sol?.usdPrice)
+        if (Number.isFinite(p) && p > 0) setSolUsd(p)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [])
+  /** USD price of the selected quote asset, for scaling Quick defaults. */
+  const quoteUsdForDefault =
+    quoteSel === 'SOL' ? (solUsd ?? 200) : quoteSel === 'USDC' ? 1 : (pickedAsset?.usdPrice ?? 1)
+  /** Quick-launch curve, scaled so every pair starts near $8k valuation. */
+  const quickCurve = useMemo(
+    () => presetCurve('exponential', quickDefaultStartPrice(quoteUsdForDefault)),
+    [quoteUsdForDefault]
+  )
+  const quickStartPrice = quickCurve.prices[0]
   /** Manual mint entry, kept for devnet test mints and unlisted assets. */
   const [manualQuote, setManualQuote] = useState(false)
   const [baseDecimals, setBaseDecimals] = useState<6 | 9>(6)
   const [totalSupply, setTotalSupply] = useState('1000000000')
-  const [startFeeBps, setStartFeeBps] = useState('500')
+  const [startFeeBps, setStartFeeBps] = useState('100')
   const [endFeeBps, setEndFeeBps] = useState('100')
   // ---- Fee schedule decay ----
   const [feePeriods, setFeePeriods] = useState('60')
@@ -492,14 +511,14 @@ export default function CreatePool() {
       totalSupply: quick ? 1_000_000_000 : parseFloat(totalSupply),
       curve: quick
         ? {
-            prices: QUICK_DEFAULT_CURVE.prices,
-            liquidityWeights: QUICK_DEFAULT_CURVE.liquidityWeights,
+            prices: quickCurve.prices,
+            liquidityWeights: quickCurve.liquidityWeights,
           }
         : {
             prices: priceNums,
             liquidityWeights: weights.map((w) => parseFloat(w)),
           },
-      startingFeeBps: quick ? 500 : parseInt(startFeeBps, 10),
+      startingFeeBps: quick ? 100 : parseInt(startFeeBps, 10),
       endingFeeBps: quick ? 100 : parseInt(endFeeBps, 10),
       econ: quick
         ? {
@@ -535,6 +554,8 @@ export default function CreatePool() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
+    mode,
+    quickCurve,
     name,
     symbol,
     quoteMint,
@@ -564,8 +585,8 @@ export default function CreatePool() {
   const feeRows = useMemo(
     () =>
       buildFeeDisclosureRows({
-        startingFeeBps: parseInt(startFeeBps, 10) || 0,
-        endingFeeBps: parseInt(endFeeBps, 10) || 0,
+        startingFeeBps: mode === 'quick' ? 100 : parseInt(startFeeBps, 10) || 0,
+        endingFeeBps: mode === 'quick' ? 100 : parseInt(endFeeBps, 10) || 0,
         quoteSymbol,
         econ: resolveEcon(
           buildSpec('https://placeholder.invalid/metadata.json')
@@ -573,6 +594,8 @@ export default function CreatePool() {
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
+      mode,
+      quickCurve,
       startFeeBps,
       endFeeBps,
       quoteSymbol,
@@ -1300,30 +1323,38 @@ export default function CreatePool() {
                   </li>
                   <li>
                     <strong>Exponential</strong> bonding curve from{' '}
-                    <strong>0.0001 {quoteSymbol}</strong>
-                    {quoteSel === 'custom' && pickedAsset?.usdPrice != null && (
-                      <span className="text-neutral-400">
-                        {' '}
-                        (≈ {formatUsd(0.0001 * pickedAsset.usdPrice)} at mainnet
-                        price)
-                      </span>
-                    )}
+                    <strong>
+                      {formatPriceInput(quickStartPrice)} {quoteSymbol}
+                    </strong>
+                    <span className="text-neutral-400">
+                      {' '}
+                      (≈$8k starting valuation)
+                    </span>
                   </li>
                   <li>
-                    Trading fee <strong>5%</strong> easing to{' '}
-                    <strong>1%</strong> over 60 slots
+                    Trading fee <strong>1%</strong> flat, like pump.fun
                   </li>
                   <li>
                     <strong>Automatic graduation</strong> to DAMM v2 when the
                     curve fills
+                    {graduationPreview !== null && (
+                      <span className="text-neutral-400">
+                        {' '}
+                        (≈{' '}
+                        {graduationPreview.toLocaleString('en-US', {
+                          maximumFractionDigits: 1,
+                        })}{' '}
+                        {quoteSymbol} in reserves)
+                      </span>
+                    )}
                   </li>
                   <li>
-                    You keep <strong>0.3%</strong> of every trade plus{' '}
+                    You keep <strong>~0.3%</strong> of every trade plus{' '}
                     <strong>half</strong> the migration fee
                   </li>
                   <li>
-                    <strong>No pool creation fee.</strong> Only Solana network
-                    fees.
+                    <strong>0.02 SOL</strong> pool creation fee, like pump.fun.
+                    Only Solana network fees on top.
                   </li>
                 </ul>
               </section>

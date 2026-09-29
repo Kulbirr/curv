@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BN } from '@coral-xyz/anchor';
-import { CURVE_PRESETS, buildCurveParams, graduationThresholdQuote, presetCurve, resolveEcon, scaleCurveToGraduationTarget, validateLaunchSpec, type LaunchSpec } from './launch';
+import { CURVE_PRESETS, buildCurveParams, formatPriceInput, graduationThresholdQuote, platformFeeWallet, presetCurve, quickDefaultStartPrice, resolveEcon, scaleCurveToGraduationTarget, validateLaunchSpec, type LaunchSpec } from './launch';
 import { SOL_MINT } from './quote-assets';
 import { randomAddress } from '@/test-support/db';
 
@@ -168,11 +168,13 @@ describe('buildCurveParams', () => {
     expect(params.migrationQuoteThreshold.gt(new BN(0))).toBe(true);
   });
 
-  it('carries the 0.3% creator trading fee into the SDK fee config', async () => {
+  it('carries the 37.5% creator fee share into the SDK fee config', async () => {
     const params = buildCurveParams(validSpec());
     // The SDK's buildCurveWithCustomSqrtPrices flattens the fee config:
-    // creatorTradingFeePercentage lands top-level, in percent.
-    expect(params.creatorTradingFeePercentage).toBe(0.3);
+    // creatorTradingFeePercentage lands top-level, in percent of the
+    // non-protocol fee share (37.5% of the 80% after Meteora's 20% cut
+    // is ~0.3% of volume at the 1% flat trading fee).
+    expect(params.creatorTradingFeePercentage).toBe(37.5);
   });
 
   it('throws the first validation error on an invalid spec', async () => {
@@ -214,9 +216,9 @@ describe('creator economics overrides', () => {
 
   it('never lets the spec override the locked creator cuts', async () => {
     const e = resolveEcon(validSpec({ econ: {} }));
-    expect(e.creatorTradingFeePercent).toBe(0.3);
+    expect(e.creatorTradingFeePercent).toBe(37.5);
     expect(e.creatorMigrationFeePercent).toBe(50);
-    expect(e.poolCreationFeeSol).toBe(0);
+    expect(e.poolCreationFeeSol).toBe(0.02);
   });
 
   it('rejects a zero or negative fee-decay period count', async () => {
@@ -336,5 +338,81 @@ describe('scaleCurveToGraduationTarget', () => {
   it('throws on an invalid spec', async () => {
     const t0 = graduationThresholdQuote(validSpec())!;
     expect(() => scaleCurveToGraduationTarget(validSpec({ name: '' }), t0)).toThrow();
+  });
+});
+
+describe('quickDefaultStartPrice', () => {
+  it('targets ~$8k starting valuation at 1B supply for any quote asset', async () => {
+    // SOL at $200: 4e-8 SOL/token * 1B = 40 SOL = $8,000.
+    expect(quickDefaultStartPrice(200)).toBeCloseTo(4e-8, 12);
+    // USDC at $1: 8e-6 USDC/token * 1B = $8,000.
+    expect(quickDefaultStartPrice(1)).toBeCloseTo(8e-6, 12);
+    // Unknown price falls back to $1/quote-unit rather than breaking.
+    expect(quickDefaultStartPrice(null)).toBeCloseTo(8e-6, 12);
+    expect(quickDefaultStartPrice(0)).toBeCloseTo(8e-6, 12);
+    expect(quickDefaultStartPrice(-5)).toBeCloseTo(8e-6, 12);
+  });
+
+  it('graduates a SOL pair near 100 SOL, like pump.fun', async () => {
+    const spec = validSpec({
+      curve: presetCurve('exponential', quickDefaultStartPrice(200)),
+    });
+    const threshold = graduationThresholdQuote(spec);
+    // pump.fun graduates near 85-115 SOL; the Quick default must land
+    // in a usable range, not hundreds of thousands of SOL.
+    expect(threshold).toBeGreaterThan(50);
+    expect(threshold).toBeLessThan(200);
+  });
+
+  it('graduates a USDC pair near $20k of reserves', async () => {
+    const spec = validSpec({
+      quoteDecimals: 6,
+      quoteSymbol: 'USDC',
+      curve: presetCurve('exponential', quickDefaultStartPrice(1)),
+    });
+    const threshold = graduationThresholdQuote(spec);
+    expect(threshold).toBeGreaterThan(10000);
+    expect(threshold).toBeLessThan(40000);
+  });
+});
+
+describe('formatPriceInput', () => {
+  it('never emits scientific notation', async () => {
+    expect(formatPriceInput(4e-8)).toBe('0.00000004');
+    expect(formatPriceInput(8e-6)).toBe('0.000008');
+    expect(formatPriceInput(0.0001)).toBe('0.0001');
+    expect(formatPriceInput(1.5)).toBe('1.5');
+  });
+
+  it('handles non-positive input', async () => {
+    expect(formatPriceInput(0)).toBe('0');
+    expect(formatPriceInput(-1)).toBe('0');
+  });
+});
+
+describe('platformFeeWallet', () => {
+  const KEY = 'NEXT_PUBLIC_CURV_FEE_WALLET';
+  const saved = process.env[KEY];
+
+  it('returns null when the variable is missing or blank', async () => {
+    delete process.env[KEY];
+    expect(platformFeeWallet()).toBeNull();
+    process.env[KEY] = '   ';
+    expect(platformFeeWallet()).toBeNull();
+  });
+
+  it('returns null for an invalid address', async () => {
+    process.env[KEY] = 'not-a-pubkey';
+    expect(platformFeeWallet()).toBeNull();
+  });
+
+  it('parses a valid fee wallet address', async () => {
+    process.env[KEY] = 'EcRWrJtULSrmVqB99KrrcywKi3WWhDdMwfzppCzLhbiA';
+    expect(platformFeeWallet()?.toBase58()).toBe('EcRWrJtULSrmVqB99KrrcywKi3WWhDdMwfzppCzLhbiA');
+  });
+
+  it('restores the environment', async () => {
+    if (saved === undefined) delete process.env[KEY];
+    else process.env[KEY] = saved;
   });
 });

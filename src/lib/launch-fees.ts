@@ -5,34 +5,37 @@
  * on-chain DBC config from these values, and the launch review page's
  * fee-disclosure box renders them. Change a number here and both move.
  *
- * Every unit was verified against the Meteora DBC SDK:
+ * Every unit was verified against the Meteora DBC SDK and docs:
  * - poolCreationFeeSol: the SDK runs convertToLamports(poolCreationFee),
- *   so the config value is denominated in SOL. 0 is valid (the SDK
- *   accepts zero) and means no creation fee. This is a per-config
- *   setting chosen by Curv, not a Meteora protocol mandate.
+ *   so the config value is denominated in SOL. 0.02 matches pump.fun.
+ *   Meteora requires 0.001-100 SOL and splits it 10% protocol / 90%
+ *   to the fee claimer (Curv). This is a per-config setting chosen by
+ *   Curv, not a Meteora protocol mandate.
+ * - Trading fees: every swap pays Base Fee + Dynamic Fee (capped at 99%).
+ *   Meteora takes 20% of the trading fee for the protocol, then the
+ *   remaining 80% is split between creator and the fee claimer (Curv)
+ *   by creatorTradingFeePercentage.
+ * - creatorTradingFeePercent: percent of the non-protocol trading fee
+ *   that goes to the creator. 37.5% of 80% of a 1% fee = 0.30% of trade
+ *   volume to the creator (pump.fun parity); Curv keeps ~0.50%.
+ *   The creator claims with a signed transaction via claimCreatorTradingFee.
  * - migrationFeePercent / creatorMigrationFeePercent: the SDK divides
  *   feePercentage by 100 (percent), and creatorFeePercentage is a
- *   percent of the migration fee (max 100).
- * - creatorTradingFeePercent: passed straight into the SDK's
- *   `creatorTradingFeePercentage` field, which the SDK validates as
- *   0-100 (percent) and divides by 100 on-chain. 0.3 here = 0.3%.
+ *   percent of the migration fee (max 100). Both must be whole numbers.
  * - migratedPoolFeeBps: basis points.
  */
 export const LAUNCH_FEE_CONFIG = {
-  /** Pool creation fee baked into Curv's DBC config (SOL). This is our
-   *  own setting, not a Meteora protocol charge: the DBC program lets it
-   *  be zero. 0 keeps launching free apart from Solana network fees. */
-  poolCreationFeeSol: 0,
-  /** Exponential fee-scheduler shape (matches the DBC config). */
+  /** Pool creation fee baked into Curv's DBC config (SOL), matching
+   *  pump.fun's 0.02 SOL. 90% goes to Curv as fee claimer. */
+  poolCreationFeeSol: 0.02,
+  /** Flat ~1% trading fee like pump.fun: 60 periods with start == end. */
   feeSchedulerPeriods: 60,
   feeSchedulerTotalDuration: 60,
   /** Extra dynamic fee on top of the scheduled base fee. */
   dynamicFeeEnabled: true,
-  /** Creator's cut of per-trade fees, in percent. 0.3 = 0.3% of every
-   *  bonding-curve trade, matching pump.fun. Accrues to the creator's
-   *  wallet (feeClaimer) in the traded tokens; the creator claims it
-   *  with a signed transaction via claimCreatorTradingFee. */
-  creatorTradingFeePercent: 0.3,
+  /** Creator's cut of the non-protocol trading fee, in percent.
+   *  37.5 here = ~0.30% of each trade's volume at the default 1% fee. */
+  creatorTradingFeePercent: 37.5,
   /** Which token trade fees are collected in. */
   collectFeeMode: 'quote token',
   /** Where the pool migrates at graduation. */
@@ -88,6 +91,29 @@ function pct(bps: number): string {
 }
 
 /**
+ * Effective per-trade fee split for a starting fee schedule, following
+ * Meteora's documented DBC math: the protocol takes 20% of the trading
+ * fee, then creatorTradingFeePercent of the remaining 80% goes to the
+ * creator and the rest to Curv as fee claimer. All figures are percent
+ * of trade volume.
+ */
+export function effectiveTradeFeeSplit(
+  startingFeeBps: number,
+  econ: Pick<ResolvedEcon, 'creatorTradingFeePercent'> = LAUNCH_FEE_CONFIG,
+): { trader: number; protocol: number; creator: number; platform: number } {
+  const trader = startingFeeBps / 100;
+  const protocol = trader * 0.2;
+  const nonProtocol = trader - protocol;
+  const creator = (nonProtocol * econ.creatorTradingFeePercent) / 100;
+  const platform = nonProtocol - creator;
+  return { trader, protocol, creator, platform };
+}
+
+function two(n: number): string {
+  return n.toFixed(2);
+}
+
+/**
  * Rows for the launch review page's fee-disclosure box. Every number
  * comes from LAUNCH_FEE_CONFIG (the same constants the on-chain config
  * is built from) or from the user's own fee-schedule inputs, nothing
@@ -96,27 +122,36 @@ function pct(bps: number): string {
 export function buildFeeDisclosureRows(input: FeeDisclosureInput): FeeDisclosureRow[] {
   const c = input.econ ?? LAUNCH_FEE_CONFIG;
   const dyn = (on: boolean) => (on ? ', plus a dynamic fee on volatile swaps' : '');
+  const split = effectiveTradeFeeSplit(input.startingFeeBps, c);
+  const flatFee = input.startingFeeBps === input.endingFeeBps;
   return [
     {
       label: 'Pool creation fee',
       value: `${c.poolCreationFeeSol} SOL`,
       hint:
-        c.poolCreationFeeSol === 0
-          ? 'There is no pool creation fee on Curv. This figure is our own config setting, not a Meteora protocol charge, and the DBC program allows it to be zero. You only pay Solana network fees for the launch transaction, a few cents.'
-          : `A ${c.poolCreationFeeSol} SOL creation fee set in Curv's own pool config, not a Meteora protocol charge. Network fees for the launch transaction are on top, a few cents.`,
+        `A ${c.poolCreationFeeSol} SOL creation fee set in Curv's own pool config, matching pump.fun, not a Meteora protocol charge. ` +
+        `Meteora takes 10% of it and Curv receives 90%. Network fees for the launch transaction are on top, a few cents.`,
     },
     {
       label: 'Trading fees',
-      value: `${pct(input.startingFeeBps)} → ${pct(input.endingFeeBps)}`,
+      value: flatFee ? `${pct(input.startingFeeBps)} flat` : `${pct(input.startingFeeBps)} → ${pct(input.endingFeeBps)}`,
       hint:
-        `Your schedule: decays exponentially over ${c.feeSchedulerPeriods} periods` +
+        `Every bonding-curve trade pays about ${two(split.trader)}% in fees` +
+        (flatFee
+          ? ''
+          : `, easing from ${pct(input.startingFeeBps)} to ${pct(input.endingFeeBps)}`) +
         dyn(c.dynamicFeeEnabled) +
-        `. Collected in ${input.quoteSymbol || 'the quote token'}.`,
+        `. Meteora takes 20% of the fee for the protocol; the rest splits between you and Curv. Collected in ${input.quoteSymbol || 'the quote token'}.`,
     },
     {
       label: 'Your share of trading fees',
-      value: `${c.creatorTradingFeePercent}%`,
-      hint: `You earn ${c.creatorTradingFeePercent}% of every bonding-curve trade, accrued in the traded tokens. Claim it any time with your creator wallet, claiming is a small Solana transaction you sign.`,
+      value: `~${two(split.creator)}% of volume`,
+      hint: `You earn about ${two(split.creator)}% of every bonding-curve trade's volume, like pump.fun creators. Claim it any time with your creator wallet, claiming is a small Solana transaction you sign.`,
+    },
+    {
+      label: 'Platform fee',
+      value: `~${two(split.platform)}% of volume`,
+      hint: `Curv keeps about ${two(split.platform)}% of every bonding-curve trade's volume as the launchpad fee, claimed to the Curv fee wallet. This is how the platform is funded.`,
     },
     {
       label: 'Graduation',

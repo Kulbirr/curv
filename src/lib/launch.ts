@@ -111,6 +111,33 @@ export function presetCurve(preset: CurvePresetId, startPrice: number): CurveDes
   return { prices, liquidityWeights };
 }
 
+/** Target starting valuation for Quick launches: $8,000 fully-diluted at
+ *  the 1B default supply, pump.fun-like (it launches near $4-8k). */
+export const QUICK_TARGET_START_FDV_USD = 8000;
+
+/** Default token supply for Quick launches. */
+export const QUICK_DEFAULT_SUPPLY = 1_000_000_000;
+
+/**
+ * Quick-launch default starting price (quote UI units per token) for a
+ * quote asset priced at quoteUsdPrice USD. Scaling by the quote price
+ * keeps every pair near the same starting valuation: on SOL pairs the
+ * exponential preset then graduates near 100 SOL, like pump.fun's
+ * 85-115 SOL. Falls back to $1 per quote unit when the price is unknown.
+ */
+export function quickDefaultStartPrice(quoteUsdPrice?: number | null): number {
+  const usd =
+    quoteUsdPrice && quoteUsdPrice > 0 && Number.isFinite(quoteUsdPrice) ? quoteUsdPrice : 1;
+  return QUICK_TARGET_START_FDV_USD / QUICK_DEFAULT_SUPPLY / usd;
+}
+
+/** Format a small price for input fields without scientific notation. */
+export function formatPriceInput(n: number): string {
+  if (!Number.isFinite(n) || n <= 0) return '0';
+  const s = n.toFixed(12).replace(/0+$/, '').replace(/\.$/, '');
+  return s === '' ? '0' : s;
+}
+
 export function validateLaunchSpec(spec: LaunchSpec): string[] {
   const errors: string[] = [];
   if (!spec.name.trim()) errors.push('Token name is required');
@@ -341,10 +368,27 @@ export interface BuildLaunchOptions {
   baseMintKeypair?: Keypair;
 }
 
+/** Platform fee wallet (fee claimer), or null when not configured. */
+export function platformFeeWallet(): PublicKey | null {
+  const raw = process.env.NEXT_PUBLIC_CURV_FEE_WALLET?.trim();
+  if (!raw) return null;
+  try {
+    return new PublicKey(raw);
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Build the unsigned createConfigAndPool transaction.
  * The caller partial-signs with configKeypair + baseMintKeypair, sets the
  * fee payer + blockhash, then asks the wallet to sign.
+ *
+ * The fee claimer is Curv's platform wallet (NEXT_PUBLIC_CURV_FEE_WALLET):
+ * it receives the partner share of trading fees, 90% of the pool creation
+ * fee, and the partner share of the migration fee. When the env var is
+ * unset (local dev), it falls back to the payer so launches still work,
+ * with the partner share flowing to the creator instead.
  */
 export async function buildLaunchTransaction(
   spec: LaunchSpec,
@@ -361,7 +405,7 @@ export async function buildLaunchTransaction(
 
   const transaction: Transaction = await client.partner.createConfigAndPool({
     config: configKeypair.publicKey,
-    feeClaimer: payer,
+    feeClaimer: platformFeeWallet() ?? payer,
     leftoverReceiver: payer,
     payer,
     quoteMint,
