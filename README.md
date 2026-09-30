@@ -21,11 +21,19 @@ Curv builds on the DBC SDK at depth, not as a thin wrapper:
 * Configurable migration fee and post graduation pool fee
 * Quote pairs in SOL, USDC or any SPL mint
 
+## Liquidity lock
+
+Curv does not burn graduated liquidity. It locks it forever.
+
+When a pool graduates, all of its liquidity migrates into a Meteora DAMM v2 pool inside two permanently locked positions: half owned by the creator, half by Curv. The lock is enforced by the Meteora program itself, so neither side can ever withdraw the underlying liquidity. Both sides keep only the right to claim trading fees, which accrue to the locked positions.
+
+This reads as "LP not burned" to naive rug checkers, so the pool page verifies the lock on chain and links straight to the DAMM v2 pool and both position accounts. Anyone can confirm the lock without trusting us.
+
 ## Creator economics
 
 * 0.3 percent of every bonding curve trade goes to the creator, matching pump.fun
-* At graduation, a migration fee is taken from the migrating liquidity and the creator keeps half of it
-* No pool creation fee. Launching costs only Solana network fees
+* At graduation, an 8 percent migration fee is taken from the migrating liquidity: 6 percent to Curv and 2 percent to the creator
+* Pool creation costs 0.02 SOL, matching pump.fun. Meteora takes 10 percent of it and Curv receives the rest
 * Every figure on the launch page is computed from the same constants that build the on chain config. Nothing is estimated or mocked
 
 ## Launch flow
@@ -33,7 +41,7 @@ Curv builds on the DBC SDK at depth, not as a thin wrapper:
 1. Design the curve, set the economics, upload art and metadata. No wallet needed
 2. Claim an instant ...curv vanity mint from the warm pool, or grind one in the browser while you design. A random mint is the final fallback
 3. Review the full fee disclosure, then connect a wallet. Launch takes exactly two signatures
-4. Trade on the pool page with live polling, quick buy and sell presets, and a price chart drawn from real indexed samples with gaps preserved
+4. Trade on the pool page with live price updates, quick buy and sell presets, and a price chart drawn from real indexed samples with gaps preserved
 5. At the graduation threshold the pool migrates to DAMM v2 automatically
 
 ## Verified on devnet
@@ -46,7 +54,7 @@ The full path runs against devnet through the real app code: launch, pool regist
 
 ## Stack
 
-Next.js and TypeScript, `@meteora-ag/dynamic-bonding-curve-sdk`, SQLite registry with a REST API, Solana RPC REST polling, 358 automated tests.
+Next.js and TypeScript, `@meteora-ag/dynamic-bonding-curve-sdk`, SQLite registry with a REST API, Solana RPC REST polling, 504 automated tests.
 
 ## Run it
 
