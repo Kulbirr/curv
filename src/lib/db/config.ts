@@ -28,3 +28,13 @@ export function isSampleStale(sampledAt: number | null | undefined, nowMs: numbe
   if (typeof sampledAt !== 'number' || !Number.isFinite(sampledAt)) return true;
   return nowMs - sampledAt > STALE_AFTER_MS;
 }
+
+/**
+ * Port for the indexer's pool-state push WebSocket server. Null when
+ * INDEXER_WS_PORT is unset, in which case push is fully disabled and the
+ * indexer behaves exactly as before (browsers poll the REST API).
+ */
+export const INDEXER_WS_PORT: number | null = (() => {
+  const raw = Number(process.env.INDEXER_WS_PORT);
+  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : null;
+})();

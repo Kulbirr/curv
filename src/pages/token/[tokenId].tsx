@@ -25,7 +25,7 @@ import {
   TradeStats,
   useOnChainPool,
   usePoolHistory,
-  usePoolState,
+  usePoolStatePush,
 } from '@/components/Pool';
 import { getMintDecimalsCached } from '@/components/Pool/useOnChainPool';
 import type { OnChainPool } from '@/components/Pool/useOnChainPool';
@@ -253,7 +253,7 @@ function ActivityCard({
 }
 
 function PoolPageContent({ poolAddress }: { poolAddress: string }) {
-  const stateQuery = usePoolState(poolAddress);
+  const stateQuery = usePoolStatePush(poolAddress);
   const historyQuery = usePoolHistory(poolAddress);
   const onChainQuery = useOnChainPool(poolAddress);
   const now = useNow(5000);

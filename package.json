@@ -59,6 +59,7 @@
     "superstruct": "^2.0.2",
     "tailwind-merge": "^3.6.0",
     "tailwindcss-animate": "^1.0.7",
+    "ws": "8.18.0",
     "zod": "^3.25.76"
   },
   "devDependencies": {
@@ -68,6 +69,7 @@
     "@types/pg": "^8.23.1",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
+    "@types/ws": "8.18.0",
     "@vitest/coverage-v8": "5.0.2",
     "autoprefixer": "^10.5.4",
     "eslint": "^9.39.5",

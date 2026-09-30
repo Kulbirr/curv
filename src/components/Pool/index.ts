@@ -6,5 +6,6 @@ export { default as PoolDetails } from './PoolDetails';
 export { default as CreatorEarnings } from './CreatorEarnings';
 export { default as LiquidityLock } from './LiquidityLock';
 export { usePoolState, usePoolHistory, changeFromHistory } from './usePoolData';
+export { usePoolStatePush } from './usePoolStatePush';
 export { useOnChainPool } from './useOnChainPool';
 export type { PoolStateResponse, HistoryResponse, HistoryPoint, TradeStats24h } from './types';

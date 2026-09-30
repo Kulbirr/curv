@@ -24,9 +24,14 @@
   "extends": "./tsconfig.json",
   "include": [
     "src/indexer.ts",
+    "src/indexer-ws.ts",
     "src/lib/db/**/*.ts",
     "src/lib/pool-state.ts",
+    "src/lib/pool-state-broadcast.ts",
+    "src/lib/pool-push-protocol.ts",
+    "src/lib/quote-prices.ts",
     "src/lib/solana.ts",
-    "src/lib/pool-registry.ts"
+    "src/lib/pool-registry.ts",
+    "src/components/Pool/types.ts"
   ]
 }
