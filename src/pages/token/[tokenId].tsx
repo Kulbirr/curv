@@ -17,6 +17,7 @@ import {
 } from '@/components/Discover/format';
 import {
   CreatorEarnings,
+  LiquidityLock,
   PoolDetails,
   PoolHeader,
   PriceChart,
@@ -369,6 +370,7 @@ function PoolPageContent({ poolAddress }: { poolAddress: string }) {
           />
           <PriceChart poolAddress={poolAddress} quoteSymbol={state.quoteSymbol} />
           <GraduationCard state={state} />
+          {state.graduated && <LiquidityLock poolAddress={poolAddress} />}
           <CreatorEarnings poolAddress={poolAddress} state={state} />
           <ActivityCard state={state} onChain={onChainQuery.data} />
         </div>
