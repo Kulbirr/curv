@@ -16,8 +16,10 @@ function resolvePrimaryRpcUrl(): string {
     if (process.env.SOLANA_RPC_URL) return process.env.SOLANA_RPC_URL;
     if (process.env.RPC_URL) return process.env.RPC_URL;
   } else {
-    // Client: only a public, keyless endpoint may be exposed here.
-    if (process.env.NEXT_PUBLIC_SOLANA_RPC_URL) return process.env.NEXT_PUBLIC_SOLANA_RPC_URL;
+    // Client: a keyed RPC URL must never ship in the browser bundle (any
+    // visitor could copy it). Browser chain reads go through the same-origin
+    // /api/rpc proxy, which forwards from the server's keyed lane.
+    return '/api/rpc';
   }
   return clusterApiUrl(SOLANA_NETWORK);
 }
