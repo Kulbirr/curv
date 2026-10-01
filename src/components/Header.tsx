@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useMemo, useState } from 'react';
 import { shortenAddress } from '@/lib/utils';
-import { previewAddress } from '@/lib/address-preview';
+import { parsePreviewAddress, previewAddress } from '@/lib/address-preview';
 
 /** The Living Curve mark, ported from the curv-ui spec. */
 export function CurveMark({ className = '' }: { className?: string }) {
@@ -56,21 +56,30 @@ export const Header = () => {
 
   async function onSearchSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!search.trim() || searching) return;
-    setSearching(true);
-    setSearchMsg(null);
-    const result = await previewAddress(search);
-    setSearching(false);
-    if (result.kind === 'pool') {
-      setSearch('');
-      router.push(`/token/${result.poolAddress}`);
-    } else if (result.kind === 'unknown') {
-      setSearchMsg('Not a Curv pool. This address is not tracked here.');
-    } else if (result.kind === 'invalid') {
-      setSearchMsg('That does not look like a Solana address.');
-    } else {
-      setSearchMsg('Could not check right now. Try again.');
+    const query = search.trim();
+    if (!query || searching) return;
+    // A pasted address jumps straight to that token when it is tracked.
+    if (parsePreviewAddress(query)) {
+      setSearching(true);
+      setSearchMsg(null);
+      const result = await previewAddress(search);
+      setSearching(false);
+      if (result.kind === 'pool') {
+        setSearch('');
+        router.push(`/token/${result.poolAddress}`);
+      } else if (result.kind === 'unknown') {
+        setSearchMsg('Not a Curv pool. This address is not tracked here.');
+      } else if (result.kind === 'invalid') {
+        setSearchMsg('That does not look like a Solana address.');
+      } else {
+        setSearchMsg('Could not check right now. Try again.');
+      }
+      return;
     }
+    // A name or ticker hands off to Discover, which filters the token list.
+    setSearch('');
+    setSearchMsg(null);
+    router.push({ pathname: '/', query: { q: query } });
   }
 
   return (
@@ -104,10 +113,23 @@ export const Header = () => {
             setSearch(e.target.value);
             setSearchMsg(null);
           }}
-          placeholder="Search tokens by address"
-          aria-label="Search tokens by address"
+          placeholder="Search name, ticker, or address"
+          aria-label="Search tokens by name, ticker, or address"
           spellCheck={false}
         />
+        {search && (
+          <button
+            type="button"
+            className="sc-search-clear"
+            aria-label="Clear search"
+            onClick={() => {
+              setSearch('');
+              setSearchMsg(null);
+            }}
+          >
+            ×
+          </button>
+        )}
         {searchMsg && (
           <p
             style={{

@@ -542,6 +542,35 @@ select {
 }
 
 
+/* Clear (x) button inside search fields: appears while text is present. */
+.sc-search-clear {
+  flex: none;
+  display: inline-flex;
+  width: 22px;
+  height: 22px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #7e8881;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.sc-search-clear:hover {
+  background: #1a1f1f;
+  color: #e3e8e1;
+}
+
+.sc-search-clear:focus-visible {
+  outline: 2px solid #38eb7c;
+  outline-offset: 1px;
+}
+
+
 .sc-search:focus-within {
   border-color: #62714d;
 }
@@ -4273,6 +4302,8 @@ select {
 }
 .sc-preset-card {
   position: relative;
+  display: flex;
+  flex-direction: column;
   min-width: 0;
   padding: 18px 16px 15px;
   border: 1px solid #252b2b;
@@ -4282,6 +4313,14 @@ select {
 .sc-preset-card.featured {
   border-color: #26834b;
   box-shadow: 0 0 20px rgb(41 242 123 / 6%);
+}
+/* Pin the action to the card bottom so rows of cards line up
+   even when blurbs wrap to different lengths. */
+.sc-preset-card .sc-preset-parameters {
+  margin-bottom: 14px;
+}
+.sc-preset-card .sc-button {
+  margin-top: auto;
 }
 .sc-preset-badge {
   position: absolute;

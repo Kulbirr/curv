@@ -1,7 +1,9 @@
 import Link from 'next/link'
+import { useRouter } from 'next/router'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useInfiniteQuery } from '@tanstack/react-query'
 import PoolCard from './PoolCard'
+import { matchesQuery } from './search'
 import { DASH } from '@/lib/format/number'
 import type { PoolSummary, PoolsResponse } from './types'
 
@@ -62,14 +64,6 @@ function matchesFilter(pool: PoolSummary, filter: QuoteFilter): boolean {
   }
 }
 
-function matchesQuery(pool: PoolSummary, query: string): boolean {
-  const q = query.trim().toLowerCase()
-  if (!q) return true
-  return `${pool.baseSymbol} ${pool.baseName} ${pool.quoteSymbol}`
-    .toLowerCase()
-    .includes(q)
-}
-
 function CardSkeleton() {
   return (
     <div className="sc-token-card" aria-hidden="true">
@@ -99,9 +93,21 @@ function CardSkeleton() {
 }
 
 export default function Discover() {
+  const router = useRouter()
   const [quoteFilter, setQuoteFilter] = useState<QuoteFilter>('all')
   const [sort, setSort] = useState<SortMode>('hot')
   const [search, setSearch] = useState('')
+
+  // Seed the search box from ?q=, so the header search can hand a
+  // name or ticker query off to the token list.
+  useEffect(() => {
+    if (!router.isReady) return
+    const q = router.query.q
+    const initial = Array.isArray(q) ? q[0] : q
+    if (typeof initial === 'string' && initial.trim()) {
+      setSearch(initial)
+    }
+  }, [router.isReady, router.query.q])
 
   const {
     data,
@@ -251,9 +257,19 @@ export default function Discover() {
             <input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search tokens by address"
-              aria-label="Search tokens by address"
+              placeholder="Search name, ticker, or address"
+              aria-label="Search tokens by name, ticker, or address"
             />
+            {search && (
+              <button
+                type="button"
+                className="sc-search-clear"
+                aria-label="Clear search"
+                onClick={() => setSearch('')}
+              >
+                ×
+              </button>
+            )}
           </label>
         </div>
 

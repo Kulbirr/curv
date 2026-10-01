@@ -7,6 +7,18 @@ const FAQS: { q: string; a: string }[] = [
     a: 'Curv is a token launchpad on Solana built on the Meteora Dynamic Bonding Curve. You design the curve shape, the fee schedule, and the graduation. Traders then buy and sell along your curve until it graduates.',
   },
   {
+    q: 'What is the difference between a Token and a Tokenized Stock?',
+    a: 'Type describes what your launched token claims to represent, while Pair with only chooses the currency it trades in. A Token is a normal bonding curve token. Pairing a Token with a tokenized stock changes nothing about the token itself, its price is simply quoted in that stock asset. Tokenized Stock adds a stock ticker reference to the token metadata and the UI. It does not give holders any share ownership, it is not backed by the issuer, it does not track the stock price, and it does not change the bonding curve.',
+  },
+  {
+    q: 'Which wallets can I use?',
+    a: 'On desktop you can connect Phantom, Solflare, Backpack, or Coinbase Wallet. On Android you also get a Mobile wallet option. MetaMask connects through WalletConnect, which needs a project ID configured before it goes live.',
+  },
+  {
+    q: 'How do I find a token?',
+    a: 'Use the search box to look a token up by its name, its ticker, or its pool address. On the Discover page the same search filters the token list as you type.',
+  },
+  {
     q: 'How does a launch work?',
     a: 'Connect your wallet, name your token, pick a quote asset, and choose Quick launch or the Pro designer. Your pool goes live on its bonding curve the moment the launch transaction confirms.',
   },
