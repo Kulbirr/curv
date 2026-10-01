@@ -5,6 +5,7 @@
   "author": "Dann Wee <dann@raccoons.dev>",
   "license": "ISC",
   "scripts": {
+    "postinstall": "node scripts/patch-jup-mwa.cjs",
     "clean": "rm -rf node_modules .next .turbo",
     "dev": "next dev --turbopack",
     "build": "next build",

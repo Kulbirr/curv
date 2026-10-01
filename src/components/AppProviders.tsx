@@ -28,6 +28,23 @@ import { SOLANA_NETWORK } from '@/lib/solana';
 // We register the Solana Mobile Wallet Adapter exactly once at module scope.
 // (A previous integration re-registered it on every render, which produced
 // several identical "Mobile" tiles in the connect modal.)
+// The dapp must only advertise the network it is actually pointed at.
+// @solana-mobile's default chain selector prefers solana:mainnet whenever it
+// appears in the chain list, so declaring both chains makes Android wallet
+// authorize requests ask for mainnet — Phantom in Testnet Mode then rejects
+// the connection with "Incorrect mode" on our devnet deployment.
+const MWA_CHAINS: [`${string}:${string}`] =
+  SOLANA_NETWORK === 'mainnet-beta' ? ['solana:mainnet'] : ['solana:devnet'];
+
+// Jupiter's bundled wallet adapter registers its own MWA wallet with a
+// hardcoded mainnet-first chain list (rewritten at install time by
+// scripts/patch-jup-mwa.cjs). Expose our chain list on window before any
+// provider renders so the patched bundle picks it up.
+if (typeof window !== 'undefined') {
+  (window as unknown as Record<string, unknown>).__CURV_MWA_CHAINS__ =
+    MWA_CHAINS;
+}
+
 let mwaRegistered = false;
 function registerMobileWalletAdapterOnce() {
   if (mwaRegistered || typeof window === 'undefined') return;
@@ -39,7 +56,7 @@ function registerMobileWalletAdapterOnce() {
     registerMwa({
       appIdentity: { name: 'Curv', uri: appUrl },
       authorizationCache: createDefaultAuthorizationCache(),
-      chains: ['solana:mainnet', 'solana:devnet'],
+      chains: MWA_CHAINS,
       chainSelector: createDefaultChainSelector(),
       onWalletNotFound: createDefaultWalletNotFoundHandler(),
     });
