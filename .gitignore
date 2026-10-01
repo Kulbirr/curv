@@ -15,3 +15,6 @@ data/
 .DS_Store
 *.log
 .grad-proof/
+
+# Vitest JSON reporter output
+.vitest/
