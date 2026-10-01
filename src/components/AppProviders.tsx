@@ -1,10 +1,11 @@
 import { useEffect, useMemo } from 'react';
 import type { AppProps } from 'next/app';
 import { useTheme } from 'next-themes';
-import { ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react';
-import { WalletModalProvider } from '@solana/wallet-adapter-react-ui';
-import '@solana/wallet-adapter-react-ui/styles.css';
-import { WalletAdapterNetwork, type Adapter } from '@solana/wallet-adapter-base';
+import {
+  Adapter,
+  UnifiedWalletProvider,
+} from '@jup-ag/wallet-adapter';
+import { WalletAdapterNetwork } from '@solana/wallet-adapter-base';
 import { PhantomWalletAdapter } from '@solana/wallet-adapter-phantom';
 import { SolflareWalletAdapter } from '@solana/wallet-adapter-solflare';
 import { BackpackWalletAdapter } from '@solana/wallet-adapter-backpack';
@@ -19,7 +20,7 @@ import {
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'sonner';
 import { useWindowWidthListener } from '@/lib/device';
-import { SOLANA_NETWORK, SOLANA_RPC_URL } from '@/lib/solana';
+import { SOLANA_NETWORK } from '@/lib/solana';
 
 // Client-only: wallet adapters pull in Ledger deps that break Node SSR
 // (this module is dynamically imported with ssr:false from _app.tsx).
@@ -101,20 +102,32 @@ export default function AppProviders({ Component, pageProps }: AppProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [network]);
 
+  const walletTheme = resolvedTheme === 'light' ? 'light' : 'dark';
+  const appUrl = (process.env.NEXT_PUBLIC_APP_URL || 'https://curvpad.fun').replace(
+    /\/+$/,
+    ''
+  );
+
   return (
     <QueryClientProvider client={queryClient}>
-      <ConnectionProvider endpoint={SOLANA_RPC_URL}>
-        <WalletProvider wallets={wallets} autoConnect>
-          <WalletModalProvider>
-            <Toaster
-              theme={resolvedTheme === 'light' ? 'light' : 'dark'}
-              richColors
-              closeButton
-            />
-            <Component {...pageProps} />
-          </WalletModalProvider>
-        </WalletProvider>
-      </ConnectionProvider>
+      <UnifiedWalletProvider
+        wallets={wallets}
+        config={{
+          env: SOLANA_NETWORK,
+          autoConnect: true,
+          metadata: {
+            name: 'Curv',
+            description: 'Curv bonding-curve launchpad on Solana',
+            url: appUrl,
+            iconUrls: [`${appUrl}/curv-icon-512.png`],
+          },
+          theme: walletTheme,
+          lang: 'en',
+        }}
+      >
+        <Toaster theme={walletTheme} richColors closeButton />
+        <Component {...pageProps} />
+      </UnifiedWalletProvider>
     </QueryClientProvider>
   );
 }

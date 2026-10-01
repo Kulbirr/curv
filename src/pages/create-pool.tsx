@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/router'
 import bs58 from 'bs58'
 import { useWallet } from '@solana/wallet-adapter-react'
-import { useWalletModal } from '@solana/wallet-adapter-react-ui'
+import { useUnifiedWalletContext } from '@jup-ag/wallet-adapter';
 import Page from '@/components/ui/Page/Page'
 import { CurveChart } from '../components/Launch/CurveChart'
 import { ErrorList, Field, Toggle } from '../components/Launch/ui'
@@ -160,7 +160,7 @@ function asStringArray(v: unknown): string[] | null {
 export default function CreatePool() {
   const router = useRouter()
   const { publicKey, signTransaction, signMessage } = useWallet()
-  const { setVisible: setWalletModalVisible } = useWalletModal()
+  const { setShowModal: setWalletModalVisible } = useUnifiedWalletContext()
 
   // ---- Token identity ----
   const [name, setName] = useState('')

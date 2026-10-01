@@ -6,7 +6,6 @@ import {
 } from '@/components/Discover/format';
 import type { PoolStateResponse } from './types';
 import { changeFromHistory } from './usePoolData';
-import { displayProgress } from '@/lib/graduation';
 import type { HistoryPoint } from './types';
 
 /** Deterministic hue (0-359) derived from a string, for avatar gradients. */
@@ -85,10 +84,6 @@ export default function PoolHeader({ state, points, volume24h, baseMint }: Props
   const changeArrow = !changeKnown ? '' : changeValue > 0 ? '▲ ' : changeValue < 0 ? '▼ ' : '';
   const changeText = changeKnown ? `${changeArrow}${Math.abs(changeValue).toFixed(1)}%` : '--';
 
-  // Single source of truth: the indexer's progress field. Never
-  // recomputed here from reserves (see src/lib/graduation.ts).
-  const pct = displayProgress(state.progress);
-
   const [copyMessage, setCopyMessage] = useState('');
   const copyText = async (text: string) => {
     try {
@@ -100,14 +95,9 @@ export default function PoolHeader({ state, points, volume24h, baseMint }: Props
       window.setTimeout(() => setCopyMessage(''), 1800);
     }
   };
-  const copyCreator = () => copyText(state.creator);
   const copyMint = () => {
     if (baseMint) copyText(baseMint);
   };
-  const shortCreator =
-    state.creator.length > 10
-      ? `${state.creator.slice(0, 4)} · ${state.creator.slice(-4)}`
-      : state.creator;
   const shortMint =
     baseMint && baseMint.length > 10
       ? `${baseMint.slice(0, 4)}…${baseMint.slice(-4)}`
@@ -137,14 +127,8 @@ export default function PoolHeader({ state, points, volume24h, baseMint }: Props
                 stale
               </span>
             )}
-            {state.graduated ? (
+            {state.graduated && (
               <span className="sc-pool-graduation-badge">Graduated</span>
-            ) : (
-              pct !== null && (
-                <span className="sc-pool-graduation-badge">
-                  {pct.toFixed(0)}% to graduation
-                </span>
-              )
             )}
           </div>
           <span className="sc-pool-ticker">${state.baseSymbol}</span>
@@ -193,34 +177,6 @@ export default function PoolHeader({ state, points, volume24h, baseMint }: Props
                   </svg>
                 </a>
               )}
-            </div>
-          )}
-          {state.creator && (
-            <div className="sc-pool-creator">
-              <span>Creator</span>
-              <code>{shortCreator}</code>
-              <button
-                type="button"
-                onClick={copyCreator}
-                aria-label="Copy creator address"
-                title="Copy creator address"
-                className="sc-icon-btn"
-              >
-                <svg
-                  viewBox="0 0 16 16"
-                  width="13"
-                  height="13"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden="true"
-                >
-                  <rect x="5.5" y="5.5" width="8" height="8" rx="1.5" />
-                  <path d="M10.5 5.5v-2a1.5 1.5 0 0 0-1.5-1.5h-4a1.5 1.5 0 0 0-1.5 1.5v4a1.5 1.5 0 0 0 1.5 1.5h1" />
-                </svg>
-              </button>
             </div>
           )}
         </div>

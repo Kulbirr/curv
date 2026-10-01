@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import Link from 'next/link';
 import { useWallet } from '@solana/wallet-adapter-react';
-import { useWalletModal } from '@solana/wallet-adapter-react-ui';
+import { useUnifiedWalletContext } from '@jup-ag/wallet-adapter';
 import { useQueries, useQuery } from '@tanstack/react-query';
 import { PublicKey } from '@solana/web3.js';
 import { TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID } from '@solana/spl-token';
@@ -82,7 +82,7 @@ function formatEarningTotal(e: AggregatedEarning): string {
 
 export default function Portfolio() {
   const { publicKey, connected } = useWallet();
-  const { setVisible: setWalletModalVisible } = useWalletModal();
+  const { setShowModal: setWalletModalVisible } = useUnifiedWalletContext();
   const owner = publicKey?.toBase58() ?? '';
 
   const holdingsQuery = useQuery({

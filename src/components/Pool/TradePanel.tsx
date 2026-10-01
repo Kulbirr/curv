@@ -3,7 +3,7 @@ import { BN } from '@coral-xyz/anchor';
 import { parseUiAmountToRaw, priceImpactPct, rawToUi } from '@/lib/swap-math';
 import { PublicKey } from '@solana/web3.js';
 import { useWallet } from '@solana/wallet-adapter-react';
-import { useWalletModal } from '@solana/wallet-adapter-react-ui';
+import { useUnifiedWalletContext } from '@jup-ag/wallet-adapter';
 import { useQueryClient } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
 import { getConnection, getDbcClient, isDevnet } from '@/lib/solana';
@@ -75,7 +75,7 @@ interface Props {
 
 export default function TradePanel({ poolAddress, state }: Props) {
   const { publicKey, signTransaction, connected } = useWallet();
-  const { setVisible: setWalletModalVisible } = useWalletModal();
+  const { setShowModal: setWalletModalVisible } = useUnifiedWalletContext();
   const queryClient = useQueryClient();
   const { data: onChain, isLoading: onChainLoading, isError: onChainError } = useOnChainPool(poolAddress);
 

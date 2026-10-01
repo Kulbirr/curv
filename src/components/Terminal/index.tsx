@@ -1,5 +1,5 @@
 import { useWallet } from '@solana/wallet-adapter-react';
-import { useWalletModal } from '@solana/wallet-adapter-react-ui';
+import { useUnifiedWalletContext } from '@jup-ag/wallet-adapter';
 import { useEffect, useState } from 'react';
 import { Skeleton } from '../ui/Skeleton';
 
@@ -15,7 +15,7 @@ const PLUGIN_HEIGHT = 568;
  */
 export function TerminalComponent({ mint }: { mint: string }) {
   const walletContext = useWallet();
-  const { setVisible: setWalletModalVisible } = useWalletModal();
+  const { setShowModal: setWalletModalVisible } = useUnifiedWalletContext();
 
   const [isReady, setIsReady] = useState(false);
 

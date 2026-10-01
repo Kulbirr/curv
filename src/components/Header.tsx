@@ -1,5 +1,5 @@
 import { useWallet } from '@solana/wallet-adapter-react';
-import { useWalletModal } from '@solana/wallet-adapter-react-ui';
+import { useUnifiedWalletContext } from '@jup-ag/wallet-adapter';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useMemo, useState } from 'react';
@@ -42,7 +42,7 @@ function activeForPath(pathname: string): string {
 }
 
 export const Header = () => {
-  const { setVisible: setWalletModalVisible } = useWalletModal();
+  const { setShowModal: setWalletModalVisible } = useUnifiedWalletContext();
   const router = useRouter();
 
   const { disconnect, publicKey } = useWallet();
