@@ -2755,6 +2755,14 @@ select {
 }
 
 
+.sc-trade-usd {
+  margin-top: 4px;
+  font-family: var(--sc-number);
+  font-size: 10px;
+  color: #7f8981;
+}
+
+
 .sc-quick-amounts {
   display: grid;
   grid-template-columns: repeat(4, 1fr);

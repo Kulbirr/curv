@@ -10,6 +10,8 @@ import { getConnection, getDbcClient, isDevnet } from '@/lib/solana';
 import { getCurrentPoint } from '@meteora-ag/dynamic-bonding-curve-sdk';
 import { NATIVE_SOL_MINT, type PoolStateResponse } from './types';
 import { getMintDecimalsCached, useOnChainPool, type OnChainPool } from './useOnChainPool';
+import { formatTokenCompact } from './chartFormat';
+import { UsdRef } from '@/components/UsdRef';
 import {
   isSignTimeout,
   signingTimeoutMessage,
@@ -230,6 +232,20 @@ export default function TradePanel({ poolAddress, state }: Props) {
   }, [state?.quoteSymbol]);
   const sellPresets = useMemo(() => [25, 50, 75, 100], []);
 
+  /** USD value of the typed amount, for the line under the input. Buy side is
+   *  quote-denominated (SOL x live SOL price); sell side is token x token USD.
+   *  Null when the amount or the price feed is missing. */
+  const amountUsd = useMemo(() => {
+    const amt = Number(amountStr);
+    if (!Number.isFinite(amt) || amt <= 0) return null;
+    const price = state?.price;
+    const priceUsd = state?.priceUsd;
+    if (typeof priceUsd !== 'number' || !Number.isFinite(priceUsd)) return null;
+    if (side === 'sell') return amt * priceUsd;
+    if (typeof price !== 'number' || !(price > 0)) return null;
+    return (amt * priceUsd) / price;
+  }, [amountStr, side, state?.price, state?.priceUsd]);
+
   const applySellPreset = (pct: number) => {
     if (!balance) return;
     if (pct >= 100) {
@@ -436,6 +452,18 @@ export default function TradePanel({ poolAddress, state }: Props) {
             />
             <span>{inputSymbol}</span>
           </div>
+          {amountUsd !== null && (
+            <div className="sc-trade-usd">
+              &asymp; $
+              {amountUsd.toLocaleString('en-US', {
+                maximumFractionDigits: 2,
+                minimumFractionDigits: 2,
+              })}
+              {state?.usdReference && (
+                <UsdRef reference={state.usdReference} hasUsd={true} />
+              )}
+            </div>
+          )}
 
           {/* Quick amount presets */}
           <div className="sc-quick-amounts">
@@ -468,11 +496,15 @@ export default function TradePanel({ poolAddress, state }: Props) {
 
           <div className="sc-receive-row">
             <span>You receive</span>
-            <strong>
+            <strong
+              title={
+                quote ? `${quote.outputUi} ${outputSymbol}` : undefined
+              }
+            >
               {status === 'quoting'
                 ? 'quoting…'
                 : quote
-                  ? `${quote.outputUi} ${outputSymbol}`
+                  ? `${formatTokenCompact(Number(quote.outputUi))} ${outputSymbol}`
                   : '--'}
             </strong>
           </div>
@@ -480,8 +512,13 @@ export default function TradePanel({ poolAddress, state }: Props) {
             <>
               <div className="sc-receive-row" style={{ marginTop: 5 }}>
                 <span>Minimum received</span>
-                <strong>
-                  {rawToUi(quote.minOutRaw, quote.outDecimals)} {outputSymbol}
+                <strong
+                  title={`${rawToUi(quote.minOutRaw, quote.outDecimals)} ${outputSymbol}`}
+                >
+                  {formatTokenCompact(
+                    Number(rawToUi(quote.minOutRaw, quote.outDecimals))
+                  )}{' '}
+                  {outputSymbol}
                 </strong>
               </div>
               {quote.priceImpactPct !== null && (

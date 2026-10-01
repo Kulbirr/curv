@@ -13,6 +13,7 @@ import {
   formatMoneyValue,
   formatPriceValue,
 } from '@/components/Discover/format';
+import { formatTokenCompact } from '@/components/Pool/chartFormat';
 import {
   CreatorEarnings,
   LiquidityLock,
@@ -187,8 +188,11 @@ function PositionCard({
       ) : (
         <>
           <div className="sc-position-primary">
-            <strong>
-              {amountText} ${state.baseSymbol}
+            <strong title={`${amountText} ${state.baseSymbol}`}>
+              {amountNum !== null && Number.isFinite(amountNum)
+                ? formatTokenCompact(amountNum)
+                : amountText}{' '}
+              ${state.baseSymbol}
             </strong>
             <b style={{ color: '#737d76' }}>,</b>
           </div>

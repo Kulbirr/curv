@@ -59,3 +59,24 @@ export function formatFullValue(v: number, mode: 'price' | 'mcap'): string {
   if (mode === 'mcap') return compactFmt.format(v);
   return Number(v.toPrecision(6)).toString();
 }
+
+/**
+ * Compact token amount for trade rows and position cards: 19.27m instead of
+ * 19269483.991575371. Lowercase k/m/b to match the chart axis style. Values
+ * under 1000 keep up to 4 significant decimals so dust stays meaningful;
+ * the full value belongs in the element's title tooltip.
+ */
+export function formatTokenCompact(v: number): string {
+  if (!Number.isFinite(v)) return '-';
+  if (v === 0) return '0';
+  const abs = Math.abs(v);
+  const SUFFIXES: Array<[number, string]> = [
+    [1e9, 'b'],
+    [1e6, 'm'],
+    [1e3, 'k'],
+  ];
+  for (const [div, suffix] of SUFFIXES) {
+    if (abs >= div) return `${Number((v / div).toFixed(2))}${suffix}`;
+  }
+  return Number(v.toPrecision(4)).toString();
+}

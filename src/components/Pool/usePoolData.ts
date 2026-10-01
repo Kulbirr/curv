@@ -27,8 +27,9 @@ export function usePoolState(poolAddress: string | null) {
   });
 }
 
-/** Bucketed real price history, polled every 15s. Pass `from` to select a
- *  time window (the API defaults `to` to now); omitted means the last 24h. */
+/** Bucketed real price history, polled every 10s to match the indexer sample
+ *  cadence (INDEXER_POLL_MS). Pass `from` to select a time window (the API
+ *  defaults `to` to now); omitted means the last 24h. */
 export function usePoolHistory(poolAddress: string | null, points = 300, from?: number) {
   return useQuery<HistoryResponse>({
     queryKey: ['pool-history', poolAddress, points, from ?? 0],
@@ -40,7 +41,7 @@ export function usePoolHistory(poolAddress: string | null, points = 300, from?: 
       );
     },
     enabled: !!poolAddress,
-    refetchInterval: 15000,
+    refetchInterval: 10000,
     refetchIntervalInBackground: false,
     retry: (count, err) => (err as Error).message !== 'Pool not registered' && count < 2,
     staleTime: 10000,
