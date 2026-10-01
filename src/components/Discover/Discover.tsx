@@ -139,6 +139,7 @@ export default function Discover() {
   // longer re-sorts. Filters and text search still apply client-side.
   const pages = useMemo(() => data?.pages ?? [], [data])
   const pools = useMemo(() => pages.flatMap((page) => page.pools), [pages])
+  const usdReference = pages[0]?.usdReference ?? false
   const firstPagination = pages[0]?.pagination
   const totalCount = firstPagination?.total ?? pools.length
   const graduatedTotal = useMemo(
@@ -349,7 +350,7 @@ export default function Discover() {
           <>
             <div className="sc-token-grid">
               {visiblePools.map((pool) => (
-                <PoolCard key={pool.poolAddress} pool={pool} />
+                <PoolCard key={pool.poolAddress} pool={pool} usdReference={usdReference} />
               ))}
             </div>
             <div ref={sentinelRef} aria-hidden="true" />

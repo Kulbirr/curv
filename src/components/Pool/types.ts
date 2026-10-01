@@ -35,6 +35,8 @@ export interface PoolStateResponse {
   hasSwap: boolean;
   marketCap: number | null;
   marketCapUsd: number | null;
+  /** True on devnet: USD figures are a mainnet reference, not real value. */
+  usdReference: boolean;
   migrationQuoteThreshold: number | null;
   /** Estimated 24h buy/sell split from reserve movement; null when history is too thin. */
   tradeStats24h: TradeStats24h | null;

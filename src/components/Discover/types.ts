@@ -46,6 +46,8 @@ export interface PoolSummary {
 
 export interface PoolsResponse {
   network: 'devnet' | 'mainnet-beta'
+  /** True on devnet: USD figures are a mainnet reference, not real value. */
+  usdReference: boolean
   pools: PoolSummary[]
   /**
    * Present only when the request used pagination (?limit=/&cursor=/&sort=).

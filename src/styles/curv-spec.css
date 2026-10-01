@@ -5501,3 +5501,19 @@ select {
   color: #38ee81;
   font-weight: 680;
 }
+
+/* "ref" marker next to devnet USD figures: the number is a mainnet
+   reference conversion, not real value. */
+.sc-usd-ref {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 0 5px;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  font-size: 0.62em;
+  font-weight: 600;
+  line-height: 1.5;
+  opacity: 0.65;
+  vertical-align: baseline;
+  cursor: help;
+}

@@ -1,15 +1,21 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { getQuoteUsdPrice, KNOWN_QUOTES } from './quote-prices';
+import { getQuoteUsdPrice, isUsdReferencePrice, KNOWN_QUOTES } from './quote-prices';
 
 describe('getQuoteUsdPrice (devnet)', () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it('HONESTY: on devnet it always returns null without any network call', async () => {
-    const fetchSpy = vi.fn();
+  it('HONESTY: on devnet it returns the mainnet reference price and flags it as a reference', async () => {
+    const fetchSpy = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        So11111111111111111111111111111111111111112: { usdPrice: 123.45 },
+      }),
+    });
     vi.stubGlobal('fetch', fetchSpy);
     const price = await getQuoteUsdPrice('So11111111111111111111111111111111111111112');
-    expect(price).toBeNull();
-    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(price).toBe(123.45);
+    // Callers must label devnet USD figures as a reference, never real value.
+    expect(isUsdReferencePrice()).toBe(true);
   });
 });
 

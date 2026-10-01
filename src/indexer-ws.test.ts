@@ -79,6 +79,7 @@ function fakeState(poolAddress: string): PoolStateResponse {
     hasSwap: true,
     marketCap: 100,
     marketCapUsd: null,
+    usdReference: false,
     migrationQuoteThreshold: 1000,
     tradeStats24h: null,
     creatorBaseFeeRaw: '0',

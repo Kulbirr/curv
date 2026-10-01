@@ -3,11 +3,20 @@ import { isDevnet } from './solana';
 /**
  * USD conversion for quote tokens.
  *
- * On devnet this always returns null: devnet tokens are play money and any
- * USD figure would be fiction. On mainnet it uses Jupiter's public price
- * API with a short timeout and a 60s in-memory cache. A failed lookup
- * returns null so callers show a dash instead of a stale number.
+ * On mainnet this uses Jupiter's public price API with a short timeout
+ * and a 60s in-memory cache. On devnet it returns the same mainnet
+ * reference price (the SOL mint is the same address): testers expect to
+ * see USD figures, and hiding them made the UI look broken. Devnet USD
+ * figures are reference-only, the token itself is play money, so API
+ * responses flag them with usdReference and the UI labels them as such.
+ * A failed lookup returns null so callers show a dash instead of a
+ * stale number.
  */
+
+/** True when USD figures derived from quote prices are reference-only. */
+export function isUsdReferencePrice(): boolean {
+  return isDevnet();
+}
 
 const JUP_PRICE_URL = 'https://api.jup.ag/price/v3';
 const CACHE_TTL_MS = 60_000;
@@ -20,7 +29,6 @@ export const KNOWN_QUOTES: Record<string, string> = {
 };
 
 export async function getQuoteUsdPrice(quoteMint: string): Promise<number | null> {
-  if (isDevnet()) return null;
   const now = Date.now();
   const hit = cache.get(quoteMint);
   if (hit && now - hit.at < CACHE_TTL_MS) return hit.price;

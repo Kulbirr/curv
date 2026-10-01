@@ -1,5 +1,5 @@
 import { PublicKey } from '@solana/web3.js';
-import { query, transaction } from './index';
+import { execute, query, transaction } from './index';
 
 /**
  * Pool registry repository. This is the authoritative store of *which*
@@ -186,4 +186,25 @@ export async function insertPool(input: RegisterPoolInput): Promise<TrackedPool>
     );
     return entry;
   });
+}
+
+/**
+ * Fill in a missing card image for an already-registered pool. Only
+ * updates when the row currently has no image (heal path for launches
+ * whose imageUrl never reached the registry). Returns true when a row
+ * was actually updated.
+ */
+export async function updatePoolImage(
+  poolAddress: string,
+  imageUrl: string,
+): Promise<boolean> {
+  validateAddress('poolAddress', poolAddress);
+  if (!/^https:\/\/[^/]+\/.+/.test(imageUrl) || imageUrl.length > 500) {
+    throw new Error('imageUrl must be an https URL');
+  }
+  const n = await execute(
+    'UPDATE pools SET image_url = $1 WHERE pool_address = $2 AND image_url IS NULL',
+    [imageUrl, poolAddress],
+  );
+  return n > 0;
 }

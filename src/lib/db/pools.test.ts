@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { getPool, getPoolByMint, insertPool, listPools } from './pools';
+import { getPool, getPoolByMint, insertPool, listPools, updatePoolImage } from './pools';
 import { randomAddress, useTempDb } from '@/test-support/db';
 
 let db: Awaited<ReturnType<typeof useTempDb>>;
@@ -119,5 +119,28 @@ describe('getPoolByMint', () => {
   it('returns null for unknown or malformed mints', async () => {
     expect(await getPoolByMint(randomAddress())).toBeNull();
     expect(await getPoolByMint('garbage')).toBeNull();
+  });
+});
+
+describe('updatePoolImage', () => {
+  it('fills a missing image and returns true', async () => {
+    const e = await insertPool(validInput());
+    expect((await getPool(e.poolAddress))?.imageUrl).toBeUndefined();
+    const ok = await updatePoolImage(e.poolAddress, 'https://example.com/img.png');
+    expect(ok).toBe(true);
+    expect((await getPool(e.poolAddress))?.imageUrl).toBe('https://example.com/img.png');
+  });
+
+  it('does not overwrite an existing image', async () => {
+    const e = await insertPool(validInput({ imageUrl: 'https://example.com/old.png' }));
+    const ok = await updatePoolImage(e.poolAddress, 'https://example.com/new.png');
+    expect(ok).toBe(false);
+    expect((await getPool(e.poolAddress))?.imageUrl).toBe('https://example.com/old.png');
+  });
+
+  it('rejects non-https URLs', async () => {
+    const e = await insertPool(validInput());
+    await expect(updatePoolImage(e.poolAddress, 'http://example.com/img.png')).rejects.toThrow();
+    await expect(updatePoolImage(e.poolAddress, 'not-a-url')).rejects.toThrow();
   });
 });

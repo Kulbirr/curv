@@ -3,7 +3,7 @@ import { getTrackedPool } from '@/lib/pool-registry';
 import { getPoolState } from '@/lib/db/states';
 import { getTradeStats24h } from '@/lib/db/ticks';
 import { isSampleStale } from '@/lib/db/config';
-import { getQuoteUsdPrice } from '@/lib/quote-prices';
+import { getQuoteUsdPrice, isUsdReferencePrice } from '@/lib/quote-prices';
 import { parseAddress } from '@/lib/api-validation';
 
 /** GET-only route; a body here is never legitimate. */
@@ -65,6 +65,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     hasSwap: state?.hasSwap ?? false,
     marketCap,
     marketCapUsd: marketCap !== null && quoteUsd !== null ? marketCap * quoteUsd : null,
+    /** True on devnet: USD figures are a mainnet reference, not real value. */
+    usdReference: isUsdReferencePrice(),
     migrationQuoteThreshold: state?.migrationQuoteThreshold ?? null,
     tradeStats24h: await getTradeStats24h(tracked.poolAddress),
     /** Accrued creator trading fees in raw integer units (decimal strings). */

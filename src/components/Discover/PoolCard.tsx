@@ -8,6 +8,7 @@ import {
   formatPriceValue,
   formatSignedChangePct,
 } from './format'
+import { UsdRef } from '@/components/UsdRef'
 import type { PoolSummary } from './types'
 
 /** Deterministic hue (0-359) derived from a string, for avatar gradients. */
@@ -61,7 +62,13 @@ function QuoteBadge({ quoteSymbol }: { quoteSymbol: string }) {
   )
 }
 
-export default function PoolCard({ pool }: { pool: PoolSummary }) {
+export default function PoolCard({
+  pool,
+  usdReference,
+}: {
+  pool: PoolSummary
+  usdReference?: boolean
+}) {
   const progress = clampProgress(pool.progress)
   const change = pool.change24h
   const changePositive = typeof change === 'number' && change > 0
@@ -128,7 +135,11 @@ export default function PoolCard({ pool }: { pool: PoolSummary }) {
       {/* Bottom row: MC / EST VOL / arrow */}
       <div className="sc-token-card-foot">
         <span>
-          MC <b>{formatMoneyValue(pool.marketCapUsd, pool.marketCap, pool.quoteSymbol)}</b>
+          MC{' '}
+          <b>
+            {formatMoneyValue(pool.marketCapUsd, pool.marketCap, pool.quoteSymbol)}
+            <UsdRef reference={usdReference} hasUsd={pool.marketCapUsd != null} />
+          </b>
         </span>
         <span title="Estimated from sampled reserve changes, not exact trade volume">
           EST VOL <b>{formatMoneyValue(null, pool.volume24h, pool.quoteSymbol)}</b>

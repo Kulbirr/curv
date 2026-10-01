@@ -22,8 +22,13 @@ describe('rpc-proxy request validation', () => {
     expect(RPC_PROXY_ALLOWED_METHODS.has('sendTransaction')).toBe(true);
   });
 
+  it('accepts getSlot and getBlockTime (the DBC SDK needs both for swap quotes)', () => {
+    expect(RPC_PROXY_ALLOWED_METHODS.has('getSlot')).toBe(true);
+    expect(RPC_PROXY_ALLOWED_METHODS.has('getBlockTime')).toBe(true);
+  });
+
   it('rejects non-allowlisted methods', () => {
-    const r = parseProxyRequest({ jsonrpc: '2.0', id: 1, method: 'getSlot' });
+    const r = parseProxyRequest({ jsonrpc: '2.0', id: 1, method: 'getInflationReward' });
     expect(r.ok).toBe(false);
   });
 

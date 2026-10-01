@@ -5,6 +5,7 @@ import {
   formatPriceValue,
 } from '@/components/Discover/format';
 import type { PoolStateResponse } from './types';
+import { UsdRef } from '@/components/UsdRef';
 import { changeFromHistory } from './usePoolData';
 import type { HistoryPoint } from './types';
 
@@ -190,11 +191,17 @@ export default function PoolHeader({ state, points, volume24h, baseMint }: Props
       <section className="sc-pool-stats" aria-label="Token statistics">
         <div>
           <span>Market cap</span>
-          <strong>{formatMoneyValue(state.marketCapUsd, state.marketCap, state.quoteSymbol)}</strong>
+          <strong>
+            {formatMoneyValue(state.marketCapUsd, state.marketCap, state.quoteSymbol)}
+            <UsdRef reference={state.usdReference} hasUsd={state.marketCapUsd != null} />
+          </strong>
         </div>
         <div>
           <span>Price</span>
-          <strong>{formatPriceValue(state.priceUsd, state.price, state.quoteSymbol)}</strong>
+          <strong>
+            {formatPriceValue(state.priceUsd, state.price, state.quoteSymbol)}
+            <UsdRef reference={state.usdReference} hasUsd={state.priceUsd != null} />
+          </strong>
         </div>
         <div>
           <span>Volume 24h</span>

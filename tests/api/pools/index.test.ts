@@ -18,6 +18,14 @@ vi.mock('@/lib/solana', async (importOriginal) => {
   return { ...actual, getDbcClient: vi.fn() };
 });
 
+// USD conversion is a live HTTP lookup; keep this suite hermetic. The
+// mocked null keeps the historical "no USD" assertions meaningful while
+// usdReference still reports the devnet reference flag.
+vi.mock('@/lib/quote-prices', () => ({
+  getQuoteUsdPrice: vi.fn(async () => null),
+  isUsdReferencePrice: () => true,
+}));
+
 const mockGetDbcClient = getDbcClient as unknown as ReturnType<typeof vi.fn>;
 
 function signRegistration(poolAddress: string, creatorKp: Keypair, timestamp: number): string {
@@ -155,8 +163,10 @@ describe('GET /api/pools', () => {
     expect(s.price).toBe(0.002);
     expect(s.progress).toBe(25);
     expect(s.stale).toBe(false);
-    // Devnet USD figures are play money: always null.
+    // Devnet USD figures are reference-only (mocked null here); the
+    // response still flags them as a reference, never real value.
     expect(s.priceUsd).toBeNull();
+    expect(res.body.usdReference).toBe(true);
     expect(mockGetDbcClient).not.toHaveBeenCalled();
   });
 

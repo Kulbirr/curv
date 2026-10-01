@@ -3,7 +3,7 @@ import { isSampleStale } from './db/config';
 import type { TrackedPool } from './db/pools';
 import type { PoolStateSample } from './db/states';
 import { getTradeStats24h } from './db/ticks';
-import { getQuoteUsdPrice } from './quote-prices';
+import { getQuoteUsdPrice, isUsdReferencePrice } from './quote-prices';
 
 /**
  * Assemble the exact JSON shape GET /api/pools/[address]/state returns,
@@ -45,6 +45,7 @@ export async function buildBroadcastState(
     hasSwap: sample.hasSwap,
     marketCap,
     marketCapUsd: marketCap !== null && quoteUsd !== null ? marketCap * quoteUsd : null,
+    usdReference: isUsdReferencePrice(),
     migrationQuoteThreshold: sample.migrationQuoteThreshold,
     tradeStats24h: await getTradeStats24h(pool.poolAddress),
     creatorBaseFeeRaw: sample.creatorBaseFeeRaw,

@@ -47,7 +47,7 @@ import {
   type VanityProgress,
 } from '@/lib/vanity-mint'
 import { fetchVanityHandout } from '@/lib/vanity-handout'
-import { buildFeeDisclosureRows } from '@/lib/launch-fees'
+import { buildFeeDisclosureRows, LAUNCH_FEE_CONFIG } from '@/lib/launch-fees'
 import {
   isSignTimeout,
   signingTimeoutMessage,
@@ -839,23 +839,37 @@ export default function CreatePool() {
           const j = await res.json().catch(() => ({}))
           throw new Error(j.error || 'Metadata upload failed')
         }
-        metadataUri = (await res.json()).uri as string
+        const mu = (await res.json()) as { uri: string; imageUrl?: string }
+        metadataUri = mu.uri
+        // Prefer the image URL straight from the upload response. Re-fetching
+        // the metadata JSON from the browser is CORS blocked by the R2 public
+        // bucket, which used to drop the card image silently.
+        if (
+          typeof mu.imageUrl === 'string' &&
+          mu.imageUrl.startsWith('https://')
+        )
+          imageUrl = mu.imageUrl
       } else {
         metadataUri = manualUri.trim()
         if (!/^https:\/\/[^/]+\/.+/.test(metadataUri))
           throw new Error('Enter a valid https metadata JSON URI')
       }
-      // Best-effort: pull the image URL out of the metadata for the registry card.
-      try {
-        const mj = await (await fetch(metadataUri)).json()
-        if (
-          mj &&
-          typeof mj.image === 'string' &&
-          mj.image.startsWith('https://')
-        )
-          imageUrl = mj.image
-      } catch {
-        /* card falls back to a letter avatar */
+      // Best-effort fallback: if the upload response did not carry an image
+      // URL (e.g. the manual URI path), try reading it out of the metadata.
+      // The R2 public bucket sends no CORS headers, so this fetch fails from
+      // the browser and the card falls back to a letter avatar.
+      if (!imageUrl) {
+        try {
+          const mj = await (await fetch(metadataUri)).json()
+          if (
+            mj &&
+            typeof mj.image === 'string' &&
+            mj.image.startsWith('https://')
+          )
+            imageUrl = mj.image
+        } catch {
+          /* card falls back to a letter avatar */
+        }
       }
 
       // 2. Spec + authoritative validation
@@ -1010,7 +1024,12 @@ export default function CreatePool() {
   // quote pair choice can block it.
   const activeErrors =
     mode === 'quick' ? [...tokenErrors, ...quoteErrors] : allErrors
-  const deployCost = feeRows.length > 0 ? feeRows[0].value : '0 SOL'
+  /** Honest wallet impact: creation fee plus the rent exempt deposits
+   *  Solana locks for the new pool accounts. Displayed as an approx. */
+  const deployTotalSol =
+    LAUNCH_FEE_CONFIG.poolCreationFeeSol +
+    LAUNCH_FEE_CONFIG.estimatedLaunchRentSol
+  const deployTotalLabel = `≈${deployTotalSol.toFixed(2)} SOL`
 
   // ---- per-field errors (drive red invalid-field highlighting) ----
   const findErr = (errs: string[], pred: (e: string) => boolean) =>
@@ -1507,7 +1526,10 @@ export default function CreatePool() {
                   </li>
                   <li>
                     <strong>0.02 SOL</strong> pool creation fee, like pump.fun.
-                    Only Solana network fees on top.
+                    Solana also locks about <strong>0.03 SOL</strong> as
+                    refundable deposits for the new onchain accounts, so
+                    launching costs about <strong>0.05 SOL</strong> in total,
+                    plus tiny network fees.
                   </li>
                 </ul>
               </section>
@@ -2204,7 +2226,11 @@ export default function CreatePool() {
             <div className="sc-launch-submit-bar">
               <div>
                 <span>EST. DEPLOY COST</span>
-                <strong>{deployCost} + network fees</strong>
+                <strong
+                  title={`Includes the ${feeRows.length > 0 ? feeRows[0].value : '0.02 SOL'} creation fee plus about ${LAUNCH_FEE_CONFIG.estimatedLaunchRentSol} SOL in refundable Solana account deposits. Network fees on top.`}
+                >
+                  {deployTotalLabel} + network fees
+                </strong>
               </div>
               <div className="sc-launch-submit-actions">
                 <button

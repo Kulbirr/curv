@@ -11,10 +11,17 @@
  * the proxy cannot be used as a generic key-burning relay.
  */
 
-/** JSON-RPC methods the Curv frontend is allowed to call through the proxy. */
+/** JSON-RPC methods the Curv frontend is allowed to call through the proxy.
+ *
+ * Note: getSlot and getBlockTime are required by the Meteora DBC SDK's
+ * getCurrentPoint(), which every swap quote calls (timestamp activation
+ * needs the block time of the current slot). Omitting them breaks all
+ * quoting with a 400 "Method not allowed" from the browser.
+ */
 export const RPC_PROXY_ALLOWED_METHODS: ReadonlySet<string> = new Set([
   'getAccountInfo',
   'getBalance',
+  'getBlockTime',
   'getLatestBlockhash',
   'getParsedAccountInfo',
   'getParsedTokenAccountsByOwner',
@@ -22,6 +29,7 @@ export const RPC_PROXY_ALLOWED_METHODS: ReadonlySet<string> = new Set([
   'getProgramAccounts',
   'getSignatureStatus',
   'getSignatureStatuses',
+  'getSlot',
   'getTokenAccountBalance',
   'getTokenLargestAccounts',
   'getTokenSupply',

@@ -5,7 +5,10 @@ import type { PoolStateSample } from './db/states';
 import type { TradeStats24h } from '@/components/Pool/types';
 
 vi.mock('./db/ticks', () => ({ getTradeStats24h: vi.fn(async () => null) }));
-vi.mock('./quote-prices', () => ({ getQuoteUsdPrice: vi.fn(async () => null) }));
+vi.mock('./quote-prices', () => ({
+  getQuoteUsdPrice: vi.fn(async () => null),
+  isUsdReferencePrice: () => false,
+}));
 
 import { getTradeStats24h } from './db/ticks';
 import { getQuoteUsdPrice } from './quote-prices';

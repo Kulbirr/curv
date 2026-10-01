@@ -5,6 +5,7 @@ import { getPoolStatesBatch } from '@/lib/db/states';
 import type { StoredPoolState } from '@/lib/db/states';
 import { isSampleStale } from '@/lib/db/config';
 import { claimNonce, pruneNonces } from '@/lib/db/nonces';
+import { healMissingPoolImages } from '@/lib/pool-image-heal';
 import {
   REGISTRATION_IP_LIMIT,
   REGISTRATION_IP_WINDOW_MS,
@@ -14,7 +15,7 @@ import {
   pruneRateLimits,
 } from '@/lib/db/rate-limits';
 import { getPrices24hAgoBatch, getVolumes24hBatch } from '@/lib/price-history';
-import { getQuoteUsdPrice } from '@/lib/quote-prices';
+import { getQuoteUsdPrice, isUsdReferencePrice } from '@/lib/quote-prices';
 import { SOLANA_NETWORK } from '@/lib/solana';
 import {
   REGISTRATION_TTL_MS,
@@ -136,6 +137,8 @@ const LIST_CACHE_TTL_MS = 3_000;
 
 interface ListBody {
   network: typeof SOLANA_NETWORK;
+  /** True on devnet: USD figures are a mainnet reference, not real value. */
+  usdReference: boolean;
   pools: PoolSummary[];
 }
 
@@ -155,6 +158,13 @@ function invalidateListCache(): void {
 
 async function buildListBody(): Promise<ListBody> {
   const pools = await listTrackedPools();
+  // Backfill card images for pools whose imageUrl never reached the
+  // registry (pre-Oct-2026 launches hit R2 CORS on the browser-side
+  // metadata fetch). Server-side only, best-effort, never fails the list.
+  // Skipped under test so API tests stay hermetic (no live RPC).
+  if (process.env.NODE_ENV !== 'test') {
+    await healMissingPoolImages(pools);
+  }
   // Quote USD prices are cached 60s in memory and short-circuit to null on
   // devnet without any network call, one lookup per distinct quote mint.
   const quoteMints = [...new Set(pools.map((p) => p.quoteMint))];
@@ -179,6 +189,8 @@ async function buildListBody(): Promise<ListBody> {
   );
   return {
     network: SOLANA_NETWORK,
+    /** True on devnet: USD figures are a mainnet reference, not real value. */
+    usdReference: isUsdReferencePrice(),
     pools: summaries.filter((s): s is PoolSummary => s !== null),
   };
 }

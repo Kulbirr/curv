@@ -28,6 +28,13 @@ export const LAUNCH_FEE_CONFIG = {
   /** Pool creation fee baked into Curv's DBC config (SOL), matching
    *  pump.fun's 0.02 SOL. 90% goes to Curv as fee claimer. */
   poolCreationFeeSol: 0.02,
+  /** Estimated SOL locked as rent exempt deposits for the accounts a
+   *  createConfigAndPool launch creates (config, pool, base and quote
+   *  vaults, mint, metadata). Measured on devnet Oct 2026: the pool
+   *  account alone holds 0.0228 SOL and the mint 0.00107 SOL; the wallet
+   *  estimated the whole transaction at 0.05 SOL. Refundable if the
+   *  accounts are ever closed, in practice it stays locked in the pool. */
+  estimatedLaunchRentSol: 0.03,
   /** Flat 1.19% trading fee. buildCurveParams zeroes the scheduler periods
    *  when start == end because the SDK requires it for flat fees. */
   feeSchedulerPeriods: 60,
@@ -93,6 +100,8 @@ export interface FeeDisclosureInput {
  *  Widened from the `as const` literal types so overrides typecheck. */
 export interface ResolvedEcon {
   poolCreationFeeSol: number;
+  /** Approx SOL locked as rent exempt deposits for new pool accounts. */
+  estimatedLaunchRentSol: number;
   feeSchedulerPeriods: number;
   feeSchedulerTotalDuration: number;
   dynamicFeeEnabled: boolean;
@@ -162,7 +171,9 @@ export function buildFeeDisclosureRows(input: FeeDisclosureInput): FeeDisclosure
       value: `${c.poolCreationFeeSol} SOL`,
       hint:
         `A ${c.poolCreationFeeSol} SOL creation fee set in Curv's own pool config, matching pump.fun, not a Meteora protocol charge. ` +
-        `Meteora takes 10% of it and Curv receives 90%. Network fees for the launch transaction are on top, a few cents.`,
+        `Meteora takes 10% of it and Curv receives 90%. On top of the fee, Solana locks about ${c.estimatedLaunchRentSol} SOL ` +
+        `as refundable deposits for the new pool accounts, so the launch transaction moves about ${two(c.poolCreationFeeSol + c.estimatedLaunchRentSol)} SOL ` +
+        `in total, plus a few cents of network fees.`,
     },
     {
       label: 'Trading fees',

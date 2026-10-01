@@ -124,7 +124,11 @@ async function handlePost(req: NextApiRequest, res: NextApiResponse) {
       ContentType: 'application/json',
     }),
   );
-  return res.status(201).json({ uri: `${publicUrl}/${key}` });
+  // Return the image URL alongside the URI. Clients must use imageUrl
+  // directly for registry cards: re-fetching the metadata JSON from the
+  // browser is blocked by the R2 public bucket's missing CORS headers,
+  // which silently drops the card image (Oct 2026 incident).
+  return res.status(201).json({ uri: `${publicUrl}/${key}`, imageUrl });
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
