@@ -105,6 +105,24 @@ export async function getPool(poolAddress: string): Promise<TrackedPool | null> 
   return rows[0] ? rowToPool(rows[0]) : null;
 }
 
+/**
+ * Find the tracked pool whose base token mint matches. Used by the
+ * header search so a pasted coin (mint) address jumps to its token page
+ * instead of reporting "not a Curv pool".
+ */
+export async function getPoolByMint(baseMint: string): Promise<TrackedPool | null> {
+  let normalized: string;
+  try {
+    normalized = new PublicKey(baseMint).toBase58();
+  } catch {
+    return null;
+  }
+  const rows = await query<PoolRow>('SELECT * FROM pools WHERE base_mint = $1', [
+    normalized,
+  ]);
+  return rows[0] ? rowToPool(rows[0]) : null;
+}
+
 export type RegisterPoolInput = Omit<TrackedPool, 'createdAt' | 'verified'> & {
   createdAt?: number;
   verified?: boolean;

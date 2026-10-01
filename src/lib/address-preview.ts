@@ -2,10 +2,11 @@
  * "Paste an address to preview", header search helper.
  *
  * A pasted base58 address is checked against our own pool registry via
- * the indexed state endpoint (zero live RPC per visitor). Outcomes:
+ * the resolve endpoint (zero live RPC per visitor). Outcomes:
  * - invalid: not a plausible Solana address at all.
  * - pool: a tracked Curv pool, jump straight to its page.
- * - unknown: valid address, but not a Curv pool, said honestly.
+ * - mint: a tracked base token mint, jump to its pool's page.
+ * - unknown: valid address, but not a Curv pool or coin, said honestly.
  * - error: the check itself failed (network/API), never mislabeled
  *   as "unknown".
  */
@@ -16,6 +17,7 @@ const ADDRESS_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 export type AddressPreviewResult =
   | { kind: 'invalid' }
   | { kind: 'pool'; poolAddress: string }
+  | { kind: 'mint'; poolAddress: string }
   | { kind: 'unknown'; address: string }
   | { kind: 'error' };
 
@@ -33,11 +35,18 @@ export async function previewAddress(
   if (!address) return { kind: 'invalid' };
   let res: Response;
   try {
-    res = await fetchFn(`/api/pools/${encodeURIComponent(address)}/state`);
+    res = await fetchFn(`/api/pools/resolve/${encodeURIComponent(address)}`);
   } catch {
     return { kind: 'error' };
   }
   if (res.status === 404) return { kind: 'unknown', address };
   if (!res.ok) return { kind: 'error' };
-  return { kind: 'pool', poolAddress: address };
+  const json = (await res.json()) as { kind?: string; poolAddress?: string };
+  if (json.kind === 'mint' && typeof json.poolAddress === 'string') {
+    return { kind: 'mint', poolAddress: json.poolAddress };
+  }
+  if (json.kind === 'pool' && typeof json.poolAddress === 'string') {
+    return { kind: 'pool', poolAddress: json.poolAddress };
+  }
+  return { kind: 'error' };
 }

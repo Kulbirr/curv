@@ -64,7 +64,7 @@ export const Header = () => {
       setSearchMsg(null);
       const result = await previewAddress(search);
       setSearching(false);
-      if (result.kind === 'pool') {
+      if (result.kind === 'pool' || result.kind === 'mint') {
         setSearch('');
         router.push(`/token/${result.poolAddress}`);
       } else if (result.kind === 'unknown') {

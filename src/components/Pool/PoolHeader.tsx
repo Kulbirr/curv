@@ -7,6 +7,7 @@ import {
 import type { PoolStateResponse } from './types';
 import { changeFromHistory } from './usePoolData';
 import { displayProgress } from '@/lib/graduation';
+import { isDevnet } from '@/lib/solana';
 import type { HistoryPoint } from './types';
 
 /** Deterministic hue (0-359) derived from a string, for avatar gradients. */
@@ -67,9 +68,15 @@ interface Props {
   state: PoolStateResponse;
   points: HistoryPoint[];
   volume24h: number | null;
+  /** Base token mint, shown as the coin address with copy and explorer links. */
+  baseMint: string | null;
 }
 
-export default function PoolHeader({ state, points, volume24h }: Props) {
+function explorerAccountUrl(addr: string): string {
+  return `https://solscan.io/account/${addr}${isDevnet() ? '?cluster=devnet' : ''}`;
+}
+
+export default function PoolHeader({ state, points, volume24h, baseMint }: Props) {
   const change = changeFromHistory(points);
   const changeKnown = typeof change === 'number' && Number.isFinite(change);
   const changeValue = changeKnown ? (change as number) : 0;
@@ -88,9 +95,9 @@ export default function PoolHeader({ state, points, volume24h }: Props) {
   const pct = displayProgress(state.progress);
 
   const [copyMessage, setCopyMessage] = useState('');
-  const copyCreator = async () => {
+  const copyText = async (text: string) => {
     try {
-      await navigator.clipboard.writeText(state.creator);
+      await navigator.clipboard.writeText(text);
       setCopyMessage('Copied');
       window.setTimeout(() => setCopyMessage(''), 1800);
     } catch {
@@ -98,10 +105,18 @@ export default function PoolHeader({ state, points, volume24h }: Props) {
       window.setTimeout(() => setCopyMessage(''), 1800);
     }
   };
+  const copyCreator = () => copyText(state.creator);
+  const copyMint = () => {
+    if (baseMint) copyText(baseMint);
+  };
   const shortCreator =
     state.creator.length > 10
       ? `${state.creator.slice(0, 4)} · ${state.creator.slice(-4)}`
       : state.creator;
+  const shortMint =
+    baseMint && baseMint.length > 10
+      ? `${baseMint.slice(0, 4)}…${baseMint.slice(-4)}`
+      : baseMint;
 
   return (
     <>
@@ -138,6 +153,23 @@ export default function PoolHeader({ state, points, volume24h }: Props) {
             )}
           </div>
           <span className="sc-pool-ticker">${state.baseSymbol}</span>
+          {shortMint && (
+            <div className="sc-pool-address-row">
+              <code title={baseMint ?? undefined}>{shortMint}</code>
+              <button type="button" onClick={copyMint} aria-label="Copy coin address">
+                Copy
+              </button>
+              <a
+                href={explorerAccountUrl(baseMint as string)}
+                target="_blank"
+                rel="noreferrer"
+                aria-label="View coin on explorer"
+                title="View coin on explorer"
+              >
+                ↗
+              </a>
+            </div>
+          )}
           {state.creator && (
             <div className="sc-pool-creator">
               <span>Creator</span>

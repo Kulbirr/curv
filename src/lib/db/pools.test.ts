@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { getPool, insertPool, listPools } from './pools';
+import { getPool, getPoolByMint, insertPool, listPools } from './pools';
 import { randomAddress, useTempDb } from '@/test-support/db';
 
 let db: Awaited<ReturnType<typeof useTempDb>>;
@@ -106,5 +106,18 @@ describe('getPool / listPools', () => {
     const f = (await getPool(e.poolAddress))!;
     expect(f.description).toBeUndefined();
     expect(f.launchedAt).toBeUndefined();
+  });
+});
+
+describe('getPoolByMint', () => {
+  it('finds the pool by its base token mint', async () => {
+    const e = await insertPool(validInput());
+    const found = await getPoolByMint(e.baseMint);
+    expect(found?.poolAddress).toBe(e.poolAddress);
+  });
+
+  it('returns null for unknown or malformed mints', async () => {
+    expect(await getPoolByMint(randomAddress())).toBeNull();
+    expect(await getPoolByMint('garbage')).toBeNull();
   });
 });

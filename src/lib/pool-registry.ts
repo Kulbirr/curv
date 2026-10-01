@@ -11,4 +11,9 @@
  */
 
 export type { TrackedPool, RegisterPoolInput } from './db/pools';
-export { listPools as listTrackedPools, getPool as getTrackedPool, insertPool as registerPool } from './db/pools';
+export {
+  listPools as listTrackedPools,
+  getPool as getTrackedPool,
+  getPoolByMint as getTrackedPoolByMint,
+  insertPool as registerPool,
+} from './db/pools';

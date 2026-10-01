@@ -356,6 +356,7 @@ function PoolPageContent({ poolAddress }: { poolAddress: string }) {
             state={state}
             points={history?.points ?? []}
             volume24h={history?.volume24h ?? null}
+            baseMint={onChainQuery.data?.baseMint ?? null}
           />
           <PriceChart
             poolAddress={poolAddress}

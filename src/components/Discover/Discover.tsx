@@ -97,15 +97,19 @@ export default function Discover() {
   const [quoteFilter, setQuoteFilter] = useState<QuoteFilter>('all')
   const [sort, setSort] = useState<SortMode>('hot')
   const [search, setSearch] = useState('')
+  const marketRef = useRef<HTMLElement | null>(null)
 
   // Seed the search box from ?q=, so the header search can hand a
-  // name or ticker query off to the token list.
+  // name or ticker query off to the token list. Scroll the market
+  // into view: on a phone the hero fills the screen, so without this
+  // the handoff looks like nothing happened.
   useEffect(() => {
     if (!router.isReady) return
     const q = router.query.q
     const initial = Array.isArray(q) ? q[0] : q
     if (typeof initial === 'string' && initial.trim()) {
       setSearch(initial)
+      marketRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }
   }, [router.isReady, router.query.q])
 
@@ -240,7 +244,11 @@ export default function Discover() {
       </section>
 
       {/* Market */}
-      <section className="sc-discover-market" aria-label="Discover tokens">
+      <section
+        className="sc-discover-market"
+        aria-label="Discover tokens"
+        ref={marketRef}
+      >
         <div className="sc-market-head">
           <div className="sc-market-title">
             <span>Market</span>

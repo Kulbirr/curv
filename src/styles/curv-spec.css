@@ -2141,6 +2141,43 @@ select {
 }
 
 
+/* Coin (mint) address row under the token identity, reference style:
+   the address itself with copy and explorer actions next to it. */
+.sc-pool-address-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #778179;
+  font-size: 9px;
+}
+
+
+.sc-pool-address-row code {
+  color: #c3ccc1;
+  font-family: var(--sc-number);
+  font-size: 10px;
+}
+
+
+.sc-pool-address-row button,
+.sc-pool-address-row a {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #98a68e;
+  font: inherit;
+  font-size: 9px;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+
+.sc-pool-address-row button:hover,
+.sc-pool-address-row a:hover {
+  color: var(--sc-lime);
+}
+
+
 .sc-copy-feedback {
   position: absolute;
   top: 4px;
@@ -3127,17 +3164,22 @@ select {
     margin-top: 25px;
   }
   .sc-market-head {
-    align-items: flex-start;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
   }
   .sc-market-title {
-    margin-top: 9px;
+    margin-top: 0;
     font-size: 12px;
   }
   .sc-market-count {
     display: none;
   }
-  .sc-search {
-    width: min(175px, 49vw);
+  /* The market search gets its own row on phones: the old top-right
+     sliver truncated the placeholder and looked stuck on. */
+  .sc-market-head .sc-search {
+    width: 100%;
+    height: 38px;
   }
   .sc-market-tools {
     align-items: flex-start;
@@ -4846,6 +4888,7 @@ select {
   .sc-platform-stats {
     grid-template-columns: repeat(4, minmax(0, 1fr));
     border-left: 0;
+    gap: 12px;
   }
   .sc-platform-stats > div {
     min-height: 49px;

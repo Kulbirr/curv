@@ -1,8 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import { parsePreviewAddress, previewAddress } from './address-preview';
 
-function mockFetch(status: number): typeof fetch {
-  return vi.fn().mockResolvedValue({ status, ok: status >= 200 && status < 300 }) as unknown as typeof fetch;
+function mockFetch(status: number, json?: unknown): typeof fetch {
+  return vi.fn().mockResolvedValue({
+    status,
+    ok: status >= 200 && status < 300,
+    json: async () => json ?? {},
+  }) as unknown as typeof fetch;
 }
 
 describe('parsePreviewAddress', () => {
@@ -30,10 +34,23 @@ describe('previewAddress', () => {
     expect(fetchFn).not.toHaveBeenCalled();
   });
 
-  it('returns pool when the registry tracks the address', async () => {
-    const fetchFn = mockFetch(200);
+  it('returns pool when the registry tracks the address as a pool', async () => {
+    const fetchFn = mockFetch(200, { kind: 'pool', poolAddress: addr });
     expect(await previewAddress(addr, fetchFn)).toEqual({ kind: 'pool', poolAddress: addr });
-    expect(fetchFn).toHaveBeenCalledWith(`/api/pools/${addr}/state`);
+    expect(fetchFn).toHaveBeenCalledWith(`/api/pools/resolve/${addr}`);
+  });
+
+  it('returns mint when the address is a tracked base token mint', async () => {
+    const poolAddr = '79NyTpth6aGUePHRMgckCA7pRotpbAPXwfGexoXv167v';
+    const fetchFn = mockFetch(200, { kind: 'mint', poolAddress: poolAddr });
+    expect(await previewAddress(addr, fetchFn)).toEqual({ kind: 'mint', poolAddress: poolAddr });
+    expect(fetchFn).toHaveBeenCalledWith(`/api/pools/resolve/${addr}`);
+  });
+
+  it('HONESTY: returns error when the resolve payload is malformed', async () => {
+    expect(await previewAddress(addr, mockFetch(200, { kind: 'pool' }))).toEqual({
+      kind: 'error',
+    });
   });
 
   it('HONESTY: returns unknown on 404 — a valid address that is not a Curv pool', async () => {
