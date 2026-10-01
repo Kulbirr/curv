@@ -2,7 +2,7 @@ import { useWallet } from '@solana/wallet-adapter-react';
 import { useUnifiedWalletContext } from '@jup-ag/wallet-adapter';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { shortenAddress } from '@/lib/utils';
 import { parsePreviewAddress, previewAddress } from '@/lib/address-preview';
 
@@ -48,6 +48,68 @@ export const Header = () => {
   const { disconnect, publicKey } = useWallet();
   const address = useMemo(() => publicKey?.toBase58(), [publicKey]);
   const active = activeForPath(router.pathname);
+
+  // ---- Connected-wallet menu (copy address / disconnect) ----
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onPointerDown = (e: PointerEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMenuOpen(false);
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [menuOpen]);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimer.current) clearTimeout(copyTimer.current);
+    };
+  }, []);
+
+  async function copyAddress() {
+    if (!address) return;
+    try {
+      await navigator.clipboard.writeText(address);
+    } catch {
+      // Clipboard API unavailable (permissions / insecure context): fallback.
+      const ta = document.createElement('textarea');
+      ta.value = address;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    }
+    setCopied(true);
+    if (copyTimer.current) clearTimeout(copyTimer.current);
+    copyTimer.current = setTimeout(() => {
+      setCopied(false);
+      setMenuOpen(false);
+    }, 900);
+  }
+
+  async function onDisconnect() {
+    setMenuOpen(false);
+    try {
+      await disconnect();
+    } catch {
+      // Disconnect failures are non-fatal; the adapter resets on next connect.
+    }
+  }
 
   // ---- Address preview search (real behavior, spec styling) ----
   const [search, setSearch] = useState('');
@@ -153,15 +215,39 @@ export const Header = () => {
         )}
       </form>
       {address ? (
-        <button
-          type="button"
-          className="sc-wallet connected"
-          onClick={() => disconnect()}
-          title="Disconnect wallet"
-        >
-          <span className="sc-wallet-dot" aria-hidden="true" />
-          {shortenAddress(address)}
-        </button>
+        <div ref={menuRef} className="sc-wallet-wrap">
+          <button
+            type="button"
+            className="sc-wallet connected"
+            onClick={() => setMenuOpen((v) => !v)}
+            title={address}
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+          >
+            <span className="sc-wallet-dot" aria-hidden="true" />
+            {shortenAddress(address)}
+          </button>
+          {menuOpen && (
+            <div className="sc-wallet-menu" role="menu">
+              <button
+                type="button"
+                className="sc-wallet-menu-item"
+                role="menuitem"
+                onClick={copyAddress}
+              >
+                {copied ? 'Copied' : 'Copy address'}
+              </button>
+              <button
+                type="button"
+                className="sc-wallet-menu-item sc-wallet-menu-item-danger"
+                role="menuitem"
+                onClick={onDisconnect}
+              >
+                Disconnect
+              </button>
+            </div>
+          )}
+        </div>
       ) : (
         <button
           type="button"
