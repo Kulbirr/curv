@@ -36,15 +36,18 @@ export async function getHistory(
   toMs: number,
   maxPoints = 300,
 ): Promise<HistoryResult> {
-  const rows = await query<{ ts: number; price: number }>(
-    'SELECT ts, price FROM ticks WHERE pool_address = $1 AND ts >= $2 AND ts <= $3 ORDER BY ts ASC',
-    [poolAddress, fromMs, toMs],
-  );
-
-  const earliestRows = await query<{ m: number | null }>(
-    'SELECT MIN(ts) AS m FROM ticks WHERE pool_address = $1',
-    [poolAddress],
-  );
+  // The two reads are independent; run them in one round trip so a slow
+  // database does not serialize the history response.
+  const [rows, earliestRows] = await Promise.all([
+    query<{ ts: number; price: number }>(
+      'SELECT ts, price FROM ticks WHERE pool_address = $1 AND ts >= $2 AND ts <= $3 ORDER BY ts ASC',
+      [poolAddress, fromMs, toMs],
+    ),
+    query<{ m: number | null }>(
+      'SELECT MIN(ts) AS m FROM ticks WHERE pool_address = $1',
+      [poolAddress],
+    ),
+  ]);
   const earliest = earliestRows[0]?.m ?? null;
 
   if (rows.length === 0) {
