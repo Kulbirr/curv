@@ -22,6 +22,8 @@ export interface PoolStateResponse {
   quoteDecimals: number;
   imageUrl: string | null;
   description: string | null;
+  /** Canonical https://x.com/<handle> link, null when the coin has none linked. */
+  twitter: string | null;
   creator: string;
   createdAt: number;
   price: number | null;

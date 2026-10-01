@@ -36,6 +36,7 @@ import {
 import { getConnection, isDevnet, SOLANA_NETWORK } from '@/lib/solana'
 import { getUsdcMint, inspectQuoteMint } from '@/lib/quote-assets'
 import type { QuoteMintProgram } from '@/lib/quote-assets'
+import { normalizeTwitterUrl } from '@/lib/twitter'
 import { cn } from '@/lib/utils'
 import { Keypair } from '@solana/web3.js'
 import {
@@ -127,6 +128,7 @@ interface LaunchDraft {
   name: string
   symbol: string
   description: string
+  twitter: string
   tokenType: TokenType
   underlying: string
   preset: PresetSel
@@ -164,6 +166,7 @@ export default function CreatePool() {
   const [name, setName] = useState('')
   const [symbol, setSymbol] = useState('')
   const [description, setDescription] = useState('')
+  const [twitter, setTwitter] = useState('')
   const [imageDataUri, setImageDataUri] = useState<string | null>(null)
   const [imageError, setImageError] = useState<string | null>(null)
 
@@ -459,8 +462,10 @@ export default function CreatePool() {
       )
     if (fullDescription.length > 500)
       errs.push('Description must be 500 characters or less')
+    if (twitter.trim() && !normalizeTwitterUrl(twitter))
+      errs.push('X handle must look like @handle or x.com/handle')
     return errs
-  }, [name, symbol, tokenType, underlying, fullDescription])
+  }, [name, symbol, tokenType, underlying, fullDescription, twitter])
 
   const quoteErrors = useMemo(() => {
     const errs: string[] = []
@@ -684,6 +689,7 @@ export default function CreatePool() {
       name,
       symbol,
       description,
+      twitter,
       tokenType,
       underlying,
       preset,
@@ -732,6 +738,7 @@ export default function CreatePool() {
       if (typeof d.name === 'string') setName(d.name)
       if (typeof d.symbol === 'string') setSymbol(d.symbol)
       if (typeof d.description === 'string') setDescription(d.description)
+      if (typeof d.twitter === 'string') setTwitter(d.twitter)
       if (d.tokenType === 'Tokenized Stock') setTokenType(d.tokenType)
       else if (d.tokenType === 'Token') setTokenType(d.tokenType)
       // Legacy drafts stored the old "Memecoin" label.
@@ -940,6 +947,7 @@ export default function CreatePool() {
           baseDecimals,
           description: fullDescription || undefined,
           imageUrl,
+          twitter: normalizeTwitterUrl(twitter) ?? undefined,
           timestamp,
           signature: bs58.encode(sigBytes),
           launchedAt: timestamp,
@@ -1353,6 +1361,20 @@ export default function CreatePool() {
                   maxLength={500}
                   placeholder="Tell traders what this token is about…"
                   rows={3}
+                />
+              </Field>
+              <Field
+                label="X (Twitter)"
+                hint="Optional. Shown as an X icon next to the coin address."
+                error={twitter.trim() && !normalizeTwitterUrl(twitter) ? 'X handle must look like @handle or x.com/handle' : undefined}
+              >
+                <input
+                  value={twitter}
+                  onChange={(e) => setTwitter(e.target.value)}
+                  maxLength={60}
+                  placeholder="@handle or x.com/handle"
+                  autoComplete="off"
+                  spellCheck={false}
                 />
               </Field>
               <p className="mt-2 text-xs text-neutral-500">

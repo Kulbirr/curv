@@ -160,6 +160,38 @@ describe('validateRegistrationBody', () => {
     if (r.ok === false) throw new Error('unreachable');
     expect(r.value.description).toBe('A fine token');
     expect(r.value.website).toBe('https://example.com');
+    expect(r.value.twitter).toBe('https://x.com/test');
+  });
+
+  it('normalizes twitter handles and urls to a canonical x.com link', async () => {
+    const cases: Array<[string, string]> = [
+      ['@test', 'https://x.com/test'],
+      ['test', 'https://x.com/test'],
+      ['https://x.com/test', 'https://x.com/test'],
+      ['http://twitter.com/test/', 'https://x.com/test'],
+      ['www.x.com/test?x=1', 'https://x.com/test'],
+    ];
+    for (const [input, expected] of cases) {
+      const r = validateRegistrationBody(validBody({ twitter: input }));
+      expect(r.ok).toBe(true);
+      if (r.ok === false) throw new Error('unreachable');
+      expect(r.value.twitter).toBe(expected);
+    }
+  });
+
+  it('drops unparseable twitter values instead of storing them', async () => {
+    const bad = [
+      'not a handle!!',
+      'javascript:alert(1)',
+      'https://evil.com/x',
+      'averylonghandlethatexceeds15',
+    ];
+    for (const input of bad) {
+      const r = validateRegistrationBody(validBody({ twitter: input }));
+      expect(r.ok).toBe(true);
+      if (r.ok === false) throw new Error('unreachable');
+      expect(r.value.twitter).toBeUndefined();
+    }
   });
 
   it('treats empty optional strings as absent', async () => {

@@ -48,6 +48,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     quoteDecimals: state?.quoteDecimals ?? 9,
     imageUrl: tracked.imageUrl ?? null,
     description: tracked.description ?? null,
+    // Rendered as an anchor href: only ever emit an https link, even if a
+    // row predates the server-side canonicalization.
+    twitter:
+      tracked.twitter && tracked.twitter.startsWith('https://')
+        ? tracked.twitter
+        : null,
     creator: tracked.creator,
     createdAt: tracked.createdAt,
     price,

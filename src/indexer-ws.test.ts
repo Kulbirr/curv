@@ -67,6 +67,7 @@ function fakeState(poolAddress: string): PoolStateResponse {
     quoteDecimals: 9,
     imageUrl: null,
     description: null,
+    twitter: null,
     creator: 'creator',
     createdAt: 1,
     price: 1.5,

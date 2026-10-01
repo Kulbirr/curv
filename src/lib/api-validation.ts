@@ -3,6 +3,7 @@ import { PublicKey } from '@solana/web3.js';
 import bs58 from 'bs58';
 import { SOLANA_NETWORK } from './solana';
 import { isCrossNetworkKnownMint } from './quote-assets';
+import { normalizeTwitterUrl } from './twitter';
 
 /**
  * Strict input schemas for the API routes.
@@ -56,6 +57,22 @@ function optionalHttpUrl(value: unknown, maxLen: number): string | undefined {
   if (t === undefined) return undefined;
   if (!/^https?:\/\//.test(t)) throw new Error('URL must be http(s)');
   return t;
+}
+/**
+ * Normalize an X (Twitter) handle or profile URL to a canonical
+ * https://x.com/<handle> link. Returns undefined for empty input or for
+ * input that is not a plausible handle: the field is optional, and the
+ * value is rendered as an anchor href, so anything unparseable is dropped
+ * rather than stored (this also keeps javascript: / data: hrefs out).
+ */
+function optionalTwitterUrl(value: unknown): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== 'string') return undefined;
+  if (value.trim().length > 200) throw new Error('Field too long');
+  // The field is optional and the value is rendered as an anchor href, so
+  // unparseable input is dropped rather than stored (this also keeps
+  // javascript: / data: hrefs out of the database).
+  return normalizeTwitterUrl(value) ?? undefined;
 }
 
 export interface RegistrationInput {
@@ -145,7 +162,7 @@ export function validateRegistrationBody(body: unknown): ValidationResult<Regist
         description: optionalText(b.description, 500),
         imageUrl: optionalHttpUrl(b.imageUrl, 500),
         website: optionalHttpUrl(b.website, 200),
-        twitter: optionalText(b.twitter, 200),
+        twitter: optionalTwitterUrl(b.twitter),
         timestamp,
         signature,
         launchedAt,

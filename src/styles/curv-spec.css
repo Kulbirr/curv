@@ -2178,6 +2178,14 @@ select {
 }
 
 
+.sc-pool-address-row .sc-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+  line-height: 0;
+}
+
+
 .sc-copy-feedback {
   position: absolute;
   top: 4px;

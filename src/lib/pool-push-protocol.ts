@@ -140,8 +140,13 @@ export function mergePushedState(
   pushed: PoolStateResponse,
 ): PoolStateResponse {
   const pushedMint = (pushed as Partial<PoolStateResponse>).baseMint;
+  const pushedTwitter = (pushed as Partial<PoolStateResponse>).twitter;
   return {
     ...pushed,
     baseMint: pushedMint ?? cached?.baseMint ?? '',
+    // Same staleness rule as baseMint: the social link is set at
+    // registration, so an older push frame that omits it must not wipe the
+    // link the REST response already provided.
+    twitter: pushedTwitter ?? cached?.twitter ?? null,
   };
 }

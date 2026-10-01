@@ -7,7 +7,6 @@ import {
 import type { PoolStateResponse } from './types';
 import { changeFromHistory } from './usePoolData';
 import { displayProgress } from '@/lib/graduation';
-import { isDevnet } from '@/lib/solana';
 import type { HistoryPoint } from './types';
 
 /** Deterministic hue (0-359) derived from a string, for avatar gradients. */
@@ -68,12 +67,8 @@ interface Props {
   state: PoolStateResponse;
   points: HistoryPoint[];
   volume24h: number | null;
-  /** Base token mint, shown as the coin address with copy and explorer links. */
+  /** Base token mint, shown as the coin address with copy and social icons. */
   baseMint: string | null;
-}
-
-function explorerAccountUrl(addr: string): string {
-  return `https://solscan.io/account/${addr}${isDevnet() ? '?cluster=devnet' : ''}`;
 }
 
 export default function PoolHeader({ state, points, volume24h, baseMint }: Props) {
@@ -156,18 +151,48 @@ export default function PoolHeader({ state, points, volume24h, baseMint }: Props
           {shortMint && (
             <div className="sc-pool-address-row">
               <code title={baseMint ?? undefined}>{shortMint}</code>
-              <button type="button" onClick={copyMint} aria-label="Copy coin address">
-                Copy
-              </button>
-              <a
-                href={explorerAccountUrl(baseMint as string)}
-                target="_blank"
-                rel="noreferrer"
-                aria-label="View coin on explorer"
-                title="View coin on explorer"
+              <button
+                type="button"
+                onClick={copyMint}
+                aria-label="Copy coin address"
+                title="Copy coin address"
+                className="sc-icon-btn"
               >
-                ↗
-              </a>
+                <svg
+                  viewBox="0 0 16 16"
+                  width="13"
+                  height="13"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <rect x="5.5" y="5.5" width="8" height="8" rx="1.5" />
+                  <path d="M10.5 5.5v-2a1.5 1.5 0 0 0-1.5-1.5h-4a1.5 1.5 0 0 0-1.5 1.5v4a1.5 1.5 0 0 0 1.5 1.5h1" />
+                </svg>
+              </button>
+              {state.twitter && (
+                <a
+                  href={state.twitter}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label="Open coin's X profile"
+                  title="Open coin's X profile"
+                  className="sc-icon-btn"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    width="13"
+                    height="13"
+                    fill="currentColor"
+                    aria-hidden="true"
+                  >
+                    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+                  </svg>
+                </a>
+              )}
             </div>
           )}
           {state.creator && (

@@ -32,6 +32,8 @@ export async function buildBroadcastState(
     quoteDecimals: sample.quoteDecimals,
     imageUrl: pool.imageUrl ?? null,
     description: pool.description ?? null,
+    twitter:
+      pool.twitter && pool.twitter.startsWith('https://') ? pool.twitter : null,
     creator: pool.creator,
     createdAt: pool.createdAt,
     price,

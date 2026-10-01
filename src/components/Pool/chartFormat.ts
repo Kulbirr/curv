@@ -9,24 +9,25 @@ export const compactFmt = new Intl.NumberFormat('en-US', {
 });
 
 /**
- * Y-axis tick label for market cap: K/M/B suffixes only when the tick step
- * is coarse enough that the labels stay distinct (avoids "1K", "1K", "1K").
- * Falls back to adaptive plain decimals for tight ranges.
+ * Y-axis tick label for market cap: always compact (3k / 1m / 2.5b),
+ * lowercase to match the reference design. Up to 3 fraction digits so that
+ * labels stay distinct down to tick steps of div/1000 (e.g. 2.99k, 3k,
+ * 3.01k); only extremely tight ranges fall back to plain decimals.
  */
 export function formatMcapAxis(v: number, span: number): string {
   if (!Number.isFinite(v)) return '-';
   if (v === 0) return '0';
   const step = span / 3;
   const SUFFIXES: Array<[number, string]> = [
-    [1e9, 'B'],
-    [1e6, 'M'],
-    [1e3, 'K'],
+    [1e9, 'b'],
+    [1e6, 'm'],
+    [1e3, 'k'],
   ];
   for (const [div, suffix] of SUFFIXES) {
-    if (Math.abs(v) >= div && step >= div / 100) {
+    if (Math.abs(v) >= div && step >= div / 1000) {
       // Enough fraction digits that adjacent ticks differ in the label.
       const digits = Math.min(
-        2,
+        3,
         Math.max(0, Math.ceil(-Math.log10(step / div)) + 1)
       );
       return `${Number((v / div).toFixed(digits))}${suffix}`;

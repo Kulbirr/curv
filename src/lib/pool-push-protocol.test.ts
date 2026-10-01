@@ -84,6 +84,7 @@ function minimalState(): PoolStateResponse {
     quoteDecimals: 9,
     imageUrl: null,
     description: null,
+    twitter: null,
     creator: ADDR_B,
     createdAt: 1,
     price: 0.5,
@@ -194,5 +195,24 @@ describe('mergePushedState', () => {
     const pushed = { ...minimalState() } as PoolStateResponse;
     delete (pushed as Partial<PoolStateResponse>).baseMint;
     expect(mergePushedState(undefined, pushed).baseMint).toBe('');
+  });
+
+  it('keeps the cached twitter link when a push frame omits it', () => {
+    const cached = { ...minimalState(), twitter: 'https://x.com/test' };
+    const pushed = { ...minimalState(), price: 0.75 } as PoolStateResponse;
+    delete (pushed as Partial<PoolStateResponse>).twitter;
+    const merged = mergePushedState(cached, pushed);
+    expect(merged.twitter).toBe('https://x.com/test');
+    expect(merged.price).toBe(0.75);
+  });
+
+  it('prefers the pushed twitter link when present', () => {
+    const cached = minimalState();
+    const pushed = { ...minimalState(), twitter: 'https://x.com/new' };
+    expect(mergePushedState(cached, pushed).twitter).toBe('https://x.com/new');
+  });
+
+  it('degrades twitter to null when neither side has one', () => {
+    expect(mergePushedState(undefined, minimalState()).twitter).toBeNull();
   });
 });
