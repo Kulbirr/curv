@@ -48,6 +48,11 @@ import {
 } from '@/lib/vanity-mint'
 import { fetchVanityHandout } from '@/lib/vanity-handout'
 import { buildFeeDisclosureRows } from '@/lib/launch-fees'
+import {
+  isSignTimeout,
+  signingTimeoutMessage,
+  withSignTimeout,
+} from '@/lib/sign-timeout'
 
 const SOL_MINT = 'So11111111111111111111111111111111111111112'
 /** Network-aware USDC: devnet USDC on devnet, mainnet USDC on mainnet. */
@@ -905,8 +910,9 @@ export default function CreatePool() {
       setStatus('signing')
       let signed
       try {
-        signed = await signTransaction(built.transaction)
-      } catch {
+        signed = await withSignTimeout(signTransaction(built.transaction))
+      } catch (e) {
+        if (isSignTimeout(e)) throw new Error(signingTimeoutMessage())
         throw new Error(
           'Wallet signing was rejected, no transaction was sent.'
         )
@@ -930,7 +936,17 @@ export default function CreatePool() {
         timestamp
       )
       if (!signMessage) throw new Error('Connected wallet cannot sign messages')
-      const sigBytes = await signMessage(new TextEncoder().encode(message))
+      let sigBytes: Uint8Array
+      try {
+        sigBytes = await withSignTimeout(
+          signMessage(new TextEncoder().encode(message))
+        )
+      } catch (e) {
+        if (isSignTimeout(e)) throw new Error(signingTimeoutMessage())
+        throw new Error(
+          'Wallet did not sign the registration message, the pool was created on-chain but is not registered.'
+        )
+      }
       const regRes = await fetch('/api/pools', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

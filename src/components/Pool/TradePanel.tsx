@@ -10,6 +10,11 @@ import { getConnection, getDbcClient, isDevnet } from '@/lib/solana';
 import { getCurrentPoint } from '@meteora-ag/dynamic-bonding-curve-sdk';
 import { NATIVE_SOL_MINT, type PoolStateResponse } from './types';
 import { getMintDecimalsCached, useOnChainPool, type OnChainPool } from './useOnChainPool';
+import {
+  isSignTimeout,
+  signingTimeoutMessage,
+  withSignTimeout,
+} from '@/lib/sign-timeout';
 
 type Side = 'buy' | 'sell';
 type Status =
@@ -270,7 +275,7 @@ export default function TradePanel({ poolAddress, state }: Props) {
       const { blockhash } = await connection.getLatestBlockhash();
       tx.recentBlockhash = blockhash;
 
-      const signed = await signTransaction(tx);
+      const signed = await withSignTimeout(signTransaction(tx));
       setStatus('sending');
       const sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: false });
       setTxSig(sig);
@@ -286,7 +291,11 @@ export default function TradePanel({ poolAddress, state }: Props) {
       queryClient.invalidateQueries({ queryKey: ['pool-state', poolAddress] });
       queryClient.invalidateQueries({ queryKey: ['pool-history', poolAddress] });
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Transaction failed';
+      const msg = isSignTimeout(e)
+        ? signingTimeoutMessage()
+        : e instanceof Error
+          ? e.message
+          : 'Transaction failed';
       // User rejecting in the wallet is not an app error worth alarming about.
       setError(msg);
       setStatus('failed');

@@ -2,6 +2,11 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { Connection, Keypair, Transaction, sendAndConfirmRawTransaction } from '@solana/web3.js';
+import {
+  isSignTimeout,
+  signingTimeoutMessage,
+  withSignTimeout,
+} from '@/lib/sign-timeout';
 
 type SendTransactionOptions = {
   onSuccess?: (signature: string) => void;
@@ -49,7 +54,7 @@ export function useSendTransaction() {
       }
 
       // Sign and send transaction
-      const signedTransaction = await signTransaction(transaction);
+      const signedTransaction = await withSignTimeout(signTransaction(transaction));
       if (options.additionalSigners) {
         options.additionalSigners.forEach((signer) => {
           transaction.sign(signer);
@@ -66,7 +71,9 @@ export function useSendTransaction() {
       options.onSuccess?.(txSignature);
       return txSignature;
     } catch (error: any) {
-      const errorMessage = error?.message || 'Unknown error';
+      const errorMessage = isSignTimeout(error)
+        ? signingTimeoutMessage()
+        : error?.message || 'Unknown error';
       setError(new Error(errorMessage));
       options.onError?.(`Transaction failed: ${errorMessage}`);
       return null;
