@@ -47,7 +47,7 @@ import {
   type VanityProgress,
 } from '@/lib/vanity-mint'
 import { fetchVanityHandout } from '@/lib/vanity-handout'
-import { buildFeeDisclosureRows, buildFeeConsequenceLines, LAUNCH_FEE_CONFIG } from '@/lib/launch-fees'
+import { buildFeeDisclosureRows, buildFeeConsequenceLines, effectiveTradeFeeSplit, LAUNCH_FEE_CONFIG } from '@/lib/launch-fees'
 import {
   isSignTimeout,
   signingTimeoutMessage,
@@ -655,6 +655,12 @@ export default function CreatePool() {
   )
 
   /** Rescale the curve so its graduation threshold matches the target. */
+  // Creator share of bonding-curve volume, recomputed when the Pro-mode fee
+  // schedule changes so the locked-economics paragraph never lies.
+  const lockedCreatorSharePct = useMemo(() => {
+    const startBps = mode === 'quick' ? 119 : parseInt(startFeeBps, 10) || 0
+    return effectiveTradeFeeSplit(startBps, LAUNCH_FEE_CONFIG).creator
+  }, [mode, startFeeBps])
   function applyGraduationTarget() {
     const target = parseFloat(gradTarget)
     if (!Number.isFinite(target) || target <= 0) {
@@ -2012,9 +2018,10 @@ export default function CreatePool() {
                   />
                 </div>
                 <p className="mt-3 text-xs text-neutral-500">
-                  Locked: you keep 0.3% of every bonding-curve trade and 50% of
-                  the migration fee. Launching costs no pool creation fee, only
-                  Solana network fees.
+                  Locked: you keep ~{lockedCreatorSharePct.toFixed(2)}% of every
+                  bonding-curve trade and 50% of the migration fee. Launching
+                  costs 0.02 SOL plus about 0.03 SOL in rent-exempt account
+                  funding, plus Solana network fees.
                 </p>
               </section>
             )}
