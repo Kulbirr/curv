@@ -335,25 +335,10 @@ select {
 }
 
 
-.sc-viewers-dot {
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #32f27b;
-  box-shadow: 0 0 7px rgb(50 242 123 / 60%);
-  animation: sc-viewers-pulse 2s ease-in-out infinite;
-}
-
-
-@keyframes sc-viewers-pulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.45;
-  }
+.sc-viewers-badge svg {
+  width: 13px;
+  height: 13px;
+  flex: none;
 }
 
 
