@@ -2141,6 +2141,14 @@ select {
 }
 
 
+.sc-pool-creator .sc-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+  line-height: 0;
+}
+
+
 /* Coin (mint) address row under the token identity, reference style:
    the address itself with copy and explorer actions next to it. */
 .sc-pool-address-row {

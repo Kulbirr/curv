@@ -199,8 +199,27 @@ export default function PoolHeader({ state, points, volume24h, baseMint }: Props
             <div className="sc-pool-creator">
               <span>Creator</span>
               <code>{shortCreator}</code>
-              <button type="button" onClick={copyCreator} aria-label="Copy creator address">
-                Copy
+              <button
+                type="button"
+                onClick={copyCreator}
+                aria-label="Copy creator address"
+                title="Copy creator address"
+                className="sc-icon-btn"
+              >
+                <svg
+                  viewBox="0 0 16 16"
+                  width="13"
+                  height="13"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <rect x="5.5" y="5.5" width="8" height="8" rx="1.5" />
+                  <path d="M10.5 5.5v-2a1.5 1.5 0 0 0-1.5-1.5h-4a1.5 1.5 0 0 0-1.5 1.5v4a1.5 1.5 0 0 0 1.5 1.5h1" />
+                </svg>
               </button>
             </div>
           )}
