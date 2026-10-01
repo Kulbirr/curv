@@ -125,6 +125,14 @@ CREATE TABLE IF NOT EXISTS vanity_pool (
   consumed_at BIGINT
 );
 CREATE INDEX IF NOT EXISTS idx_vanity_pool_ready ON vanity_pool (consumed, created_at);
+
+CREATE TABLE IF NOT EXISTS pool_viewers (
+  pool_address TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  last_seen BIGINT NOT NULL,
+  PRIMARY KEY (pool_address, session_id)
+);
+CREATE INDEX IF NOT EXISTS idx_pool_viewers_seen ON pool_viewers (last_seen);
 `;
 
 // pg returns BIGINT (int8) columns as strings by default. Unix-ms

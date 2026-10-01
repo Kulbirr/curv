@@ -7,6 +7,7 @@ import {
 import type { PoolStateResponse } from './types';
 import { UsdRef } from '@/components/UsdRef';
 import { changeFromHistory } from './usePoolData';
+import { useViewerCount } from './useViewerCount';
 import type { HistoryPoint } from './types';
 
 /** Deterministic hue (0-359) derived from a string, for avatar gradients. */
@@ -73,6 +74,7 @@ interface Props {
 
 export default function PoolHeader({ state, points, volume24h, baseMint }: Props) {
   const change = changeFromHistory(points);
+  const viewerCount = useViewerCount(state.poolAddress);
   const changeKnown = typeof change === 'number' && Number.isFinite(change);
   const changeValue = changeKnown ? (change as number) : 0;
   const changeColor = !changeKnown
@@ -130,6 +132,15 @@ export default function PoolHeader({ state, points, volume24h, baseMint }: Props
             )}
             {state.graduated && (
               <span className="sc-pool-graduation-badge">Graduated</span>
+            )}
+            {viewerCount != null && viewerCount >= 2 && (
+              <span
+                className="sc-viewers-badge"
+                title={`${viewerCount} people are viewing this token right now`}
+              >
+                <span className="sc-viewers-dot" aria-hidden="true" />
+                {viewerCount} watching
+              </span>
             )}
           </div>
           <span className="sc-pool-ticker">${state.baseSymbol}</span>

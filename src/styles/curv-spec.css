@@ -274,7 +274,8 @@ select {
   z-index: 80;
   display: grid;
   gap: 2px;
-  min-width: 168px;
+  width: 100%;
+  min-width: 0;
   padding: 5px;
   border: 1px solid #222829;
   border-radius: 9px;
@@ -286,8 +287,9 @@ select {
 .sc-wallet-menu-item {
   display: flex;
   align-items: center;
+  justify-content: center;
   width: 100%;
-  padding: 9px 11px;
+  padding: 9px 6px;
   border: 0;
   border-radius: 6px;
   background: transparent;
@@ -295,7 +297,8 @@ select {
   font-family: var(--sc-sans);
   font-size: 11.5px;
   font-weight: 600;
-  text-align: left;
+  text-align: center;
+  white-space: nowrap;
   cursor: pointer;
 }
 
@@ -314,6 +317,43 @@ select {
 .sc-wallet-menu-item-danger:hover {
   background: #2a1517;
   color: #ffb3b5;
+}
+
+
+.sc-viewers-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px;
+  border: 1px solid rgb(50 242 123 / 32%);
+  border-radius: 999px;
+  background: rgb(50 242 123 / 8%);
+  color: #8fe3ab;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+
+.sc-viewers-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #32f27b;
+  box-shadow: 0 0 7px rgb(50 242 123 / 60%);
+  animation: sc-viewers-pulse 2s ease-in-out infinite;
+}
+
+
+@keyframes sc-viewers-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
 }
 
 
