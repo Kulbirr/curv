@@ -76,7 +76,7 @@ export default function TradeStats({ stats, quoteSymbol }: Props) {
           Buys vs sells
         </span>
         <span
-          style={{ fontSize: 8, color: '#737d76' }}
+          style={{ fontSize: 10, color: '#737d76' }}
           title="Inferred from quote-reserve movement between indexer samples, not individual trades"
         >
           24h · estimated
@@ -90,7 +90,7 @@ export default function TradeStats({ stats, quoteSymbol }: Props) {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              fontSize: 9,
+              fontSize: 13,
               marginBottom: 6,
               fontFamily: 'var(--sc-number)',
             }}
@@ -103,7 +103,7 @@ export default function TradeStats({ stats, quoteSymbol }: Props) {
             </span>
           </div>
           <StackedBar buyShare={buyMoveShare} />
-          <p style={{ margin: '4px 0 0', fontSize: 8, color: '#5f6a60' }}>Buy/sell moves</p>
+          <p style={{ margin: '4px 0 0', fontSize: 10, color: '#5f6a60' }}>Buy/sell moves</p>
         </div>
 
         <div>
@@ -112,7 +112,7 @@ export default function TradeStats({ stats, quoteSymbol }: Props) {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              fontSize: 9,
+              fontSize: 13,
               marginBottom: 6,
               fontFamily: 'var(--sc-number)',
             }}
@@ -125,12 +125,12 @@ export default function TradeStats({ stats, quoteSymbol }: Props) {
             </span>
           </div>
           <StackedBar buyShare={buyVolShare} />
-          <p style={{ margin: '4px 0 0', fontSize: 8, color: '#5f6a60' }}>Buy/sell volume</p>
+          <p style={{ margin: '4px 0 0', fontSize: 10, color: '#5f6a60' }}>Buy/sell volume</p>
         </div>
       </div>
 
       {totalMoves === 0 && (
-        <p style={{ margin: '12px 0 0', fontSize: 9, color: '#77817b' }}>
+        <p style={{ margin: '12px 0 0', fontSize: 12, color: '#77817b' }}>
           No reserve movement sampled in the last 24h.
         </p>
       )}

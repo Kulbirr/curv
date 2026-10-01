@@ -1,5 +1,29 @@
 packages:
   - '.'
 
+minimumReleaseAgeExclude:
+  - '@next/env@15.5.27'
+  - '@next/eslint-plugin-next@15.5.27'
+  - '@next/swc-darwin-arm64@15.5.27'
+  - '@next/swc-darwin-x64@15.5.27'
+  - '@next/swc-linux-arm64-gnu@15.5.27'
+  - '@next/swc-linux-arm64-musl@15.5.27'
+  - '@next/swc-linux-x64-gnu@15.5.27'
+  - '@next/swc-linux-x64-musl@15.5.27'
+  - '@next/swc-win32-arm64-msvc@15.5.27'
+  - '@next/swc-win32-x64-msvc@15.5.27'
+  - eslint-config-next@15.5.27
+  - next@15.5.27
+
 overrides:
   rpc-websockets>uuid: 9.0.1
+
+supportedArchitectures:
+  os:
+    - linux
+  cpu:
+    - x64
+    - arm64
+  libc:
+    - glibc
+    - musl

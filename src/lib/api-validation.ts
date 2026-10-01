@@ -173,8 +173,25 @@ export function validateRegistrationBody(body: unknown): ValidationResult<Regist
   }
 }
 
-/** Best-effort client IP for rate limiting (works behind a proxy). */
+/**
+ * Best-effort client IP for rate limiting, hosting-aware.
+ *
+ * Never trust x-forwarded-for's leftmost entry blindly: any client can prepend
+ * arbitrary values, which would let an attacker rotate rate-limit identities.
+ * On Vercel the edge sets x-real-ip to the connecting client IP, so prefer it.
+ * Self-hosted deployments behind their own proxy can name the header their
+ * proxy sets-and-strips via TRUSTED_PROXY_IP_HEADER.
+ */
 export function getClientIp(req: NextApiRequest): string {
+  const trusted = process.env.TRUSTED_PROXY_IP_HEADER?.toLowerCase();
+  if (trusted) {
+    const v = req.headers[trusted];
+    const ip = Array.isArray(v) ? v[0] : typeof v === 'string' ? v.split(',')[0]?.trim() : '';
+    if (ip) return ip;
+  }
+  const real = req.headers['x-real-ip'];
+  const realIp = Array.isArray(real) ? real[0] : typeof real === 'string' ? real.split(',')[0]?.trim() : '';
+  if (realIp) return realIp;
   const fwd = req.headers['x-forwarded-for'];
   const first = Array.isArray(fwd) ? fwd[0] : typeof fwd === 'string' ? fwd.split(',')[0]?.trim() : '';
   return first || req.socket.remoteAddress || 'unknown';

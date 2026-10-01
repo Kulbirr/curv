@@ -21,6 +21,7 @@ type Mode = 'price' | 'mcap';
  * Real chart ranges. The history API caps windows at 30 days, so ALL covers
  * the full 30-day window the API can serve.
  */
+const EMPTY_POINTS: never[] = [];
 const RANGES: { id: RangeId; ms: number; points: number }[] = [
   { id: '1H', ms: 60 * 60 * 1000, points: 120 },
   { id: '24H', ms: 24 * 60 * 60 * 1000, points: 300 },
@@ -122,7 +123,9 @@ export default function PriceChart({ poolAddress, quoteSymbol, supply }: Props) 
   const from = useMemo(() => Date.now() - rangeDef.ms, [rangeDef]);
   const historyQuery = usePoolHistory(poolAddress, rangeDef.points, from);
 
-  const points = historyQuery.data?.points ?? [];
+  // Module-level empty array: `?? []` would create a new reference every
+  // render and churn the useMemo below that depends on `points`.
+  const points = historyQuery.data?.points ?? EMPTY_POINTS;
   const complete = historyQuery.data?.complete ?? false;
   const isLoading = historyQuery.isLoading;
 
@@ -250,7 +253,7 @@ export default function PriceChart({ poolAddress, quoteSymbol, supply }: Props) 
           <p style={{ margin: 0, fontSize: 11, fontWeight: 600, color: '#dfe5dc' }}>
             No price history yet
           </p>
-          <p style={{ margin: 0, fontSize: 9, color: '#77817b', maxWidth: 260 }}>
+          <p style={{ margin: 0, fontSize: 12, color: '#77817b', maxWidth: 260 }}>
             Price history is being recorded. Check back soon.
           </p>
         </div>

@@ -167,7 +167,7 @@ export default function CreatorEarnings({
         <h2 id="sc-creator-earnings-title">Creator earnings</h2>
         <span>Creator-only</span>
       </div>
-      <p style={{ margin: '8px 0 0', fontSize: 9, color: '#778179' }}>
+      <p style={{ margin: '8px 0 0', fontSize: 12, color: '#778179' }}>
         Your 0.3% of every trade on this pool
       </p>
 
@@ -234,7 +234,7 @@ export default function CreatorEarnings({
           <h3 style={{ margin: '0 0 6px', fontSize: 11, color: '#c4f0c8' }}>
             Migration fee
           </h3>
-          <p style={{ margin: '0 0 10px', fontSize: 9, color: '#778179' }}>
+          <p style={{ margin: '0 0 10px', fontSize: 12, color: '#778179' }}>
             Your 2% of the migration fee from this pool&apos;s graduation
           </p>
 
@@ -286,7 +286,7 @@ export default function CreatorEarnings({
       <p
         style={{
           margin: '10px 0 0',
-          fontSize: 8,
+          fontSize: 10,
           lineHeight: 1.6,
           color: '#5f6a60',
         }}

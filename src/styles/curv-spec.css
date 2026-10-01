@@ -784,7 +784,7 @@ select {
 .sc-token-identity strong {
   overflow: hidden;
   color: #e3e8e0;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 630;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -793,7 +793,7 @@ select {
 
 .sc-token-identity > span {
   color: #7e8781;
-  font-size: 10px;
+  font-size: 11px;
 }
 
 
@@ -808,7 +808,7 @@ select {
   border-radius: 4px;
   background: #121b14;
   color: #a9e778;
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 640;
   letter-spacing: 0.01em;
 }
@@ -901,7 +901,7 @@ select {
   gap: 12px;
   margin-top: 13px;
   color: #707a74;
-  font-size: 8px;
+  font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.05em;
 }
@@ -910,7 +910,7 @@ select {
 .sc-token-card-foot b {
   margin-left: 4px;
   color: #aab2a9;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 560;
   letter-spacing: 0;
 }
@@ -2657,7 +2657,9 @@ select {
 
 
 .sc-trade-panel {
-  padding: 13px;
+  padding: 18px;
+  border-color: #2c3833;
+  box-shadow: 0 0 0 1px rgba(50, 242, 123, 0.04), 0 8px 28px rgba(0, 0, 0, 0.35);
 }
 
 
@@ -2673,13 +2675,14 @@ select {
 
 
 .sc-trade-side-tabs button {
-  min-height: 33px;
+  min-height: 40px;
   border: 1px solid transparent;
   border-radius: 5px;
   background: transparent;
   color: #818a82;
   font-family: var(--sc-number);
-  font-size: 10px;
+  font-size: 13px;
+  font-weight: 650;
   cursor: pointer;
 }
 
@@ -2703,23 +2706,23 @@ select {
   justify-content: space-between;
   margin: 14px 1px 7px;
   color: #929b92;
-  font-size: 9px;
+  font-size: 12px;
 }
 
 
 .sc-trade-input-heading span {
   color: #737c75;
   font-family: var(--sc-number);
-  font-size: 8px;
+  font-size: 11px;
 }
 
 
 .sc-trade-amount {
   display: flex;
-  height: 48px;
+  height: 64px;
   align-items: center;
   gap: 8px;
-  padding: 0 10px;
+  padding: 0 14px;
   border: 1px solid #282e2d;
   border-radius: 6px;
   background: #0d1110;
@@ -2739,7 +2742,7 @@ select {
   background: transparent;
   color: #eef2eb;
   font-family: var(--sc-number);
-  font-size: 15px;
+  font-size: 26px;
 }
 
 
@@ -2751,14 +2754,14 @@ select {
 .sc-trade-amount > span {
   color: #7f8981;
   font-family: var(--sc-number);
-  font-size: 9px;
+  font-size: 14px;
 }
 
 
 .sc-trade-usd {
   margin-top: 4px;
   font-family: var(--sc-number);
-  font-size: 10px;
+  font-size: 12px;
   color: #7f8981;
 }
 
@@ -2772,13 +2775,13 @@ select {
 
 
 .sc-quick-amounts button {
-  min-height: 27px;
+  min-height: 32px;
   border: 1px solid #242b29;
   border-radius: 5px;
   background: #0e1211;
   color: #8b948b;
   font-family: var(--sc-number);
-  font-size: 8px;
+  font-size: 11px;
   cursor: pointer;
 }
 
@@ -2795,14 +2798,14 @@ select {
   gap: 8px;
   margin-top: 13px;
   color: #8c968d;
-  font-size: 9px;
+  font-size: 12px;
 }
 
 
 .sc-receive-row strong {
   color: #dce4d8;
   font-family: var(--sc-number);
-  font-size: 9px;
+  font-size: 15px;
   font-weight: 550;
   text-align: right;
 }
@@ -2814,7 +2817,7 @@ select {
   gap: 8px;
   margin-top: 8px;
   color: #737d74;
-  font-size: 8px;
+  font-size: 11px;
 }
 
 
@@ -2823,7 +2826,7 @@ select {
   background: transparent;
   color: #aeb8ae;
   font-family: var(--sc-number);
-  font-size: 8px;
+  font-size: 11px;
 }
 
 
@@ -2835,19 +2838,20 @@ select {
 .sc-trade-message {
   margin: 10px 0 0;
   color: #efb1a1;
-  font-size: 9px;
+  font-size: 12px;
 }
 
 
 .sc-trade-submit {
   width: 100%;
-  min-height: 40px;
+  min-height: 52px;
   margin-top: 13px;
   border-color: var(--sc-lime);
   background: var(--sc-lime);
   color: #12180c;
   font-family: var(--sc-number);
-  font-size: 10px;
+  font-size: 15px;
+  font-weight: 700;
 }
 
 
@@ -2879,7 +2883,7 @@ select {
 .sc-trade-card-label {
   margin-bottom: 10px;
   color: #778178;
-  font-size: 8px;
+  font-size: 10px;
   font-weight: 650;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -2897,14 +2901,14 @@ select {
 .sc-position-primary strong {
   color: #dfe6dc;
   font-family: var(--sc-number);
-  font-size: 10px;
+  font-size: 14px;
   font-weight: 550;
 }
 
 
 .sc-position-primary b {
   font-family: var(--sc-number);
-  font-size: 9px;
+  font-size: 12px;
 }
 
 
@@ -2912,7 +2916,7 @@ select {
   margin-top: 5px;
   color: #858f86;
   font-family: var(--sc-number);
-  font-size: 8px;
+  font-size: 11px;
 }
 
 
@@ -2923,7 +2927,7 @@ select {
   justify-content: space-between;
   gap: 10px;
   color: #899289;
-  font-size: 8px;
+  font-size: 12px;
 }
 
 

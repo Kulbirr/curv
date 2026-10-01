@@ -1,4 +1,4 @@
-import { CSSProperties, memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { CSSProperties, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useLocalStorage } from 'react-use';
 
 import { useTheme } from 'next-themes';
@@ -414,7 +414,10 @@ export const TokenChart: React.FC<ChartProps> = memo(({ renderingId, style, opt 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [symbol, chartTheme]);
 
-  function updateButtonTitles(config: ChartConfig) {
+  // useCallback: used inside the reset-data effect below, and chartColors
+  // changes with the theme.
+  const updateButtonTitles = useCallback(
+    (config: ChartConfig) => {
     if (!priceMcapTogglerRef.current) {
       return;
     }
@@ -443,7 +446,9 @@ export const TokenChart: React.FC<ChartProps> = memo(({ renderingId, style, opt 
         userTradesTogglerRef.current.textContent = 'Show My Trades';
       }
     }
-  }
+  },
+    [chartColors],
+  );
 
   // Reset chart data when config changes
   useEffect(() => {

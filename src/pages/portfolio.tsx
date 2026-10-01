@@ -80,6 +80,8 @@ function formatEarningTotal(e: AggregatedEarning): string {
   return `${formatCompact(Number(ui ?? '0'))} ${e.symbol}`;
 }
 
+const EMPTY_HOLDINGS: never[] = [];
+
 export default function Portfolio() {
   const { publicKey, connected } = useWallet();
   const { setShowModal: setWalletModalVisible } = useUnifiedWalletContext();
@@ -152,7 +154,7 @@ export default function Portfolio() {
   const earningsLoading = createdStateQueries.some((q) => q.isLoading);
   const earningsError = createdStateQueries.some((q) => q.isError);
 
-  const holdings = holdingsQuery.data ?? [];
+  const holdings = holdingsQuery.data ?? EMPTY_HOLDINGS;
 
   /**
    * Total portfolio value, USD. Sums only holdings whose exact-matched pool

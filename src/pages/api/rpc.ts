@@ -4,7 +4,18 @@ import {
   resolveProxyUpstream,
   RPC_PROXY_TIMEOUT_MS,
 } from '@/lib/rpc-proxy';
+import { getClientIp } from '@/lib/api-validation';
+import { hitRateLimit } from '@/lib/db/rate-limits';
 import { SOLANA_RPC_FALLBACK_URL } from '@/lib/solana';
+
+/**
+ * sendTransaction is the one allowlisted method that spends paid RPC quota
+ * per call and can be abused by anonymous visitors to burn the keyed lane.
+ * Reads stay unlimited; transaction submission gets a strict per-IP budget
+ * (60/hour is far above real trading: one trade is one send).
+ */
+const SEND_TX_LIMIT = 60;
+const SEND_TX_WINDOW_MS = 60 * 60_000;
 
 export const config = {
   api: {
@@ -66,6 +77,27 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     method: parsed.req.method,
     params: parsed.req.params ?? [],
   };
+
+  // Tight per-IP budget on transaction submission; see SEND_TX_LIMIT.
+  if (parsed.req.method === 'sendTransaction') {
+    const hit = await hitRateLimit(
+      `rpc:send:${getClientIp(req)}`,
+      SEND_TX_LIMIT,
+      SEND_TX_WINDOW_MS,
+      Date.now()
+    );
+    if (!hit.allowed) {
+      return res.status(429).json({
+        jsonrpc: '2.0',
+        id: parsed.req.id,
+        error: {
+          code: -32000,
+          message:
+            'Transaction submission rate limit exceeded. Wait a little and try again.',
+        },
+      });
+    }
+  }
 
   // Primary: keyed lane. Transport failure, timeout, 429 or 5xx falls
   // through to the public endpoint; valid RPC errors ride inside HTTP 200

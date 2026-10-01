@@ -381,7 +381,7 @@ export default function TradePanel({ poolAddress, state }: Props) {
             borderRadius: 6,
             border: '1px solid #242b29',
             background: '#0d1110',
-            fontSize: 10,
+            fontSize: 12,
             color: '#8c968d',
             textAlign: 'center',
           }}
@@ -409,7 +409,7 @@ export default function TradePanel({ poolAddress, state }: Props) {
             borderRadius: 6,
             border: '1px solid #242b29',
             background: '#0d1110',
-            fontSize: 10,
+            fontSize: 12,
             color: '#8c968d',
             textAlign: 'center',
           }}
@@ -554,7 +554,7 @@ export default function TradePanel({ poolAddress, state }: Props) {
                       slippageBps === bps && customSlippage === '' ? '#132016' : '#0e1211',
                     color: slippageBps === bps && customSlippage === '' ? '#74e799' : '#8b948b',
                     fontFamily: 'var(--sc-number)',
-                    fontSize: 8,
+                    fontSize: 11,
                     cursor: 'pointer',
                   }}
                 >
@@ -582,7 +582,7 @@ export default function TradePanel({ poolAddress, state }: Props) {
                   background: '#0e1211',
                   color: '#aeb8ae',
                   fontFamily: 'var(--sc-number)',
-                  fontSize: 8,
+                  fontSize: 11,
                   outline: 'none',
                 }}
               />
@@ -604,7 +604,7 @@ export default function TradePanel({ poolAddress, state }: Props) {
                 borderRadius: 6,
                 border: '1px solid #1f3a28',
                 background: '#0e1710',
-                fontSize: 9,
+                fontSize: 12,
                 color: '#91c99c',
               }}
             >
@@ -642,7 +642,7 @@ export default function TradePanel({ poolAddress, state }: Props) {
           <p
             style={{
               margin: '10px 0 0',
-              fontSize: 8,
+              fontSize: 10,
               color: '#5f6a60',
               textAlign: 'center',
               lineHeight: 1.6,

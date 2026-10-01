@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { Keypair } from '@solana/web3.js';
+import bs58 from 'bs58';
+import nacl from 'tweetnacl';
 import handler from '@/pages/api/metadata';
 import { mockReqRes } from '@/test-support/http';
+import { buildMetadataUploadMessage } from '@/lib/signature-messages';
 
 // Rate limiting needs a database; unit tests mock it out.
 const mockHitRateLimit = vi.hoisted(() =>
@@ -56,12 +60,21 @@ function restoreEnv() {
   }
 }
 
-const validBody = (overrides: Record<string, unknown> = {}) => ({
-  name: 'Test Token',
-  symbol: 'TEST',
-  description: 'A test token',
-  ...overrides,
-});
+const validBody = (overrides: Record<string, unknown> = {}) => {
+  const kp = Keypair.generate();
+  const wallet = kp.publicKey.toBase58();
+  const timestamp = Date.now();
+  const message = buildMetadataUploadMessage(wallet, timestamp);
+  return {
+    name: 'Test Token',
+    symbol: 'TEST',
+    description: 'A test token',
+    wallet,
+    timestamp,
+    signature: bs58.encode(nacl.sign.detached(Buffer.from(message, 'utf8'), kp.secretKey)),
+    ...overrides,
+  };
+};
 
 beforeEach(() => {
   sentCommands.length = 0;
@@ -104,6 +117,45 @@ describe('POST /api/metadata', () => {
     const { req, res } = mockReqRes('POST', { body: validBody() });
     await handler(req, res);
     expect(res.statusCode).toBe(429);
+    expect(sentCommands).toHaveLength(0);
+  });
+
+  it('returns 401 when the wallet signature is missing', async () => {
+    setR2Env();
+    const { wallet, timestamp, signature, ...unsigned } = validBody();
+    void wallet; void timestamp; void signature;
+    const { req, res } = mockReqRes('POST', { body: unsigned });
+    await handler(req, res);
+    expect(res.statusCode).toBe(401);
+    expect(sentCommands).toHaveLength(0);
+  });
+
+  it('returns 401 when the signature is from a different wallet', async () => {
+    setR2Env();
+    const body = validBody();
+    body.wallet = Keypair.generate().publicKey.toBase58(); // swap the claimed wallet
+    const { req, res } = mockReqRes('POST', { body });
+    await handler(req, res);
+    expect(res.statusCode).toBe(401);
+    expect(sentCommands).toHaveLength(0);
+  });
+
+  it('returns 401 when the signature timestamp is stale', async () => {
+    setR2Env();
+    const kp = Keypair.generate();
+    const wallet = kp.publicKey.toBase58();
+    const timestamp = Date.now() - 10 * 60_000; // 10 minutes old
+    const message = buildMetadataUploadMessage(wallet, timestamp);
+    const body = {
+      ...validBody(),
+      wallet,
+      timestamp,
+      signature: bs58.encode(nacl.sign.detached(Buffer.from(message, 'utf8'), kp.secretKey)),
+    };
+    const { req, res } = mockReqRes('POST', { body });
+    await handler(req, res);
+    expect(res.statusCode).toBe(401);
+    expect(res.body.error).toMatch(/expired/i);
     expect(sentCommands).toHaveLength(0);
   });
 

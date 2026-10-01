@@ -96,7 +96,7 @@ export default function PoolDetails({ state, onChain }: Props) {
       <p
         style={{
           margin: '10px 0 0',
-          fontSize: 9,
+          fontSize: 12,
           lineHeight: 1.6,
           color: '#5f6a60',
         }}

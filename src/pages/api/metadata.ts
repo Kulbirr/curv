@@ -3,6 +3,11 @@ import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { randomUUID } from 'crypto';
 import { getClientIp } from '@/lib/api-validation';
 import { hitRateLimit } from '@/lib/db/rate-limits';
+import {
+  buildMetadataUploadMessage,
+  isFreshTimestamp,
+  verifyWalletSignature,
+} from '@/lib/signatures';
 
 /**
  * Token metadata hosting.
@@ -49,14 +54,37 @@ interface MetadataBody {
   symbol?: unknown;
   description?: unknown;
   image?: unknown; // https URL or data URI
+  // Wallet authorization: the uploader signs a short-lived message so
+  // anonymous clients cannot use Curv's R2 bucket as free storage. The
+  // launch page signs this right before uploading, in the same flow as
+  // the on-chain launch transaction.
+  wallet?: unknown;
+  timestamp?: unknown;
+  signature?: unknown;
+}
+
+/** Reject uploads that are not authorized by a fresh wallet signature. */
+export function checkUploadAuthorization(body: MetadataBody): string | null {
+  const wallet = typeof body.wallet === 'string' ? body.wallet : '';
+  const timestamp = typeof body.timestamp === 'number' ? body.timestamp : NaN;
+  const signature = typeof body.signature === 'string' ? body.signature : '';
+  if (!wallet || !signature || !isFreshTimestamp(timestamp)) {
+    return 'Upload authorization missing or expired';
+  }
+  const message = buildMetadataUploadMessage(wallet, timestamp);
+  if (!verifyWalletSignature(message, signature, wallet)) {
+    return 'Upload authorization invalid';
+  }
+  return null;
 }
 
 async function handlePost(req: NextApiRequest, res: NextApiResponse) {
   if (!isConfigured()) {
     return res.status(503).json({ error: 'Metadata hosting is not configured on this server' });
   }
-  // One launch uploads one metadata file; bound anonymous uploads so the
-  // R2 bucket cannot be used as free storage by a spammer.
+  // Per-wallet upload budget as defense in depth: uploads already require a
+  // fresh wallet signature (see checkUploadAuthorization), so this only
+  // bounds a single wallet's spend, not anonymous abuse.
   const ip = getClientIp(req);
   const now = Date.now();
   const hit = await hitRateLimit(`metadata:ip:${ip}`, 20, 60 * 60_000, now);
@@ -64,6 +92,10 @@ async function handlePost(req: NextApiRequest, res: NextApiResponse) {
     return res.status(429).json({ error: 'Too many metadata uploads from this address, try again later' });
   }
   const body = (req.body ?? {}) as MetadataBody;
+  const authError = checkUploadAuthorization(body);
+  if (authError) {
+    return res.status(401).json({ error: authError });
+  }
   const name = typeof body.name === 'string' ? body.name.trim() : '';
   const symbol = typeof body.symbol === 'string' ? body.symbol.trim().toUpperCase() : '';
   const description = typeof body.description === 'string' ? body.description.trim() : '';

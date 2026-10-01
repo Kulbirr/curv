@@ -89,23 +89,10 @@ const STATUS_LABEL: Record<
   registering: 'Registering pool…',
 }
 
-/**
- * Must stay byte-identical to buildRegistrationMessage() in
- * src/lib/signatures.ts (the server verifies against that format).
- * Not imported here because that module pulls in Node's crypto.
- */
-function buildRegistrationMessageClient(
-  poolAddress: string,
-  creator: string,
-  timestamp: number
-): string {
-  return [
-    'StockCurve pool registration',
-    `pool: ${poolAddress}`,
-    `creator: ${creator}`,
-    `timestamp: ${timestamp}`,
-  ].join('\n')
-}
+import {
+  buildRegistrationMessage,
+  buildMetadataUploadMessage,
+} from '@/lib/signature-messages'
 
 function parsePositiveFloat(s: string): number | null {
   const v = parseFloat(s)
@@ -825,6 +812,24 @@ export default function CreatePool() {
       let metadataUri: string
       let imageUrl: string | undefined
       if (metadataConfigured) {
+        // Authorize the R2 upload with a fresh wallet signature so the
+        // metadata endpoint cannot be used as anonymous free storage.
+        if (!signMessage)
+          throw new Error('Connected wallet cannot sign messages')
+        const uploadTimestamp = Date.now()
+        const uploadMessage = buildMetadataUploadMessage(
+          publicKey.toBase58(),
+          uploadTimestamp
+        )
+        let uploadSigBytes: Uint8Array
+        try {
+          uploadSigBytes = await withSignTimeout(
+            signMessage(new TextEncoder().encode(uploadMessage))
+          )
+        } catch (e) {
+          if (isSignTimeout(e)) throw new Error(signingTimeoutMessage())
+          throw new Error('Wallet did not sign the metadata upload')
+        }
         const res = await fetch('/api/metadata', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -833,6 +838,9 @@ export default function CreatePool() {
             symbol: symbol.trim().toUpperCase(),
             description: fullDescription,
             image: imageDataUri,
+            wallet: publicKey.toBase58(),
+            timestamp: uploadTimestamp,
+            signature: bs58.encode(uploadSigBytes),
           }),
         })
         if (!res.ok) {
@@ -944,7 +952,7 @@ export default function CreatePool() {
       // 7. Register with a wallet-signed message (server verifies ed25519)
       setStatus('registering')
       const timestamp = Date.now()
-      const message = buildRegistrationMessageClient(
+      const message = buildRegistrationMessage(
         poolAddr,
         publicKey.toBase58(),
         timestamp

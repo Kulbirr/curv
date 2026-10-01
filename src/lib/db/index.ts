@@ -179,11 +179,27 @@ function connectionString(): string {
   return sanitizeConnectionString(url);
 }
 
-function sslFor(url: string): false | { rejectUnauthorized: boolean } {
+function sslFor(url: string): false | { rejectUnauthorized: boolean; ca?: string } {
   // Local dev Postgres instances don't speak SSL; managed hosts (Aiven
   // and the like) require it. The connection is still encrypted whenever
   // the server demands it.
   if (/(^|[@/])(localhost|127\.0\.0\.1)([:/]|$)/.test(url)) return false;
+  const caCert = process.env.DATABASE_CA_CERT;
+  if (caCert) {
+    // Accept raw PEM or base64-encoded PEM (Vercel env vars dislike newlines).
+    const pem = caCert.includes('BEGIN CERTIFICATE')
+      ? caCert
+      : Buffer.from(caCert, 'base64').toString('utf8');
+    return { rejectUnauthorized: true, ca: pem };
+  }
+  // Fail loud in the server logs; the connection still works so a missing
+  // cert can never take production down on deploy. Set DATABASE_CA_CERT
+  // (the CA certificate from the Aiven console) to enable verification.
+  console.warn(
+    '[db] WARNING: DATABASE_CA_CERT is not set; connecting to the managed ' +
+      'database WITHOUT verifying its TLS certificate. Download the CA ' +
+      'certificate from the database console and set DATABASE_CA_CERT.'
+  );
   return { rejectUnauthorized: false };
 }
 

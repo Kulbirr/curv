@@ -1,5 +1,6 @@
 import { createPublicKey, verify } from 'crypto';
 import bs58 from 'bs58';
+import { SIGNATURE_TTL_MS } from './signature-messages';
 
 /**
  * Wallet signature verification for backend writes.
@@ -36,12 +37,13 @@ export function verifyWalletSignature(
 }
 
 /** Registration messages expire after 5 minutes to prevent replays. */
-export const REGISTRATION_TTL_MS = 5 * 60 * 1000;
+export const REGISTRATION_TTL_MS = SIGNATURE_TTL_MS;
 
-export function buildRegistrationMessage(poolAddress: string, creator: string, timestamp: number): string {
-  return [`StockCurve pool registration`, `pool: ${poolAddress}`, `creator: ${creator}`, `timestamp: ${timestamp}`].join('\n');
-}
-
-export function isFreshTimestamp(timestamp: number): boolean {
-  return Number.isFinite(timestamp) && Math.abs(Date.now() - timestamp) <= REGISTRATION_TTL_MS;
-}
+// Message builders live in a Node-free module so the browser can import the
+// identical strings; re-exported here to keep existing imports working.
+export {
+  buildRegistrationMessage,
+  buildMetadataUploadMessage,
+  isFreshTimestamp,
+  SIGNATURE_TTL_MS as METADATA_UPLOAD_TTL_MS,
+} from './signature-messages';

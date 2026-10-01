@@ -60,7 +60,7 @@ const STALE_BADGE_STYLE: CSSProperties = {
   borderRadius: 999,
   background: '#221a10',
   color: '#e8b64c',
-  fontSize: 8,
+  fontSize: 10,
 };
 
 interface Props {

@@ -205,7 +205,15 @@ describe('validateRegistrationBody', () => {
 
 describe('getClientIp', () => {
   const base = { socket: { remoteAddress: '9.9.9.9' }, headers: {} };
-  it('prefers x-forwarded-for, first entry only', async () => {
+  it('prefers x-real-ip (edge-set) over x-forwarded-for', async () => {
+    expect(
+      getClientIp({
+        ...base,
+        headers: { 'x-real-ip': '5.5.5.5', 'x-forwarded-for': '1.1.1.1, 2.2.2.2' },
+      } as never),
+    ).toBe('5.5.5.5');
+  });
+  it('uses x-forwarded-for first entry when x-real-ip is absent', async () => {
     expect(
       getClientIp({ ...base, headers: { 'x-forwarded-for': '1.1.1.1, 2.2.2.2' } } as never),
     ).toBe('1.1.1.1');
@@ -214,6 +222,19 @@ describe('getClientIp', () => {
     expect(
       getClientIp({ ...base, headers: { 'x-forwarded-for': ['3.3.3.3'] } } as never),
     ).toBe('3.3.3.3');
+  });
+  it('honors TRUSTED_PROXY_IP_HEADER when set', async () => {
+    process.env.TRUSTED_PROXY_IP_HEADER = 'cf-connecting-ip';
+    try {
+      expect(
+        getClientIp({
+          ...base,
+          headers: { 'cf-connecting-ip': '7.7.7.7', 'x-real-ip': '5.5.5.5' },
+        } as never),
+      ).toBe('7.7.7.7');
+    } finally {
+      delete process.env.TRUSTED_PROXY_IP_HEADER;
+    }
   });
   it('falls back to the socket address, then unknown', async () => {
     expect(getClientIp(base as never)).toBe('9.9.9.9');
