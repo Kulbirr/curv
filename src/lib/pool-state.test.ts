@@ -7,6 +7,7 @@ import {
   getPriceFromSqrtPrice,
 } from '@meteora-ag/dynamic-bonding-curve-sdk';
 import { fetchPoolLiveState } from './pool-state';
+import { fetchDammV2MarketSnapshot } from './damm-v2-state';
 import { getConnection, getDbcClient } from '@/lib/solana';
 import { getTokenDecimals } from '@meteora-ag/dynamic-bonding-curve-sdk';
 import { randomAddress } from '@/test-support/db';
@@ -22,9 +23,14 @@ vi.mock('@meteora-ag/dynamic-bonding-curve-sdk', async (importOriginal) => {
   return { ...actual, getTokenDecimals: vi.fn() };
 });
 
+vi.mock('./damm-v2-state', () => ({
+  fetchDammV2MarketSnapshot: vi.fn(),
+}));
+
 const mockGetConnection = getConnection as unknown as ReturnType<typeof vi.fn>;
 const mockGetDbcClient = getDbcClient as unknown as ReturnType<typeof vi.fn>;
 const mockGetTokenDecimals = getTokenDecimals as unknown as ReturnType<typeof vi.fn>;
+const mockFetchDammV2 = vi.mocked(fetchDammV2MarketSnapshot);
 
 function tracked(overrides: Partial<TrackedPool> = {}): TrackedPool {
   return {
@@ -102,6 +108,14 @@ function setupChain(t: TrackedPool, s: FakeSetup = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Graduated pools read the live market from the DAMM v2 pool; default
+  // the mock to a healthy snapshot so pre-existing graduation tests keep
+  // their intent (graduation detection), and override per test as needed.
+  mockFetchDammV2.mockResolvedValue({
+    price: 0.004,
+    quoteReserve: 50,
+    baseReserve: 12500,
+  });
 });
 
 describe('fetchPoolLiveState', () => {
@@ -248,5 +262,49 @@ describe('fetchPoolLiveState', () => {
     setupChain(t, { price: 0.005 });
     const s = await fetchPoolLiveState(t);
     expect(s.price).toBeCloseTo(expected, 9);
+  });
+
+  it('reads live price and reserves from the DAMM v2 pool after graduation', async () => {
+    const t = tracked();
+    setupChain(t, { price: 0.001, isMigrated: 1 });
+    mockFetchDammV2.mockResolvedValue({
+      price: 0.004,
+      quoteReserve: 50,
+      baseReserve: 12500,
+    });
+    const s = await fetchPoolLiveState(t);
+    expect(s.stale).toBe(false);
+    expect(s.graduated).toBe(true);
+    expect(s.progress).toBe(100);
+    expect(s.hasSwap).toBe(true);
+    // DAMM v2 values replace the frozen DBC curve values.
+    expect(s.price).toBeCloseTo(0.004, 9);
+    expect(s.quoteReserve).toBeCloseTo(50, 9);
+    expect(s.baseReserve).toBeCloseTo(12500, 6);
+    expect(s.marketCap).toBeCloseTo(0.004 * 1_000_000_000, 3);
+    // Config and fee fields still come from the DBC read.
+    expect(s.migrationQuoteThreshold).toBeCloseTo(800, 6);
+    expect(s.creatorBaseFeeRaw).toBe('123456789');
+    expect(mockFetchDammV2).toHaveBeenCalledWith(
+      expect.anything(),
+      t.poolAddress,
+      t.baseMint,
+      t.quoteMint
+    );
+  });
+
+  it('HONESTY: graduated pool with an unreachable DAMM v2 pool serves stale, never frozen DBC leftovers', async () => {
+    const t = tracked();
+    setupChain(t, { price: 0.001, isMigrated: 1 });
+    mockFetchDammV2.mockResolvedValue({
+      price: null,
+      quoteReserve: null,
+      baseReserve: null,
+    });
+    const s = await fetchPoolLiveState(t);
+    expect(s.stale).toBe(true);
+    expect(s.graduated).toBe(true);
+    expect(s.price).toBeNull();
+    expect(s.quoteReserve).toBeNull();
   });
 });

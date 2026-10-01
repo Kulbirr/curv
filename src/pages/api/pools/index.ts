@@ -24,6 +24,11 @@ import {
 } from '@/lib/signatures';
 import { getClientIp, validateRegistrationBody } from '@/lib/api-validation';
 import { verifyAndRecord } from '@/lib/pool-verification';
+import {
+  paginatePools,
+  parsePoolsPagination,
+  sortPoolSummaries,
+} from '@/lib/pools-pagination';
 
 /**
  * Registration bodies are small JSON (~2KB). Anything larger is abuse.
@@ -128,21 +133,27 @@ function buildSummary(
 
 /** 3s list cache (see handleGet). Module-level: shared across requests. */
 const LIST_CACHE_TTL_MS = 3_000;
-let listCache: { at: number; json: string } | null = null;
+
+interface ListBody {
+  network: typeof SOLANA_NETWORK;
+  pools: PoolSummary[];
+}
+
+let listCache: { at: number; body: ListBody; json: string } | null = null;
 /**
  * In-flight list rebuild, shared by concurrent requests (singleflight).
  * Without this, every cache expiry under load makes every concurrent
  * request run its own full multi-query rebuild, collapsing the DB pool.
  * Load-tested 2026-09-30: 5k pools, c=50 went from p50 ~46s to ~1.4s.
  */
-let listRebuild: Promise<unknown> | null = null;
+let listRebuild: Promise<ListBody> | null = null;
 
 /** A new registration must be visible immediately: drop the cached list. */
 function invalidateListCache(): void {
   listCache = null;
 }
 
-async function buildListBody(): Promise<unknown> {
+async function buildListBody(): Promise<ListBody> {
   const pools = await listTrackedPools();
   // Quote USD prices are cached 60s in memory and short-circuit to null on
   // devnet without any network call, one lookup per distinct quote mint.
@@ -172,35 +183,65 @@ async function buildListBody(): Promise<unknown> {
   };
 }
 
-async function handleGet(_req: NextApiRequest, res: NextApiResponse) {
+async function handleGet(req: NextApiRequest, res: NextApiResponse) {
+  // Opt-in pagination: ?limit=&cursor=&sort=. With none of these params
+  // the full list is served exactly as before (backward compatible).
+  const pagination = parsePoolsPagination(req.query ?? {});
   // Short-lived cache: the Discover page polls this endpoint every 5s per
   // client, so without a cache N clients = N full list builds per 5s.
   // 3s is well within the page's own 5s poll rhythm and the honest-stale
   // contract (state older than STALE_AFTER_MS is still labeled stale).
   // Skipped under test so tests stay deterministic.
   const skipCache = process.env.NODE_ENV === 'test';
+
+  // Serve one list body, full or paginated, from a cached full build.
+  // Paginated slices are small (<= POOLS_MAX_LIMIT pools) so they are
+  // serialized per request; the unpaginated full list keeps the
+  // pre-serialized fast path (stringify of a 5k-pool list costs ~50ms of
+  // single-threaded CPU, so re-serializing per request caps throughput).
+  const serveBody = (body: ListBody) => {
+    if (!pagination) {
+      res.setHeader('Content-Type', 'application/json');
+      return res.status(200).send(JSON.stringify(body));
+    }
+    const sorted = sortPoolSummaries(body.pools, pagination.sort);
+    const { pools, pagination: pageInfo } = paginatePools(sorted, pagination);
+    return res.status(200).json({
+      network: body.network,
+      pools,
+      pagination: {
+        ...pageInfo,
+        graduatedCount: body.pools.filter((p) => p.graduated).length,
+      },
+    });
+  };
+
   if (!skipCache) {
-    // Serve the pre-serialized body: JSON.stringify of a 5k-pool list
-    // costs ~50ms of single-threaded CPU, so re-serializing per request
-    // caps throughput. The string is built once per rebuild.
+    const cacheBody = (body: ListBody) => {
+      listCache = { at: Date.now(), body, json: JSON.stringify(body) };
+    };
     const sendJson = (json: string) => {
       res.setHeader('Content-Type', 'application/json');
       return res.status(200).send(json);
     };
-    const cacheBody = (body: unknown) => {
-      listCache = { at: Date.now(), json: JSON.stringify(body) };
+    // Serve from the cache entry: the pre-serialized full list, or a
+    // fresh slice of the cached body for paginated requests.
+    const serveCached = () => {
+      if (!listCache) throw new Error('list cache unexpectedly empty');
+      if (!pagination) return sendJson(listCache.json);
+      return serveBody(listCache.body);
     };
     const now = Date.now();
     if (listCache && now - listCache.at < LIST_CACHE_TTL_MS) {
-      return sendJson(listCache.json);
+      return serveCached();
     }
     if (listRebuild) {
       // A rebuild is already running: share it instead of stampeding the
       // database. Serve the stale list immediately when we have one
       // (stale-while-revalidate); only a cold cache waits for the build.
-      if (listCache) return sendJson(listCache.json);
+      if (listCache) return serveCached();
       const body = await listRebuild;
-      return res.status(200).json(body);
+      return serveBody(body);
     }
     if (listCache) {
       // Stale-while-revalidate: serve the stale list now, refresh in the
@@ -217,7 +258,7 @@ async function handleGet(_req: NextApiRequest, res: NextApiResponse) {
       ).finally(() => {
         if (listRebuild === rebuild) listRebuild = null;
       });
-      return sendJson(listCache.json);
+      return serveCached();
     }
     // Cold cache: this request must wait for the first build.
     const rebuild = buildListBody();
@@ -225,12 +266,12 @@ async function handleGet(_req: NextApiRequest, res: NextApiResponse) {
     try {
       const body = await rebuild;
       cacheBody(body);
-      return res.status(200).json(body);
+      return serveBody(body);
     } finally {
       if (listRebuild === rebuild) listRebuild = null;
     }
   }
-  return res.status(200).json(await buildListBody());
+  return serveBody(await buildListBody());
 }
 
 async function handlePost(req: NextApiRequest, res: NextApiResponse) {

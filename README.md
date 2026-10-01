@@ -25,14 +25,14 @@ Curv builds on the DBC SDK at depth, not as a thin wrapper:
 
 Curv does not burn graduated liquidity. It locks it forever.
 
-When a pool graduates, all of its liquidity migrates into a Meteora DAMM v2 pool inside two permanently locked positions: half owned by the creator, half by Curv. The lock is enforced by the Meteora program itself, so neither side can ever withdraw the underlying liquidity. Both sides keep only the right to claim trading fees, which accrue to the locked positions.
+When a pool graduates, all of its liquidity migrates into a Meteora DAMM v2 pool inside two permanently locked positions: 80 percent owned by the creator, 20 percent by Curv. The lock is enforced by the Meteora program itself, so neither side can ever withdraw the underlying liquidity. Both sides keep only the right to claim trading fees, which accrue to the locked positions.
 
 This reads as "LP not burned" to naive rug checkers, so the pool page verifies the lock on chain and links straight to the DAMM v2 pool and both position accounts. Anyone can confirm the lock without trusting us.
 
 ## Creator economics
 
 * 0.3 percent of every bonding curve trade goes to the creator, matching pump.fun
-* At graduation, an 8 percent migration fee is taken from the migrating liquidity: 6 percent to Curv and 2 percent to the creator
+* At graduation, a 4 percent migration fee is taken from the migrating liquidity: 2 percent to Curv and 2 percent to the creator
 * Pool creation costs 0.02 SOL, matching pump.fun. Meteora takes 10 percent of it and Curv receives the rest
 * Every figure on the launch page is computed from the same constants that build the on chain config. Nothing is estimated or mocked
 

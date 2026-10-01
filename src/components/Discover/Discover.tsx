@@ -1,14 +1,18 @@
 import Link from 'next/link'
-import { useMemo, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useInfiniteQuery } from '@tanstack/react-query'
 import PoolCard from './PoolCard'
-import LiveIndicator from '@/components/LiveIndicator'
-import { deriveLiveStatus, useNow } from '@/hooks/useLiveStatus'
 import { DASH } from '@/lib/format/number'
 import type { PoolSummary, PoolsResponse } from './types'
 
 type QuoteFilter = 'all' | 'SOL' | 'USDC' | 'stocks'
 type SortMode = 'hot' | 'new' | 'graduation'
+
+/**
+ * Discover polls the list every 5s; paging keeps each response small
+ * instead of shipping the whole registry (~3.1 MB at 5k pools) each time.
+ */
+const DISCOVER_PAGE_SIZE = 50
 
 const QUOTE_FILTERS: Array<{ id: QuoteFilter; label: string }> = [
   { id: 'all', label: 'All' },
@@ -23,8 +27,18 @@ const SORT_MODES: Array<{ id: SortMode; label: string }> = [
   { id: 'graduation', label: 'Near graduation' },
 ]
 
-async function fetchPools(): Promise<PoolsResponse> {
-  const res = await fetch('/api/pools', { cache: 'no-store' })
+async function fetchPoolsPage(
+  cursor: string | undefined,
+  sort: SortMode
+): Promise<PoolsResponse> {
+  const params = new URLSearchParams({
+    limit: String(DISCOVER_PAGE_SIZE),
+    sort,
+  })
+  if (cursor) params.set('cursor', cursor)
+  const res = await fetch(`/api/pools?${params.toString()}`, {
+    cache: 'no-store',
+  })
   if (!res.ok) {
     throw new Error(`Failed to load pools (HTTP ${res.status})`)
   }
@@ -54,19 +68,6 @@ function matchesQuery(pool: PoolSummary, query: string): boolean {
   return `${pool.baseSymbol} ${pool.baseName} ${pool.quoteSymbol}`
     .toLowerCase()
     .includes(q)
-}
-
-function sortPools(pools: PoolSummary[], sort: SortMode): PoolSummary[] {
-  switch (sort) {
-    case 'hot':
-      return pools // API order
-    case 'new':
-      return [...pools].sort((a, b) => b.createdAt - a.createdAt)
-    case 'graduation':
-      return [...pools]
-        .filter((pool) => !pool.graduated)
-        .sort((a, b) => (b.progress ?? -1) - (a.progress ?? -1))
-  }
 }
 
 function CardSkeleton() {
@@ -102,39 +103,82 @@ export default function Discover() {
   const [sort, setSort] = useState<SortMode>('hot')
   const [search, setSearch] = useState('')
 
-  const { data, isLoading, isError, refetch, isFetching, dataUpdatedAt } =
-    useQuery({
-      queryKey: ['discover-pools'],
-      queryFn: fetchPools,
-      refetchInterval: 5000,
-      keepPreviousData: true,
-    })
-  const now = useNow(5000)
-  const liveStatus = deriveLiveStatus({
-    dataUpdatedAt,
-    isFetching,
+  const {
+    data,
+    isLoading,
     isError,
-    now,
+    refetch,
+    isFetching,
+    isFetchingNextPage,
+    hasNextPage,
+    fetchNextPage,
+    dataUpdatedAt,
+  } = useInfiniteQuery({
+    queryKey: ['discover-pools', sort],
+    queryFn: async (context: { pageParam?: unknown }) => {
+      const cursor =
+        typeof context.pageParam === 'string' ? context.pageParam : undefined
+      return fetchPoolsPage(cursor, sort)
+    },
+    getNextPageParam: (lastPage) => lastPage.pagination?.cursor ?? undefined,
+    refetchInterval: 5000,
+    keepPreviousData: true,
   })
 
-  const pools = useMemo(() => data?.pools ?? [], [data])
-  const graduatedCount = useMemo(
-    () => pools.filter((pool) => pool.graduated).length,
-    [pools]
+  // Flattened pages; sorting is done by the API (?sort=) so the client no
+  // longer re-sorts. Filters and text search still apply client-side.
+  const pages = useMemo(() => data?.pages ?? [], [data])
+  const pools = useMemo(() => pages.flatMap((page) => page.pools), [pages])
+  const firstPagination = pages[0]?.pagination
+  const totalCount = firstPagination?.total ?? pools.length
+  const graduatedTotal = useMemo(
+    () =>
+      firstPagination?.graduatedCount ??
+      pools.filter((pool) => pool.graduated).length,
+    [firstPagination, pools]
   )
   const networkName =
-    data?.network === 'mainnet-beta'
+    data?.pages[0]?.network === 'mainnet-beta'
       ? 'SOLANA MAINNET'
-      : data?.network === 'devnet'
+      : data?.pages[0]?.network === 'devnet'
         ? 'SOLANA DEVNET'
         : '···'
 
   const visiblePools = useMemo(() => {
-    const filtered = pools.filter(
+    return pools.filter(
       (pool) => matchesFilter(pool, quoteFilter) && matchesQuery(pool, search)
     )
-    return sortPools(filtered, sort)
-  }, [pools, quoteFilter, search, sort])
+  }, [pools, quoteFilter, search])
+
+  // Infinite scroll: load the next page as the sentinel nears the viewport.
+  const sentinelRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    const el = sentinelRef.current
+    if (!el || !hasNextPage) return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (
+          entries[0]?.isIntersecting &&
+          hasNextPage &&
+          !isFetchingNextPage
+        ) {
+          fetchNextPage()
+        }
+      },
+      { rootMargin: '800px' }
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage])
+
+  // A text search must match across the whole registry, not just the
+  // loaded pages: auto-load the remaining pages while the user searches.
+  const searching = search.trim().length > 0
+  useEffect(() => {
+    if (searching && hasNextPage && !isFetchingNextPage && !isFetching) {
+      fetchNextPage()
+    }
+  }, [searching, hasNextPage, isFetchingNextPage, isFetching, fetchNextPage])
 
   const clearAll = () => {
     setQuoteFilter('all')
@@ -177,13 +221,13 @@ export default function Discover() {
           <div>
             <span>Tokens launched</span>
             <strong className="sc-number">
-              {isLoading ? DASH : pools.length.toLocaleString('en-US')}
+              {isLoading ? DASH : totalCount.toLocaleString('en-US')}
             </strong>
           </div>
           <div>
             <span>Graduated to DEX</span>
             <strong className="sc-number">
-              {isLoading ? DASH : graduatedCount.toLocaleString('en-US')}
+              {isLoading ? DASH : graduatedTotal.toLocaleString('en-US')}
             </strong>
           </div>
         </div>
@@ -193,12 +237,11 @@ export default function Discover() {
       <section className="sc-discover-market" aria-label="Discover tokens">
         <div className="sc-market-head">
           <div className="sc-market-title">
-            <LiveIndicator status={liveStatus} />
             <span>Live market</span>
             <span className="sc-market-count">
               {isLoading
                 ? '…'
-                : `${pools.length} token${pools.length === 1 ? '' : 's'}`}
+                : `${totalCount} token${totalCount === 1 ? '' : 's'}`}
             </span>
           </div>
           <label className="sc-search">
@@ -263,7 +306,7 @@ export default function Discover() {
               Retry
             </button>
           </div>
-        ) : pools.length === 0 ? (
+        ) : totalCount === 0 ? (
           <div className="sc-empty-market">
             <span>No tokens launched yet</span>
             <span>Be the first to launch a token on a curve you design.</span>
@@ -279,11 +322,38 @@ export default function Discover() {
             </button>
           </div>
         ) : (
-          <div className="sc-token-grid">
-            {visiblePools.map((pool) => (
-              <PoolCard key={pool.poolAddress} pool={pool} />
-            ))}
-          </div>
+          <>
+            <div className="sc-token-grid">
+              {visiblePools.map((pool) => (
+                <PoolCard key={pool.poolAddress} pool={pool} />
+              ))}
+            </div>
+            <div ref={sentinelRef} aria-hidden="true" />
+            {isFetchingNextPage && (
+              <div className="sc-token-grid" aria-hidden="true">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <CardSkeleton key={i} />
+                ))}
+              </div>
+            )}
+            {hasNextPage && !isFetchingNextPage && (
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'center',
+                  marginTop: 24,
+                }}
+              >
+                <button
+                  type="button"
+                  className="sc-button sc-button-secondary"
+                  onClick={() => fetchNextPage()}
+                >
+                  Load more tokens
+                </button>
+              </div>
+            )}
+          </>
         )}
       </section>
     </main>

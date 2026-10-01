@@ -53,7 +53,7 @@ export interface LaunchSpec {
   endingFeeBps: number;
   /** Optional creator overrides for the fee schedule and migration.
    *  Anything omitted falls back to LAUNCH_FEE_CONFIG. The creator's
-   *  own cuts (0.3% trading fee, 50% of the migration fee) are locked
+   *  own cuts (0.3% trading fee, 25% of the migration fee) are locked
    *  and intentionally not overridable here. */
   econ?: LaunchEconOverrides;
 }
@@ -111,9 +111,23 @@ export function presetCurve(preset: CurvePresetId, startPrice: number): CurveDes
   return { prices, liquidityWeights };
 }
 
-/** Target starting valuation for Quick launches: $3,000 fully-diluted at
- *  the 1B default supply. */
-export const QUICK_TARGET_START_FDV_USD = 3000;
+/** Target starting valuation for Quick launches: $5,000 fully-diluted at
+ *  the 1B default supply, so the Quick curve (14x end-price multiple)
+ *  graduates near ~$70k market cap, matching pump.fun's own $5k start and
+ *  ~$69k graduation scale. */
+export const QUICK_TARGET_START_FDV_USD = 5000;
+
+/** Quick-launch curve shape, kept separate from the Pro "exponential"
+ *  preset so Pro keeps its original [1, 1.6, 3.2, 10] ladder. The 14x
+ *  end multiple is what takes a $5k start to ~$70k graduation. */
+export const QUICK_CURVE_MULTIPLIERS = [1, 1.8, 4, 14];
+
+/** Build the Quick-launch CurveDesign from a starting price (quote UI units). */
+export function quickCurveDesign(startPrice: number): CurveDesign {
+  const prices = QUICK_CURVE_MULTIPLIERS.map((m) => startPrice * m);
+  const liquidityWeights = new Array(prices.length - 1).fill(1);
+  return { prices, liquidityWeights };
+}
 
 /** Default token supply for Quick launches. */
 export const QUICK_DEFAULT_SUPPLY = 1_000_000_000;
@@ -122,8 +136,8 @@ export const QUICK_DEFAULT_SUPPLY = 1_000_000_000;
  * Quick-launch default starting price (quote UI units per token) for a
  * quote asset priced at quoteUsdPrice USD. Scaling by the quote price
  * keeps every pair near the same starting valuation: on SOL pairs the
- * exponential preset then graduates near ~37 SOL (the curve shape is
- * unchanged, so graduation scales with the $3k start). Falls back to $1
+ * exponential preset then graduates near ~74 SOL (the curve shape is
+ * unchanged, so graduation scales with the $5k start). Falls back to $1
  * per quote unit when the price is unknown.
  */
 export function quickDefaultStartPrice(quoteUsdPrice?: number | null): number {
@@ -221,6 +235,12 @@ export function buildCurveParams(
   const econ = resolveEcon(spec);
   const baseDecimalEnum = toTokenDecimalEnum(spec.baseDecimals);
   const sqrtPrices = createSqrtPrices(spec.curve.prices, baseDecimalEnum, spec.quoteDecimals);
+  // The SDK rejects a flat fee (start == end) with nonzero scheduler
+  // periods: "numberOfPeriod and totalDuration must both be zero". A flat
+  // fee has no decay schedule, so both are zeroed in that case. Without
+  // this, every Quick launch (119 -> 119 bps) throws inside
+  // buildCurveWithCustomSqrtPrices and pool creation fails.
+  const flatFee = spec.startingFeeBps === spec.endingFeeBps;
 
   return buildCurveWithCustomSqrtPrices({
     token: {
@@ -237,8 +257,8 @@ export function buildCurveParams(
         feeSchedulerParam: {
           startingFeeBps: spec.startingFeeBps,
           endingFeeBps: spec.endingFeeBps,
-          numberOfPeriod: econ.feeSchedulerPeriods,
-          totalDuration: econ.feeSchedulerTotalDuration,
+          numberOfPeriod: flatFee ? 0 : econ.feeSchedulerPeriods,
+          totalDuration: flatFee ? 0 : econ.feeSchedulerTotalDuration,
         },
       },
       dynamicFeeEnabled: econ.dynamicFeeEnabled,

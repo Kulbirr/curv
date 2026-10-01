@@ -1,35 +1,19 @@
 /**
- * Graduation progress math for the pool detail page.
+ * Graduation progress display math.
  *
- * The bar shows how far the pool's quote reserve has climbed toward the
- * configured migration threshold, both real values from the indexed
- * DBC state. Never fabricate either input; nulls stay null.
+ * Single source of truth: the indexer's `progress` field (0-100), computed
+ * once per sample from quoteReserve / migrationQuoteThreshold and served by
+ * GET /api/pools, GET /api/pools/[address]/state, and the WebSocket push.
+ * Every UI surface (pool header badge, bonding curve card, Discover cards)
+ * clamps and renders that one value. Nothing recomputes the percent from
+ * reserves on the client, so the surfaces can never disagree with each
+ * other or with the list.
  */
 
-export interface GraduationDisplay {
-  /** 0-100, clamped. null when either input is missing or the threshold is not positive. */
-  pct: number | null;
-  /** True when the reserve has reached (or passed) the threshold. */
-  reached: boolean;
-}
-
-/** Progress of quoteReserve toward migrationQuoteThreshold, clamped to 0-100. */
-export function graduationDisplay(
-  quoteReserve: number | null,
-  migrationQuoteThreshold: number | null,
-): GraduationDisplay {
-  if (
-    typeof quoteReserve !== 'number' ||
-    typeof migrationQuoteThreshold !== 'number' ||
-    !Number.isFinite(quoteReserve) ||
-    !Number.isFinite(migrationQuoteThreshold) ||
-    migrationQuoteThreshold <= 0
-  ) {
-    return { pct: null, reached: false };
-  }
-  const raw = (quoteReserve / migrationQuoteThreshold) * 100;
-  return {
-    pct: Math.min(100, Math.max(0, raw)),
-    reached: quoteReserve >= migrationQuoteThreshold,
-  };
+/** Clamp the indexer's 0-100 progress for display. Null stays null. */
+export function displayProgress(
+  progress: number | null | undefined,
+): number | null {
+  if (typeof progress !== 'number' || !Number.isFinite(progress)) return null;
+  return Math.min(100, Math.max(0, progress));
 }

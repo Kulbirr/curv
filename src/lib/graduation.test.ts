@@ -1,36 +1,33 @@
 import { describe, expect, it } from 'vitest';
-import { graduationDisplay } from './graduation';
+import { displayProgress } from './graduation';
 
-describe('graduationDisplay', () => {
-  it('computes reserve/threshold as a 0-100 percentage', async () => {
-    expect(graduationDisplay(40, 80)).toEqual({ pct: 50, reached: false });
-    expect(graduationDisplay(0, 80)).toEqual({ pct: 0, reached: false });
+describe('displayProgress', () => {
+  it('passes valid 0-100 values through unchanged', () => {
+    expect(displayProgress(0)).toBe(0);
+    expect(displayProgress(50)).toBe(50);
+    expect(displayProgress(6.42)).toBe(6.42);
+    expect(displayProgress(100)).toBe(100);
   });
 
-  it('clamps over-threshold reserves to 100 and marks reached', async () => {
-    expect(graduationDisplay(120, 80)).toEqual({ pct: 100, reached: true });
-    expect(graduationDisplay(80, 80)).toEqual({ pct: 100, reached: true });
+  it('clamps out-of-range values into 0-100', () => {
+    expect(displayProgress(-5)).toBe(0);
+    expect(displayProgress(-0.001)).toBe(0);
+    expect(displayProgress(100.4)).toBe(100);
+    expect(displayProgress(250)).toBe(100);
   });
 
-  it('clamps negative reserves to 0', async () => {
-    expect(graduationDisplay(-5, 80)).toEqual({ pct: 0, reached: false });
+  it('returns null for missing or non-finite input', () => {
+    expect(displayProgress(null)).toBeNull();
+    expect(displayProgress(undefined)).toBeNull();
+    expect(displayProgress(NaN)).toBeNull();
+    expect(displayProgress(Number.POSITIVE_INFINITY)).toBeNull();
+    expect(displayProgress(Number.NEGATIVE_INFINITY)).toBeNull();
   });
 
-  it('HONESTY: null pct when either input is missing or the threshold is not positive', async () => {
-    expect(graduationDisplay(null, 80).pct).toBeNull();
-    expect(graduationDisplay(40, null).pct).toBeNull();
-    expect(graduationDisplay(40, 0).pct).toBeNull();
-    expect(graduationDisplay(40, -10).pct).toBeNull();
-    expect(graduationDisplay(NaN, 80).pct).toBeNull();
-    expect(graduationDisplay(40, Number.POSITIVE_INFINITY).pct).toBeNull();
-  });
-
-  it('matches the indexer progress formula (quoteReserve / threshold * 100)', async () => {
-    // pool-state.ts computes progress identically; the header bar and the
-    // indexed value must never disagree.
-    const quoteReserve = 33.333;
-    const threshold = 100;
-    const { pct } = graduationDisplay(quoteReserve, threshold);
-    expect(pct).toBeCloseTo((quoteReserve / threshold) * 100, 10);
+  it('never invents a value: null in means null out', () => {
+    // The UI hides the badge / renders a dash on null. It must not fall
+    // back to recomputing a percent from reserves (see module docs):
+    // the indexer's progress field is the single source of truth.
+    expect(displayProgress(null)).toBeNull();
   });
 });

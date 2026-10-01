@@ -18,7 +18,7 @@ import { Pool } from './types';
 import { GetChartRequest } from '@/components/Explore/types';
 import { useDataStreamListener } from './DataStreamProvider';
 import { useTokenInfo } from '@/hooks/queries';
-import { useWallet } from '@jup-ag/wallet-adapter';
+import { useWallet } from '@solana/wallet-adapter-react';
 import { asMarks } from './TokenChart/marks';
 import { getNextBar } from './TokenChart/bars';
 

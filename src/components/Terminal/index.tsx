@@ -1,4 +1,5 @@
-import { useUnifiedWalletContext, useWallet } from '@jup-ag/wallet-adapter';
+import { useWallet } from '@solana/wallet-adapter-react';
+import { useWalletModal } from '@solana/wallet-adapter-react-ui';
 import { useEffect, useState } from 'react';
 import { Skeleton } from '../ui/Skeleton';
 
@@ -14,7 +15,7 @@ const PLUGIN_HEIGHT = 568;
  */
 export function TerminalComponent({ mint }: { mint: string }) {
   const walletContext = useWallet();
-  const { setShowModal } = useUnifiedWalletContext();
+  const { setVisible: setWalletModalVisible } = useWalletModal();
 
   const [isReady, setIsReady] = useState(false);
 
@@ -56,7 +57,7 @@ export function TerminalComponent({ mint }: { mint: string }) {
       // Reuse the app's wallet connection instead of the plugin's own adapter
       enableWalletPassthrough: true,
       passthroughWalletContextState: walletContext,
-      onRequestConnectWallet: () => setShowModal(true),
+      onRequestConnectWallet: () => setWalletModalVisible(true),
     });
 
     return () => {
@@ -64,7 +65,7 @@ export function TerminalComponent({ mint }: { mint: string }) {
     };
     // walletContext is synced separately below to avoid re-initializing
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isReady, mint, setShowModal]);
+  }, [isReady, mint, setWalletModalVisible]);
 
   // Keep the plugin's wallet state in sync with the app's wallet
   useEffect(() => {

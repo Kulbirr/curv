@@ -30,6 +30,15 @@ export function mockReqRes(
     res.body = b;
     return res;
   };
+  res.send = (b: unknown) => {
+    // Mirror Next/Express behavior for the pre-serialized fast path: a JSON
+    // string body is parsed so route tests can assert on res.body directly.
+    res.body =
+      typeof b === 'string' && (res.headers['Content-Type'] ?? '').includes('application/json')
+        ? JSON.parse(b)
+        : b;
+    return res;
+  };
   res.setHeader = (k: string, v: string) => {
     res.headers[k] = v;
   };

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BN } from '@coral-xyz/anchor';
-import { CURVE_PRESETS, buildCurveParams, formatPriceInput, graduationThresholdQuote, platformFeeWallet, presetCurve, quickDefaultStartPrice, resolveEcon, scaleCurveToGraduationTarget, validateLaunchSpec, type LaunchSpec } from './launch';
+import { CURVE_PRESETS, buildCurveParams, formatPriceInput, graduationThresholdQuote, platformFeeWallet, presetCurve, quickCurveDesign, quickDefaultStartPrice, resolveEcon, scaleCurveToGraduationTarget, validateLaunchSpec, type LaunchSpec } from './launch';
 import { SOL_MINT } from './quote-assets';
 import { randomAddress } from '@/test-support/db';
 
@@ -199,8 +199,8 @@ describe('buildCurveParams', () => {
     const params = buildCurveParams(validSpec());
     expect(params.partnerLiquidityPercentage).toBe(0);
     expect(params.creatorLiquidityPercentage).toBe(0);
-    expect(params.partnerPermanentLockedLiquidityPercentage).toBe(50);
-    expect(params.creatorPermanentLockedLiquidityPercentage).toBe(50);
+    expect(params.partnerPermanentLockedLiquidityPercentage).toBe(20);
+    expect(params.creatorPermanentLockedLiquidityPercentage).toBe(80);
   });
 
   it('keeps at least 10% of graduated LP permanently locked', async () => {
@@ -214,6 +214,28 @@ describe('buildCurveParams', () => {
 
   it('throws the first validation error on an invalid spec', async () => {
     expect(() => buildCurveParams(validSpec({ name: '' }))).toThrow('Token name is required');
+  });
+
+  it('builds a flat fee (start == end) without scheduler periods', async () => {
+    // Regression: the SDK throws "numberOfPeriod and totalDuration must
+    // both be zero" when startingFeeBps == endingFeeBps with nonzero
+    // periods. Every Quick launch uses the flat 119 -> 119 bps fee with
+    // the default 60-period config, so without zeroing the periods here
+    // pool creation throws inside buildCurveWithCustomSqrtPrices.
+    const params = buildCurveParams(
+      validSpec({ startingFeeBps: 119, endingFeeBps: 119 }),
+    );
+    expect(params.migrationQuoteThreshold.gt(new BN(0))).toBe(true);
+    const baseFee = params.poolFees.baseFee as { cliffFeeNumerator: BN; firstFactor: number };
+    expect(baseFee.cliffFeeNumerator.gt(new BN(0))).toBe(true);
+    expect(baseFee.firstFactor).toBe(0);
+  });
+
+  it('keeps scheduler periods for a decaying fee (start != end)', async () => {
+    const params = buildCurveParams(validSpec());
+    // validSpec uses 100 -> 25 bps, so the 60-period schedule survives.
+    const baseFee = params.poolFees.baseFee as { firstFactor: number };
+    expect(baseFee.firstFactor).toBe(60);
   });
 
   it('supports 6-decimal base mints', async () => {
@@ -233,11 +255,11 @@ describe('creator economics overrides', () => {
     expect(e.feeSchedulerPeriods).toBe(60);
     expect(e.feeSchedulerTotalDuration).toBe(60);
     expect(e.dynamicFeeEnabled).toBe(true);
-    expect(e.migrationFeePercent).toBe(8);
+    expect(e.migrationFeePercent).toBe(4);
     expect(e.migratedPoolFeeBps).toBe(120);
     expect(e.migratedPoolDynamicFee).toBe(true);
-    expect(e.partnerLockedLiquidityPercent).toBe(50);
-    expect(e.creatorLockedLiquidityPercent).toBe(50);
+    expect(e.partnerLockedLiquidityPercent).toBe(20);
+    expect(e.creatorLockedLiquidityPercent).toBe(80);
   });
 
   it('resolveEcon merges overrides over the defaults', async () => {
@@ -254,7 +276,7 @@ describe('creator economics overrides', () => {
   it('never lets the spec override the locked creator cuts', async () => {
     const e = resolveEcon(validSpec({ econ: {} }));
     expect(e.creatorTradingFeePercent).toBe(31.51);
-    expect(e.creatorMigrationFeePercent).toBe(25);
+    expect(e.creatorMigrationFeePercent).toBe(50);
     expect(e.poolCreationFeeSol).toBe(0.02);
   });
 
@@ -380,37 +402,43 @@ describe('scaleCurveToGraduationTarget', () => {
 
 describe('quickDefaultStartPrice', () => {
   it('targets ~$3k starting valuation at 1B supply for any quote asset', async () => {
-    // SOL at $200: 1.5e-8 SOL/token * 1B = 15 SOL = $3,000.
-    expect(quickDefaultStartPrice(200)).toBeCloseTo(1.5e-8, 12);
-    // USDC at $1: 3e-6 USDC/token * 1B = $3,000.
-    expect(quickDefaultStartPrice(1)).toBeCloseTo(3e-6, 12);
+    // SOL at $200: 2.5e-8 SOL/token * 1B = 25 SOL = $5,000.
+    expect(quickDefaultStartPrice(200)).toBeCloseTo(2.5e-8, 12);
+    // USDC at $1: 5e-6 USDC/token * 1B = $5,000.
+    expect(quickDefaultStartPrice(1)).toBeCloseTo(5e-6, 12);
     // Unknown price falls back to $1/quote-unit rather than breaking.
-    expect(quickDefaultStartPrice(null)).toBeCloseTo(3e-6, 12);
-    expect(quickDefaultStartPrice(0)).toBeCloseTo(3e-6, 12);
-    expect(quickDefaultStartPrice(-5)).toBeCloseTo(3e-6, 12);
+    expect(quickDefaultStartPrice(null)).toBeCloseTo(5e-6, 12);
+    expect(quickDefaultStartPrice(0)).toBeCloseTo(5e-6, 12);
+    expect(quickDefaultStartPrice(-5)).toBeCloseTo(5e-6, 12);
   });
 
-  it('graduates a SOL pair near ~37 SOL on the $3k-start curve', async () => {
+  it('quick curve keeps the pump.fun shape, separate from the Pro exponential preset', async () => {
+    // Pro's exponential preset is untouched by the Quick redesign.
+    expect(presetCurve('exponential', 1).prices).toEqual([1, 1.6, 3.2, 10]);
+    expect(quickCurveDesign(1).prices).toEqual([1, 1.8, 4, 14]);
+  });
+
+  it('graduates a SOL pair near ~74 SOL on the $5k-start curve', async () => {
     const spec = validSpec({
-      curve: presetCurve('exponential', quickDefaultStartPrice(200)),
+      curve: quickCurveDesign(quickDefaultStartPrice(200)),
     });
     const threshold = graduationThresholdQuote(spec);
     // Graduation scales with the starting valuation (curve shape is
-    // unchanged): $3k start graduates near ~37 SOL, not hundreds of
-    // thousands of SOL.
-    expect(threshold).toBeGreaterThan(20);
-    expect(threshold).toBeLessThan(60);
+    // unchanged): $5k start graduates near ~74 SOL, matching pump.fun's
+    // graduation scale, not hundreds of thousands of SOL.
+    expect(threshold).toBeGreaterThan(60);
+    expect(threshold).toBeLessThan(120);
   });
 
-  it('graduates a USDC pair near $7.4k of reserves', async () => {
+  it('graduates a USDC pair near $14.9k of reserves', async () => {
     const spec = validSpec({
       quoteDecimals: 6,
       quoteSymbol: 'USDC',
-      curve: presetCurve('exponential', quickDefaultStartPrice(1)),
+      curve: quickCurveDesign(quickDefaultStartPrice(1)),
     });
     const threshold = graduationThresholdQuote(spec);
-    expect(threshold).toBeGreaterThan(4000);
-    expect(threshold).toBeLessThan(12000);
+    expect(threshold).toBeGreaterThan(12000);
+    expect(threshold).toBeLessThan(22000);
   });
 });
 
@@ -454,3 +482,4 @@ describe('platformFeeWallet', () => {
     else process.env[KEY] = saved;
   });
 });
+

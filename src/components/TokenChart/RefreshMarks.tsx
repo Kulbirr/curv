@@ -1,6 +1,6 @@
 import { MutableRefObject, memo, useEffect } from 'react';
 import { IChartingLibraryWidget } from '../AdvancedTradingView/charting_library';
-import { useWallet } from '@jup-ag/wallet-adapter';
+import { useWallet } from '@solana/wallet-adapter-react';
 
 type RefreshMarksProps = {
   isLoaded: boolean;

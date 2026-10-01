@@ -40,7 +40,7 @@ function AssetLogo({ asset }: { asset: QuoteAsset }) {
     return (
       <span
         aria-hidden="true"
-        className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-neutral-800 text-lg font-semibold text-neutral-400"
+        className="sc-qa-logo flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-neutral-800 text-lg font-semibold text-neutral-400"
       >
         {asset.symbol.slice(0, 1)}
       </span>
@@ -52,7 +52,7 @@ function AssetLogo({ asset }: { asset: QuoteAsset }) {
       alt=""
       loading="lazy"
       onError={() => setFailed(true)}
-      className="h-12 w-12 shrink-0 rounded-2xl bg-neutral-800 object-cover"
+      className="sc-qa-logo h-12 w-12 shrink-0 rounded-2xl bg-neutral-800 object-cover"
     />
   )
 }
@@ -105,7 +105,7 @@ export function QuoteAssetPicker({
   const results = useMemo(() => searchQuoteAssets(assets, query), [assets, query])
 
   return (
-    <div className="mb-5">
+    <div className="mb-5 sc-quote-asset-picker">
       <div className="relative mb-3">
         <svg
           aria-hidden="true"
@@ -163,13 +163,13 @@ export function QuoteAssetPicker({
                     tokenProgram: a.tokenProgram,
                   })
                 }
-                className={`flex w-full items-center gap-4 rounded-2xl px-3 py-3 text-left transition-colors hover:bg-white/[0.04] ${
+                className={`sc-qa-row flex w-full items-center gap-4 rounded-2xl px-3 py-3 text-left transition-colors hover:bg-white/[0.04] ${
                   selected ? 'bg-white/[0.05]' : ''
                 }`}
               >
                 <AssetLogo asset={a} />
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[15px] font-semibold text-white">
+                  <span className="sc-qa-name block truncate text-[15px] font-semibold text-white">
                     {a.name}
                   </span>
                   <span className="flex items-center gap-2 text-[13px] text-neutral-500">
@@ -187,7 +187,7 @@ export function QuoteAssetPicker({
                       {a.usdPrice != null ? fmtUsd(a.usdPrice) : ''}
                     </span>
                     {a.liquidityUsd != null && a.liquidityUsd > 0 && (
-                      <span className="block text-[13px] text-neutral-500">
+                      <span className="sc-qa-liquidity block text-[13px] text-neutral-500">
                         Liquidity · {fmtUsd(a.liquidityUsd)}
                       </span>
                     )}

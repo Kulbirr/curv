@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { usePoolHistory } from './usePoolData';
 import type { HistoryPoint } from './types';
 
@@ -10,6 +10,7 @@ const PAD_T = 12;
 const PAD_B = 26;
 
 type RangeId = '1H' | '24H' | '7D' | '30D' | 'ALL';
+type Mode = 'price' | 'mcap';
 
 /**
  * Real chart ranges. The history API caps windows at 30 days, so ALL covers
@@ -24,47 +25,82 @@ const RANGES: { id: RangeId; ms: number; points: number }[] = [
 ];
 
 /** Split points into segments, breaking the line across data gaps. */
-function toSegments(points: HistoryPoint[]): HistoryPoint[][] {
-  if (points.length === 0) return [];
-  if (points.length < 3) return [points];
+function toSegments<T>(items: { t: number; v: number }[]): { t: number; v: number }[][] {
+  if (items.length === 0) return [];
+  if (items.length < 3) return [items];
   const gaps: number[] = [];
-  for (let i = 1; i < points.length; i++) gaps.push(points[i].t - points[i - 1].t);
+  for (let i = 1; i < items.length; i++) gaps.push(items[i].t - items[i - 1].t);
   const sorted = [...gaps].sort((a, b) => a - b);
   const median = sorted[Math.floor(sorted.length / 2)] || 1;
   const threshold = median * 3;
 
-  const segments: HistoryPoint[][] = [];
-  let current: HistoryPoint[] = [points[0]];
-  for (let i = 1; i < points.length; i++) {
-    if (points[i].t - points[i - 1].t > threshold) {
+  const segments: { t: number; v: number }[][] = [];
+  let current: { t: number; v: number }[] = [items[0]];
+  for (let i = 1; i < items.length; i++) {
+    if (items[i].t - items[i - 1].t > threshold) {
       segments.push(current);
       current = [];
     }
-    current.push(points[i]);
+    current.push(items[i]);
   }
   if (current.length > 0) segments.push(current);
   return segments.filter((s) => s.length > 0);
 }
 
-function formatAxisPrice(v: number): string {
-  return Number(v.toPrecision(4)).toString();
+const compactFmt = new Intl.NumberFormat('en-US', {
+  notation: 'compact',
+  maximumFractionDigits: 2,
+});
+
+/** Y-axis tick label: adaptive decimals for price, compact for market cap. */
+function formatAxisValue(v: number, mode: Mode, span: number): string {
+  if (!Number.isFinite(v)) return '-';
+  if (mode === 'mcap') return compactFmt.format(v);
+  if (v === 0) return '0';
+  const decimals =
+    span > 0
+      ? Math.min(8, Math.max(2, Math.ceil(-Math.log10(span / 4)) + 1))
+      : 4;
+  // Trim trailing zeros so 0.00100000 renders as 0.001.
+  return Number(v.toFixed(decimals)).toString();
 }
 
-function formatAxisTime(t: number): string {
+/** Full value for the tooltip and the header stat. */
+function formatFullValue(v: number, mode: Mode): string {
+  if (!Number.isFinite(v)) return '-';
+  if (mode === 'mcap') return compactFmt.format(v);
+  return Number(v.toPrecision(6)).toString();
+}
+
+function formatAxisTime(t: number, range: RangeId): string {
   const d = new Date(t);
-  return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+  if (range === '1H' || range === '24H') {
+    return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+  }
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function formatTooltipTime(t: number): string {
+  const d = new Date(t);
+  return (
+    d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) +
+    ' ' +
+    d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })
+  );
 }
 
 function ChartHead({
   range,
   onRange,
+  mode,
 }: {
   range: RangeId;
   onRange: (r: RangeId) => void;
+  mode: Mode;
 }) {
   return (
     <div className="sc-pool-section-head">
-      <h2>Price chart</h2>
+      <h2>{mode === 'price' ? 'Price chart' : 'Market cap chart'}</h2>
       <div className="sc-chart-range" aria-label="Chart timeframe">
         {RANGES.map((r) => (
           <button
@@ -85,10 +121,16 @@ function ChartHead({
 interface Props {
   poolAddress: string;
   quoteSymbol: string;
+  /** Base-token total supply; null hides the market-cap mode. */
+  supply: number | null;
 }
 
-export default function PriceChart({ poolAddress, quoteSymbol }: Props) {
+export default function PriceChart({ poolAddress, quoteSymbol, supply }: Props) {
   const [range, setRange] = useState<RangeId>('24H');
+  const [mode, setMode] = useState<Mode>('price');
+  const [hover, setHover] = useState<number | null>(null);
+  const svgWrapRef = useRef<HTMLDivElement>(null);
+
   const rangeDef = RANGES.find((r) => r.id === range) ?? RANGES[1];
   // Fixed once per range selection; the query key stays stable while polling.
   const from = useMemo(() => Date.now() - rangeDef.ms, [rangeDef]);
@@ -98,11 +140,17 @@ export default function PriceChart({ poolAddress, quoteSymbol }: Props) {
   const complete = historyQuery.data?.complete ?? false;
   const isLoading = historyQuery.isLoading;
 
+  const effectiveMode: Mode = mode === 'mcap' && supply ? 'mcap' : 'price';
+
   const model = useMemo(() => {
     if (points.length === 0) return null;
-    const prices = points.map((p) => p.price);
-    let min = Math.min(...prices);
-    let max = Math.max(...prices);
+    const items = points.map((p) => ({
+      t: p.t,
+      v: effectiveMode === 'mcap' && supply ? p.price * supply : p.price,
+    }));
+    const values = items.map((i) => i.v);
+    let min = Math.min(...values);
+    let max = Math.max(...values);
     if (min === max) {
       min = min * 0.999;
       max = max * 1.001;
@@ -110,30 +158,32 @@ export default function PriceChart({ poolAddress, quoteSymbol }: Props) {
     const pad = (max - min) * 0.08;
     min -= pad;
     max += pad;
-    const t0 = points[0].t;
-    const t1 = points[points.length - 1].t;
+    const span = max - min;
+    const t0 = items[0].t;
+    const t1 = items[items.length - 1].t;
     const tSpan = Math.max(1, t1 - t0);
 
     const x = (t: number) => PAD_L + ((t - t0) / tSpan) * (W - PAD_L - PAD_R);
-    const y = (p: number) => PAD_T + (1 - (p - min) / (max - min)) * (H - PAD_T - PAD_B);
+    const y = (v: number) => PAD_T + (1 - (v - min) / span) * (H - PAD_T - PAD_B);
 
-    const segments = toSegments(points).map((seg) =>
-      seg.map((p) => ({ x: x(p.t), y: y(p.price) }))
+    const segments = toSegments(items).map((seg) =>
+      seg.map((p) => ({ x: x(p.t), y: y(p.v), t: p.t, v: p.v }))
     );
     const segStrings = segments.map((seg) =>
       seg.map((pt) => `${pt.x.toFixed(1)},${pt.y.toFixed(1)}`).join(' ')
     );
 
     const yTicks = [0, 1 / 3, 2 / 3, 1].map((f) => {
-      const v = min + (max - min) * f;
-      return { v, y: y(v) };
+      const v = min + span * f;
+      return { v, y: y(v), label: formatAxisValue(v, effectiveMode, span) };
     });
     const xTicks = [0, 0.25, 0.5, 0.75, 1].map((f) => {
       const t = t0 + tSpan * f;
       return { t, x: x(t) };
     });
 
-    const last = points[points.length - 1];
+    const last = items[items.length - 1];
+    const first = items[0];
     const baseY = (H - PAD_B).toFixed(1);
     // Area fill under the longest segment.
     const longest = segments.reduce((a, b) => (b.length > a.length ? b : a), segments[0]);
@@ -142,13 +192,41 @@ export default function PriceChart({ poolAddress, quoteSymbol }: Props) {
       longest.map((pt) => `L ${pt.x.toFixed(1)},${pt.y.toFixed(1)}`).join(' ') +
       ` L ${longest[longest.length - 1].x.toFixed(1)},${baseY} Z`;
 
-    return { segStrings, yTicks, xTicks, last, x: x(last.t), y: y(last.price), areaPath };
-  }, [points]);
+    const changePct =
+      first.v !== 0 ? ((last.v - first.v) / Math.abs(first.v)) * 100 : 0;
+
+    return {
+      segStrings,
+      yTicks,
+      xTicks,
+      last,
+      first,
+      changePct,
+      up: last.v >= first.v,
+      x: x(last.t),
+      y: y(last.v),
+      areaPath,
+      items,
+      yOf: y,
+      xOf: x,
+      t0,
+      tSpan,
+    };
+  }, [points, effectiveMode, supply]);
+
+  const onPointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (!model || model.items.length === 0) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    if (rect.width <= 0) return;
+    const frac = (e.clientX - rect.left) / rect.width;
+    const idx = Math.round(frac * (model.items.length - 1));
+    setHover(Math.max(0, Math.min(model.items.length - 1, idx)));
+  };
 
   if (isLoading && points.length === 0) {
     return (
       <section className="sc-pool-chart-card" aria-label="Price chart">
-        <ChartHead range={range} onRange={setRange} />
+        <ChartHead range={range} onRange={setRange} mode={effectiveMode} />
         <div
           className="sc-pool-chart-wrap"
           style={{ alignItems: 'center', justifyContent: 'center' }}
@@ -171,7 +249,7 @@ export default function PriceChart({ poolAddress, quoteSymbol }: Props) {
   if (!model) {
     return (
       <section className="sc-pool-chart-card" aria-label="Price chart">
-        <ChartHead range={range} onRange={setRange} />
+        <ChartHead range={range} onRange={setRange} mode={effectiveMode} />
         <div
           className="sc-pool-chart-wrap"
           style={{
@@ -193,66 +271,151 @@ export default function PriceChart({ poolAddress, quoteSymbol }: Props) {
     );
   }
 
-  const up = model.last.price >= points[0].price;
-  const lineColor = up ? '#32f27b' : '#fa6d74';
+  const lineColor = model.up ? '#32f27b' : '#fa6d74';
+  const hoverItem = hover !== null ? model.items[hover] : null;
+  const hoverX = hoverItem ? model.xOf(hoverItem.t) : 0;
+  const hoverY = hoverItem ? model.yOf(hoverItem.v) : 0;
+  const hoverFrac = hoverX / W;
 
   return (
     <section className="sc-pool-chart-card" aria-label="Price chart">
-      <ChartHead range={range} onRange={setRange} />
+      <ChartHead range={range} onRange={setRange} mode={effectiveMode} />
+      <div className="sc-chart-stats">
+        <strong className={model.up ? 'sc-green-text' : 'sc-red-text'}>
+          {formatFullValue(model.last.v, effectiveMode)}{' '}
+          <span className="sc-chart-stats-unit">{quoteSymbol}</span>
+        </strong>
+        <span
+          className={
+            model.changePct > 0
+              ? 'sc-chart-change sc-green-text'
+              : model.changePct < 0
+                ? 'sc-chart-change sc-red-text'
+                : 'sc-chart-change'
+          }
+        >
+          {model.changePct > 0 ? '+' : ''}
+          {model.changePct.toFixed(2)}%
+        </span>
+        {supply && (
+          <div
+            className="sc-chart-range sc-chart-mode"
+            role="group"
+            aria-label="Chart value"
+          >
+            {(['price', 'mcap'] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                aria-pressed={effectiveMode === m}
+                className={effectiveMode === m ? 'selected' : ''}
+                onClick={() => setMode(m)}
+              >
+                {m === 'price' ? 'Price' : 'MC'}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
       <div className="sc-pool-chart-wrap">
         <div className="sc-chart-y-axis" aria-hidden="true">
           {[...model.yTicks].reverse().map((tick, i) => (
-            <span key={i}>{formatAxisPrice(tick.v)}</span>
+            <span key={i}>{tick.label}</span>
           ))}
         </div>
-        <svg
-          className="sc-pool-price-chart"
-          viewBox={`0 0 ${W} ${H}`}
-          preserveAspectRatio="none"
-          role="img"
-          aria-label={`Price chart in ${quoteSymbol}`}
-        >
-          <defs>
-            <linearGradient id="sc-pool-fill" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={lineColor} stopOpacity="0.22" />
-              <stop offset="100%" stopColor={lineColor} stopOpacity="0" />
-            </linearGradient>
-          </defs>
+        <div className="sc-chart-svg-wrap" ref={svgWrapRef}>
+          <svg
+            className="sc-pool-price-chart"
+            viewBox={`0 0 ${W} ${H}`}
+            preserveAspectRatio="none"
+            role="img"
+            aria-label={`${effectiveMode === 'price' ? 'Price' : 'Market cap'} chart in ${quoteSymbol}`}
+            onPointerMove={onPointerMove}
+            onPointerLeave={() => setHover(null)}
+            style={{ touchAction: 'pan-y' }}
+          >
+            <defs>
+              <linearGradient id="sc-pool-fill" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={lineColor} stopOpacity="0.22" />
+                <stop offset="100%" stopColor={lineColor} stopOpacity="0" />
+              </linearGradient>
+            </defs>
 
-          {model.yTicks.map((tick, i) => (
-            <line
-              key={i}
-              x1={PAD_L}
-              x2={W - PAD_R}
-              y1={tick.y}
-              y2={tick.y}
-              className="sc-pool-grid-line"
-            />
-          ))}
+            {model.yTicks.map((tick, i) => (
+              <line
+                key={i}
+                x1={PAD_L}
+                x2={W - PAD_R}
+                y1={tick.y}
+                y2={tick.y}
+                className="sc-pool-grid-line"
+              />
+            ))}
 
-          <path d={model.areaPath} fill="url(#sc-pool-fill)" />
+            <path d={model.areaPath} fill="url(#sc-pool-fill)" />
 
-          {model.segStrings.map((seg, i) => (
-            <polyline
-              key={i}
-              points={seg}
-              className="sc-pool-price-line"
-              style={{ stroke: lineColor }}
-            />
-          ))}
+            {model.segStrings.map((seg, i) => (
+              <polyline
+                key={i}
+                points={seg}
+                className="sc-pool-price-line"
+                style={{ stroke: lineColor }}
+              />
+            ))}
 
-          <circle
-            cx={model.x}
-            cy={model.y}
-            r="4"
-            className="sc-pool-price-point"
-            style={{ fill: lineColor }}
-          />
-        </svg>
+            {hoverItem && (
+              <g className="sc-chart-crosshair" aria-hidden="true">
+                <line
+                  x1={hoverX}
+                  x2={hoverX}
+                  y1={PAD_T}
+                  y2={H - PAD_B}
+                  stroke="#4a5450"
+                  strokeWidth="1"
+                  strokeDasharray="3 3"
+                  vectorEffect="non-scaling-stroke"
+                />
+                <circle
+                  cx={hoverX}
+                  cy={hoverY}
+                  r="5"
+                  fill={lineColor}
+                  stroke="#0c1010"
+                  strokeWidth="2"
+                  vectorEffect="non-scaling-stroke"
+                />
+              </g>
+            )}
+
+            {!hoverItem && (
+              <circle
+                cx={model.x}
+                cy={model.y}
+                r="4"
+                className="sc-pool-price-point"
+                style={{ fill: lineColor }}
+              />
+            )}
+          </svg>
+          {hoverItem && (
+            <div
+              className="sc-chart-tooltip"
+              style={{
+                left: `${Math.min(92, Math.max(0, hoverFrac * 100))}%`,
+                transform: hoverFrac > 0.62 ? 'translateX(-100%)' : 'translateX(8%)',
+              }}
+            >
+              <strong>
+                {formatFullValue(hoverItem.v, effectiveMode)} {quoteSymbol}
+              </strong>
+              <span>{formatTooltipTime(hoverItem.t)}</span>
+            </div>
+          )}
+        </div>
       </div>
       <div className="sc-chart-time-labels" aria-hidden="true">
         {model.xTicks.map((tick, i) => (
-          <span key={i}>{formatAxisTime(tick.t)}</span>
+          <span key={i}>{formatAxisTime(tick.t, range)}</span>
         ))}
       </div>
       {!complete && (

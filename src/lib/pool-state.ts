@@ -5,6 +5,7 @@ import {
   TokenDecimal,
 } from '@meteora-ag/dynamic-bonding-curve-sdk';
 import { getConnection, getDbcClient } from './solana';
+import { fetchDammV2MarketSnapshot } from './damm-v2-state';
 import type { TrackedPool } from './pool-registry';
 
 /**
@@ -14,6 +15,11 @@ import type { TrackedPool } from './pool-registry';
  * - price is computed from the pool's sqrtPrice via the SDK's curve math
  * - progress = quoteReserve / migrationQuoteThreshold (real graduation gauge)
  * - marketCap = price x base mint total supply
+ *
+ * After graduation the DBC curve is dead, so the price, reserves, and
+ * market cap come from the migrated DAMM v2 pool instead (see
+ * damm-v2-state.ts); the returned shape is identical, so the tick writer,
+ * the state APIs, and the websocket push keep working unchanged.
  *
  * Nothing is estimated from mocks. When the RPC read fails the result is
  * marked `stale` so the UI can say so instead of showing a fake number.
@@ -163,6 +169,46 @@ export async function fetchPoolLiveState(tracked: TrackedPool): Promise<PoolLive
 
     const graduated = Number(ps['isMigrated'] ?? 0) === 1 || (progress !== null && progress >= 100);
     const hasSwap = Number(ps['hasSwap'] ?? 0) === 1;
+
+    if (graduated) {
+      // The DBC curve is dead after migration: its reserves and sqrtPrice
+      // are frozen. Read the live market from the DAMM v2 pool so price,
+      // reserves, history ticks, and websocket pushes keep moving. The
+      // returned shape is identical to the DBC path.
+      const damm = await fetchDammV2MarketSnapshot(
+        getConnection(),
+        tracked.poolAddress,
+        tracked.baseMint,
+        tracked.quoteMint
+      );
+      if (damm.price !== null) {
+        // Market cap = live DAMM v2 price x total base supply (from the
+        // mint account, fetched in wave 1 so this costs no extra RPC).
+        let dammMarketCap: number | null = null;
+        const uiAmount = supplyRes?.value?.uiAmount;
+        if (typeof uiAmount === 'number' && Number.isFinite(uiAmount)) {
+          dammMarketCap = damm.price * uiAmount;
+        }
+        return {
+          price: damm.price,
+          quoteReserve: damm.quoteReserve,
+          baseReserve: damm.baseReserve,
+          progress: 100,
+          graduated: true,
+          hasSwap: true,
+          marketCap: dammMarketCap,
+          baseDecimals,
+          quoteDecimals,
+          migrationQuoteThreshold,
+          creatorBaseFeeRaw: bnToRawString(ps['creatorBaseFee']),
+          creatorQuoteFeeRaw: bnToRawString(ps['creatorQuoteFee']),
+          stale: false,
+        };
+      }
+      // DAMM v2 unreadable (pool not indexed yet, RPC error): keep the
+      // last good sample by reporting stale, never a fabricated number.
+      return { ...failed, baseDecimals, quoteDecimals, graduated: true };
+    }
 
     // Market cap = live price x total base supply (from the mint account,
     // fetched in wave 1 so this costs no extra RPC round trip).

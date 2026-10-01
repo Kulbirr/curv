@@ -1,5 +1,5 @@
 import { useTokenInfo } from '@/hooks/queries';
-import { useWallet } from '@jup-ag/wallet-adapter';
+import { useWallet } from '@solana/wallet-adapter-react';
 import { TruncatedAddress } from '../TruncatedAddress/TruncatedAddress';
 import { cn } from '@/lib/utils';
 import { useBreakpointMatches } from '@/lib/device';

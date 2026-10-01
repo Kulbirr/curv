@@ -6,7 +6,7 @@ import {
 } from '@/components/Discover/format';
 import type { PoolStateResponse } from './types';
 import { changeFromHistory } from './usePoolData';
-import { graduationDisplay } from '@/lib/graduation';
+import { displayProgress } from '@/lib/graduation';
 import type { HistoryPoint } from './types';
 
 /** Deterministic hue (0-359) derived from a string, for avatar gradients. */
@@ -83,7 +83,9 @@ export default function PoolHeader({ state, points, volume24h }: Props) {
   const changeArrow = !changeKnown ? '' : changeValue > 0 ? '▲ ' : changeValue < 0 ? '▼ ' : '';
   const changeText = changeKnown ? `${changeArrow}${Math.abs(changeValue).toFixed(1)}%` : '--';
 
-  const graduation = graduationDisplay(state.quoteReserve, state.migrationQuoteThreshold);
+  // Single source of truth: the indexer's progress field. Never
+  // recomputed here from reserves (see src/lib/graduation.ts).
+  const pct = displayProgress(state.progress);
 
   const [copyMessage, setCopyMessage] = useState('');
   const copyCreator = async () => {
@@ -128,9 +130,9 @@ export default function PoolHeader({ state, points, volume24h }: Props) {
             {state.graduated ? (
               <span className="sc-pool-graduation-badge">Graduated</span>
             ) : (
-              graduation.pct !== null && (
+              pct !== null && (
                 <span className="sc-pool-graduation-badge">
-                  {graduation.pct.toFixed(0)}% to graduation
+                  {pct.toFixed(0)}% to graduation
                 </span>
               )
             )}

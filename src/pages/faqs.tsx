@@ -16,7 +16,7 @@ const FAQS: { q: string; a: string }[] = [
   },
   {
     q: 'What do creators earn?',
-    a: 'Creators earn a flat 0.3% of every bonding curve trade, plus 2% of the migrating liquidity collected at graduation, plus a locked 7% share of the graduated pool that keeps earning trading fees. Earnings accrue automatically and you claim them with a signed transaction from your creator wallet.',
+    a: 'Creators earn a flat 0.3% of every bonding curve trade, plus 2% of the migrating liquidity collected at graduation, plus a locked 80% share of the graduated pool that keeps earning trading fees. Earnings accrue automatically and you claim them with a signed transaction from your creator wallet.',
   },
   {
     q: 'What is graduation?',
@@ -36,7 +36,7 @@ const FAQS: { q: string; a: string }[] = [
   },
   {
     q: 'Quick launch or Pro designer?',
-    a: 'Quick launch uses battle tested defaults: 1B supply, an exponential curve starting near $3k valuation (scaled to your quote asset, graduating near 37 SOL on SOL pairs), a flat 1.19% trading fee, a 0.02 SOL creation fee, and automatic graduation. The Pro designer gives you full control over the curve shape, fee schedule, and graduation settings.',
+    a: 'Quick launch uses battle tested defaults: 1B supply, an exponential curve starting near $5k valuation (scaled to your quote asset, graduating near 74 SOL on SOL pairs), a flat 1.19% trading fee, a 0.02 SOL creation fee, and automatic graduation. The Pro designer gives you full control over the curve shape, fee schedule, and graduation settings.',
   },
   {
     q: 'What is a vanity mint?',

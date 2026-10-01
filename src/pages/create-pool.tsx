@@ -3,7 +3,8 @@ import Head from 'next/head'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
 import bs58 from 'bs58'
-import { useUnifiedWalletContext, useWallet } from '@jup-ag/wallet-adapter'
+import { useWallet } from '@solana/wallet-adapter-react'
+import { useWalletModal } from '@solana/wallet-adapter-react-ui'
 import Page from '@/components/ui/Page/Page'
 import { CurveChart } from '../components/Launch/CurveChart'
 import { ErrorList, Field, Toggle } from '../components/Launch/ui'
@@ -22,6 +23,9 @@ import {
   buildLaunchTransaction,
   formatPriceInput,
   graduationThresholdQuote,
+  quickCurveDesign,
+  QUICK_CURVE_MULTIPLIERS,
+  QUICK_TARGET_START_FDV_USD,
   quickDefaultStartPrice,
   resolveEcon,
   scaleCurveToGraduationTarget,
@@ -50,7 +54,7 @@ const USDC_MINT = getUsdcMint(SOLANA_NETWORK)
 
 type QuoteSel = 'SOL' | 'USDC' | 'custom'
 type PresetSel = CurvePresetId | 'custom'
-type TokenType = 'Memecoin' | 'Tokenized Stock'
+type TokenType = 'Token' | 'Tokenized Stock'
 
 /** Pro designer initial curve: SOL-scaled Quick-style default (sane graduation). */
 const PRO_INITIAL_START = quickDefaultStartPrice(200)
@@ -154,7 +158,7 @@ function asStringArray(v: unknown): string[] | null {
 export default function CreatePool() {
   const router = useRouter()
   const { publicKey, signTransaction, signMessage } = useWallet()
-  const { setShowModal } = useUnifiedWalletContext()
+  const { setVisible: setWalletModalVisible } = useWalletModal()
 
   // ---- Token identity ----
   const [name, setName] = useState('')
@@ -164,7 +168,7 @@ export default function CreatePool() {
   const [imageError, setImageError] = useState<string | null>(null)
 
   // ---- Token type ----
-  const [tokenType, setTokenType] = useState<TokenType>('Memecoin')
+  const [tokenType, setTokenType] = useState<TokenType>('Token')
   const [underlying, setUnderlying] = useState('')
 
   // ---- Curve ----
@@ -230,12 +234,11 @@ export default function CreatePool() {
   /** USD price of the selected quote asset, for scaling Quick defaults. */
   const quoteUsdForDefault =
     quoteSel === 'SOL' ? (solUsd ?? 200) : quoteSel === 'USDC' ? 1 : (pickedAsset?.usdPrice ?? 1)
-  /** Quick-launch curve, scaled so every pair starts near $3k valuation. */
+  /** Quick-launch curve, scaled so every pair starts near $5k valuation. */
   const quickCurve = useMemo(
-    () => presetCurve('exponential', quickDefaultStartPrice(quoteUsdForDefault)),
+    () => quickCurveDesign(quickDefaultStartPrice(quoteUsdForDefault)),
     [quoteUsdForDefault]
   )
-  const quickStartPrice = quickCurve.prices[0]
   /** Manual mint entry, kept for devnet test mints and unlisted assets. */
   const [manualQuote, setManualQuote] = useState(false)
   const [baseDecimals, setBaseDecimals] = useState<6 | 9>(6)
@@ -247,7 +250,7 @@ export default function CreatePool() {
   const [feeDuration, setFeeDuration] = useState('60')
   const [dynamicFee, setDynamicFee] = useState(true)
   // ---- Graduation & migration ----
-  const [migrationFeePct, setMigrationFeePct] = useState('10')
+  const [migrationFeePct, setMigrationFeePct] = useState('4')
   const [dammFeeBps, setDammFeeBps] = useState('120')
   const [dammDynamicFee, setDammDynamicFee] = useState(true)
   const [gradTarget, setGradTarget] = useState('')
@@ -542,7 +545,7 @@ export default function CreatePool() {
             feeSchedulerPeriods: 60,
             feeSchedulerTotalDuration: 60,
             dynamicFeeEnabled: true,
-            migrationFeePercent: 8,
+            migrationFeePercent: 4,
             migratedPoolFeeBps: 120,
             migratedPoolDynamicFee: true,
           }
@@ -729,8 +732,10 @@ export default function CreatePool() {
       if (typeof d.name === 'string') setName(d.name)
       if (typeof d.symbol === 'string') setSymbol(d.symbol)
       if (typeof d.description === 'string') setDescription(d.description)
-      if (d.tokenType === 'Memecoin' || d.tokenType === 'Tokenized Stock')
-        setTokenType(d.tokenType)
+      if (d.tokenType === 'Tokenized Stock') setTokenType(d.tokenType)
+      else if (d.tokenType === 'Token') setTokenType(d.tokenType)
+      // Legacy drafts stored the old "Memecoin" label.
+      else if ((d.tokenType as string) === 'Memecoin') setTokenType('Token')
       if (typeof d.underlying === 'string') setUnderlying(d.underlying)
       if (typeof d.startPrice === 'string') setStartPrice(d.startPrice)
       const dp = asStringArray(d.prices)
@@ -797,7 +802,7 @@ export default function CreatePool() {
 
   async function handleLaunch() {
     if (!publicKey) {
-      setShowModal(true)
+      setWalletModalVisible(true)
       return
     }
     setLaunchError(null)
@@ -1053,10 +1058,7 @@ export default function CreatePool() {
     )
     return (
       <>
-        <div
-          className="sc-token-type-options"
-          style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}
-        >
+        <div className="sc-quote-options">
           {(
             [
               { id: 'SOL', label: 'SOL', sub: 'Native', icon: '/tokens/sol.png', glyph: '' },
@@ -1094,8 +1096,10 @@ export default function CreatePool() {
               ) : (
                 <span className="sc-type-icon">{q.glyph}</span>
               )}
-              <strong>{q.label}</strong>
-              <small>{q.sub}</small>
+              <span className="sc-quote-option-text">
+                <strong>{q.label}</strong>
+                <small>{q.sub}</small>
+              </span>
             </button>
           ))}
         </div>
@@ -1359,17 +1363,17 @@ export default function CreatePool() {
               <ErrorList errors={tokenErrors} />
             </section>
 
-            {/* ---- Token Type ---- */}
+            {/* ---- Type ---- */}
             <section className="sc-builder-section">
               <div className="sc-builder-section-head">
                 <span className="sc-section-glyph">◫</span>
                 <div>
-                  <h2>Token Type</h2>
+                  <h2>Type</h2>
                   <p>Choose what your curve represents</p>
                 </div>
               </div>
               <div className="sc-token-type-options">
-                {(['Memecoin', 'Tokenized Stock'] as const).map((type) => (
+                {(['Token', 'Tokenized Stock'] as const).map((type) => (
                   <button
                     type="button"
                     key={type}
@@ -1378,11 +1382,11 @@ export default function CreatePool() {
                     onClick={() => setTokenType(type)}
                   >
                     <span className="sc-type-icon">
-                      {type === 'Memecoin' ? '◈' : '⌁'}
+                      {type === 'Token' ? '◈' : '⌁'}
                     </span>
                     <strong>{type}</strong>
                     <small>
-                      {type === 'Memecoin'
+                      {type === 'Token'
                         ? 'Pure bonding curve token. Fair launch, community driven.'
                         : 'Tag your token with a real world stock ticker as a reference.'}
                     </small>
@@ -1435,35 +1439,33 @@ export default function CreatePool() {
                     <strong>{quoteSymbol}</strong>
                   </li>
                   <li>
-                    <strong>Exponential</strong> bonding curve from{' '}
+                    <strong>Exponential</strong> bonding curve · starts near{' '}
+                    <strong>$5k</strong> market cap, graduates near{' '}
                     <strong>
-                      {formatPriceInput(quickStartPrice)} {quoteSymbol}
-                    </strong>
-                    <span className="text-neutral-400">
-                      {' '}
-                      (≈$3k starting valuation)
-                    </span>
+                      ~
+                      {Math.round(
+                        (QUICK_TARGET_START_FDV_USD *
+                          QUICK_CURVE_MULTIPLIERS[
+                            QUICK_CURVE_MULTIPLIERS.length - 1
+                          ]) /
+                          1000
+                      )}
+                      k
+                    </strong>{' '}
+                    market cap
                   </li>
                   <li>
-                    Trading fee <strong>1.19%</strong> flat
+                    Trading fee <strong>1.19%</strong> flat while bonding
                   </li>
                   <li>
                     <strong>Automatic graduation</strong> to DAMM v2 when the
-                    curve fills
-                    {graduationPreview !== null && (
-                      <span className="text-neutral-400">
-                        {' '}
-                        (≈{' '}
-                        {graduationPreview.toLocaleString('en-US', {
-                          maximumFractionDigits: 1,
-                        })}{' '}
-                        {quoteSymbol} in reserves)
-                      </span>
-                    )}
+                    curve fills · liquidity locked forever
                   </li>
                   <li>
-                    You keep <strong>~0.3%</strong> of every trade plus{' '}
-                    <strong>half</strong> the migration fee
+                    You keep <strong>~0.3%</strong> of every trade,{' '}
+                    <strong>2%</strong> of the liquidity at graduation, and{' '}
+                    <strong>80%</strong> of the graduated pool&apos;s fees,
+                    forever
                   </li>
                   <li>
                     <strong>0.02 SOL</strong> pool creation fee, like pump.fun.
@@ -1996,9 +1998,17 @@ export default function CreatePool() {
                     Quote: {quoteSymbol} ({shorten(quoteMint)})
                   </p>
                   <p className="mt-1 text-neutral-400">
-                    Fees: {((parseInt(startFeeBps, 10) || 0) / 100).toFixed(2)}%
-                    → {((parseInt(endFeeBps, 10) || 0) / 100).toFixed(2)}% over{' '}
-                    {feePeriods || ','} periods{dynamicFee ? ' + dynamic' : ''}
+                    {(() => {
+                      const start = (parseInt(startFeeBps, 10) || 0) / 100;
+                      const end = (parseInt(endFeeBps, 10) || 0) / 100;
+                      const flat = start === end;
+                      return (
+                        <>
+                          Fees: {flat ? `${start.toFixed(2)}% flat` : `${start.toFixed(2)}% → ${end.toFixed(2)}% over ${feePeriods || '?'} periods`}
+                          {dynamicFee ? ' + dynamic' : ''}
+                        </>
+                      );
+                    })()}
                   </p>
                   <p className="mt-1 text-neutral-400">
                     Migration fee: {migrationFeePct || ','}% · DAMM v2:{' '}
@@ -2076,7 +2086,7 @@ export default function CreatePool() {
                   </p>
                   <button
                     type="button"
-                    onClick={() => setShowModal(true)}
+                    onClick={() => setWalletModalVisible(true)}
                     className="sc-button sc-button-primary mt-3"
                   >
                     Connect wallet
@@ -2209,7 +2219,7 @@ export default function CreatePool() {
                   <span className="sc-preview-stock-badge">
                     {tokenType === 'Tokenized Stock'
                       ? `Stocks · ${underlying.trim() || ','}`
-                      : 'Memecoin'}
+                      : 'Token'}
                   </span>
                 </div>
                 <div className="sc-preview-card-stats">

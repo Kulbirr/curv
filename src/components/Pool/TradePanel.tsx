@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BN } from '@coral-xyz/anchor';
 import { parseUiAmountToRaw, priceImpactPct, rawToUi } from '@/lib/swap-math';
 import { PublicKey } from '@solana/web3.js';
-import { useWallet, UnifiedWalletButton } from '@jup-ag/wallet-adapter';
+import { useWallet } from '@solana/wallet-adapter-react';
+import { useWalletModal } from '@solana/wallet-adapter-react-ui';
 import { useQueryClient } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
 import { getConnection, getDbcClient, isDevnet } from '@/lib/solana';
@@ -74,6 +75,7 @@ interface Props {
 
 export default function TradePanel({ poolAddress, state }: Props) {
   const { publicKey, signTransaction, connected } = useWallet();
+  const { setVisible: setWalletModalVisible } = useWalletModal();
   const queryClient = useQueryClient();
   const { data: onChain, isLoading: onChainLoading, isError: onChainError } = useOnChainPool(poolAddress);
 
@@ -338,7 +340,13 @@ export default function TradePanel({ poolAddress, state }: Props) {
           <p style={{ margin: 0, fontSize: 11, color: '#8c968d' }}>
             Connect your wallet to trade
           </p>
-          <UnifiedWalletButton />
+          <button
+            type="button"
+            className="sc-button sc-trade-submit"
+            onClick={() => setWalletModalVisible(true)}
+          >
+            Connect wallet
+          </button>
         </div>
       ) : graduated ? (
         <p

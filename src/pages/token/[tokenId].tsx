@@ -4,12 +4,10 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { BN } from '@coral-xyz/anchor';
 import { PublicKey } from '@solana/web3.js';
-import { useWallet } from '@jup-ag/wallet-adapter';
+import { useWallet } from '@solana/wallet-adapter-react';
 import Page from '@/components/ui/Page/Page';
-import LiveIndicator from '@/components/LiveIndicator';
-import { deriveLiveStatus, useNow } from '@/hooks/useLiveStatus';
 import { getConnection } from '@/lib/solana';
-import { graduationDisplay } from '@/lib/graduation';
+import { displayProgress } from '@/lib/graduation';
 import { rawToUi } from '@/lib/swap-math';
 import {
   formatMoneyValue,
@@ -33,8 +31,9 @@ import type { PoolStateResponse } from '@/components/Pool';
 
 /** Bonding curve progress toward the migration threshold. */
 function GraduationCard({ state }: { state: PoolStateResponse }) {
-  const graduation = graduationDisplay(state.quoteReserve, state.migrationQuoteThreshold);
-  const pct = state.graduated ? 100 : graduation.pct;
+  // Single source of truth: the indexer's progress field, the same value
+  // the pool header badge renders. Never recomputed from reserves here.
+  const pct = state.graduated ? 100 : displayProgress(state.progress);
   return (
     <section className="sc-pool-graduation-card" aria-label="Bonding curve progress">
       <div className="sc-pool-section-head">
@@ -256,13 +255,6 @@ function PoolPageContent({ poolAddress }: { poolAddress: string }) {
   const stateQuery = usePoolStatePush(poolAddress);
   const historyQuery = usePoolHistory(poolAddress);
   const onChainQuery = useOnChainPool(poolAddress);
-  const now = useNow(5000);
-  const liveStatus = deriveLiveStatus({
-    dataUpdatedAt: stateQuery.dataUpdatedAt,
-    isFetching: stateQuery.isFetching,
-    isError: stateQuery.isError,
-    now,
-  });
 
   const state = stateQuery.data;
   const history = historyQuery.data;
@@ -356,9 +348,6 @@ function PoolPageContent({ poolAddress }: { poolAddress: string }) {
         <Link href="/">Discover</Link>
         <span>›</span>
         <strong>{state.baseName || state.baseSymbol}</strong>
-        <span style={{ marginLeft: 'auto', display: 'inline-flex' }}>
-          <LiveIndicator status={liveStatus} />
-        </span>
       </div>
 
       <div className="sc-pool-layout">
@@ -368,7 +357,15 @@ function PoolPageContent({ poolAddress }: { poolAddress: string }) {
             points={history?.points ?? []}
             volume24h={history?.volume24h ?? null}
           />
-          <PriceChart poolAddress={poolAddress} quoteSymbol={state.quoteSymbol} />
+          <PriceChart
+            poolAddress={poolAddress}
+            quoteSymbol={state.quoteSymbol}
+            supply={
+              state.marketCap != null && state.price
+                ? state.marketCap / state.price
+                : null
+            }
+          />
           <GraduationCard state={state} />
           {state.graduated && <LiquidityLock poolAddress={poolAddress} />}
           <CreatorEarnings poolAddress={poolAddress} state={state} />

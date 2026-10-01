@@ -28,7 +28,8 @@ export const LAUNCH_FEE_CONFIG = {
   /** Pool creation fee baked into Curv's DBC config (SOL), matching
    *  pump.fun's 0.02 SOL. 90% goes to Curv as fee claimer. */
   poolCreationFeeSol: 0.02,
-  /** Flat 1.19% trading fee: 60 periods with start == end. */
+  /** Flat 1.19% trading fee. buildCurveParams zeroes the scheduler periods
+   *  when start == end because the SDK requires it for flat fees. */
   feeSchedulerPeriods: 60,
   feeSchedulerTotalDuration: 60,
   /** Extra dynamic fee on top of the scheduled base fee. */
@@ -44,11 +45,11 @@ export const LAUNCH_FEE_CONFIG = {
   /** Where the pool migrates at graduation. */
   migrationOption: 'DAMM v2',
   /** Fee taken from the migrating liquidity at graduation (percent). */
-  migrationFeePercent: 8,
+  migrationFeePercent: 4,
   /** Creator's share of the migration fee (percent of the fee).
-   *  25 here = 2% of the migrating liquidity at the 8% migration fee;
-   *  Curv keeps the other 6%. */
-  creatorMigrationFeePercent: 25,
+   *  50 here = 2% of the migrating liquidity at the 4% migration fee;
+   *  Curv keeps the other 2%. */
+  creatorMigrationFeePercent: 50,
   /** Base fee of the DAMM v2 pool after graduation (basis points). */
   migratedPoolFeeBps: 120,
   /** The DAMM v2 pool also charges a dynamic fee on top. */
@@ -67,14 +68,16 @@ export const LAUNCH_FEE_CONFIG = {
    *  withdraw it, so a graduated pool cannot be rugged. Claimable (liquid)
    *  buckets stay 0 for the same reason.
    *
-   *  50 here = 50% of the graduated pool's trading fees, i.e. ~0.60% of
-   *  post-graduation volume at the 1.20% DAMM v2 pool fee. */
-  partnerLockedLiquidityPercent: 50,
+   *  20 here = 20% of the graduated pool's trading fees, i.e. ~0.192% of
+   *  post-graduation volume at the 1.20% DAMM v2 pool fee (after Meteora's
+   *  20% protocol cut). */
+  partnerLockedLiquidityPercent: 20,
   /** Creator's permanently locked share of the DAMM v2 LP tokens at
-   *  graduation (percent of total graduated liquidity). Same 50% /
-   *  ~0.60%-of-volume economics as the partner share: the creator can never
-   *  pull this liquidity, but keeps earning the pool's trading fees on it. */
-  creatorLockedLiquidityPercent: 50,
+   *  graduation (percent of total graduated liquidity). 80% of the pool's
+   *  trading fees, i.e. ~0.768% of post-graduation volume: the creator can
+   *  never pull this liquidity, but keeps earning the pool's trading fees
+   *  on it. */
+  creatorLockedLiquidityPercent: 80,
 } as const;
 
 export interface FeeDisclosureInput {

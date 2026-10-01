@@ -11,7 +11,7 @@ import { notUndefined, useVirtualizer } from '@tanstack/react-virtual';
 import { useAtom } from 'jotai';
 import { PropsWithChildren, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DateMode, dateModeAtom } from './datemode';
-import { useWallet } from '@jup-ag/wallet-adapter';
+import { useWallet } from '@solana/wallet-adapter-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../Table';
 import { cn } from '@/lib/utils';
 import { PausedIndicator } from '../../Explore/PausedIndicator';

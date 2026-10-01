@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useWallet } from '@jup-ag/wallet-adapter';
+import { useWallet } from '@solana/wallet-adapter-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { getConnection, isDevnet } from '@/lib/solana';
 import {

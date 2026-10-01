@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { useWallet } from '@jup-ag/wallet-adapter';
+import { useWallet } from '@solana/wallet-adapter-react';
 import { Connection, Keypair, Transaction, sendAndConfirmRawTransaction } from '@solana/web3.js';
 
 type SendTransactionOptions = {

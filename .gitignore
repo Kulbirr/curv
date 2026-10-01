@@ -14,3 +14,4 @@ coverage/
 data/
 .DS_Store
 *.log
+.grad-proof/

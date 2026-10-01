@@ -29,9 +29,17 @@
     "@iconify-json/ph": "^1.2.2",
     "@iconify-json/solar": "^1.2.5",
     "@iconify/tailwind": "^1.2.0",
-    "@jup-ag/wallet-adapter": "^0.2.6",
     "@meteora-ag/dynamic-bonding-curve-sdk": "^1.5.11",
+    "@solana-mobile/wallet-standard-mobile": "^0.6.0",
     "@solana/spl-token": "^0.4.15",
+    "@solana/wallet-adapter-backpack": "^0.1.14",
+    "@solana/wallet-adapter-base": "^0.9.28",
+    "@solana/wallet-adapter-coinbase": "^0.1.24",
+    "@solana/wallet-adapter-phantom": "^0.9.30",
+    "@solana/wallet-adapter-react": "^0.15.40",
+    "@solana/wallet-adapter-react-ui": "^0.9.40",
+    "@solana/wallet-adapter-solflare": "^0.6.34",
+    "@solana/wallet-adapter-walletconnect": "^0.1.22",
     "@solana/wallet-adapter-wallets": "^0.19.38",
     "@solana/web3.js": "^1.98.4",
     "@tailwindcss/cli": "^4.3.3",
@@ -80,10 +88,5 @@
     "tweetnacl": "^1.0.3",
     "typescript": "^5.9.3",
     "vitest": "5.0.2"
-  },
-  "pnpm": {
-    "overrides": {
-      "rpc-websockets>uuid": "9.0.1"
-    }
   }
 }

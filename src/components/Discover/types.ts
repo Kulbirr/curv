@@ -47,4 +47,22 @@ export interface PoolSummary {
 export interface PoolsResponse {
   network: 'devnet' | 'mainnet-beta'
   pools: PoolSummary[]
+  /**
+   * Present only when the request used pagination (?limit=/&cursor=/&sort=).
+   * Unpaginated requests keep the historical {network, pools} shape.
+   */
+  pagination?: PoolsPaginationInfo
+}
+
+/** Page metadata attached to paginated GET /api/pools responses. */
+export interface PoolsPaginationInfo {
+  /** Page size the server applied. */
+  limit: number
+  /** Pass as ?cursor= for the next page; null when this is the last page. */
+  cursor: string | null
+  hasMore: boolean
+  /** Total pools in the full list, before paging. */
+  total: number
+  /** Graduated pools in the full list, so hero stats stay truthful while paging. */
+  graduatedCount: number
 }

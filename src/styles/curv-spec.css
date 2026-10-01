@@ -1370,6 +1370,89 @@ select {
 }
 
 
+/* Chart stats row: current value, change, Price/MC toggle. */
+.sc-chart-stats {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.sc-chart-stats strong {
+  font-family: var(--sc-number);
+  font-size: 13px;
+  font-weight: 640;
+}
+
+.sc-chart-stats-unit {
+  font-size: 9px;
+  font-weight: 500;
+  color: #7c857e;
+}
+
+.sc-chart-change {
+  font-family: var(--sc-number);
+  font-size: 9px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: #141918;
+  color: #8a948c;
+}
+
+.sc-chart-mode {
+  margin-left: auto;
+}
+
+.sc-chart-mode button {
+  min-width: 44px;
+}
+
+.sc-red-text {
+  color: #fa6d74;
+}
+
+/* Wrapper lets the hover tooltip sit exactly over the svg. */
+.sc-chart-svg-wrap {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+}
+
+.sc-chart-crosshair line,
+.sc-chart-crosshair circle {
+  pointer-events: none;
+}
+
+.sc-chart-tooltip {
+  position: absolute;
+  top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 5px 8px;
+  border: 1px solid #2c3431;
+  border-radius: 6px;
+  background: rgb(12 16 16 / 92%);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.sc-chart-tooltip strong {
+  color: #e8efe9;
+  font-family: var(--sc-number);
+  font-size: 10px;
+  font-weight: 640;
+}
+
+.sc-chart-tooltip span {
+  color: #77817b;
+  font-family: var(--sc-number);
+  font-size: 8px;
+}
+
+
 .sc-projection-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -2164,9 +2247,10 @@ select {
 
 
 .sc-pool-price-chart {
-  width: calc(100% - 51px);
+  width: 100%;
   height: 100%;
   overflow: visible;
+  display: block;
 }
 
 
@@ -3730,6 +3814,49 @@ select {
   border-radius: 7px;
   background: #101413;
 }
+
+/* Quote asset options (SOL / USDC / Custom): three compact side-by-side
+ * buttons, unlike the two big stacked cards of .sc-token-type-options. */
+.sc-quote-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.sc-quote-options button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 0;
+  padding: 10px 11px;
+  border: 1px solid #2a302e;
+  border-radius: 7px;
+  background: #101414;
+  color: #dce3db;
+  text-align: left;
+  cursor: pointer;
+}
+.sc-quote-options button.selected {
+  border-color: #39dc78;
+  box-shadow: inset 0 0 0 1px #39dc78;
+}
+.sc-quote-options .sc-quote-option-text {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+.sc-quote-options strong {
+  font-size: 11px;
+  white-space: nowrap;
+}
+.sc-quote-options small {
+  color: #7e8980;
+  font-size: 8px;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .sc-underlying-field small {
   color: #768178;
   font-size: 8px;
@@ -4879,6 +5006,34 @@ select {
   }
   .sc-token-type-options {
     grid-template-columns: 1fr;
+  }
+  .sc-quote-options {
+    gap: 8px;
+  }
+  .sc-quote-options button {
+    padding: 9px 8px;
+    gap: 7px;
+  }
+  .sc-quote-options small {
+    display: none;
+  }
+  /* Quote asset directory rows: tighter on small phones. */
+  .sc-quote-asset-picker .sc-qa-logo {
+    width: 38px;
+    height: 38px;
+    border-radius: 12px;
+    font-size: 15px;
+  }
+  .sc-quote-asset-picker .sc-qa-row {
+    gap: 10px;
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+  .sc-quote-asset-picker .sc-qa-name {
+    font-size: 13px;
+  }
+  .sc-quote-asset-picker .sc-qa-liquidity {
+    display: none;
   }
   .sc-launch-submit-bar {
     align-items: stretch;
