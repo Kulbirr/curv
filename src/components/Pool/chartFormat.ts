@@ -10,11 +10,14 @@ export const compactFmt = new Intl.NumberFormat('en-US', {
 
 /**
  * Y-axis tick label for market cap: always compact (3k / 1m / 2.5b),
- * lowercase to match the reference design. Up to 3 fraction digits so that
- * labels stay distinct down to tick steps of div/1000 (e.g. 2.99k, 3k,
- * 3.01k); only extremely tight ranges fall back to plain decimals.
+ * lowercase to match the reference design. The suffix is chosen once from
+ * the largest visible value so every tick on the axis uses the same unit
+ * (no "1k" next to "999.63"). Up to 3 fraction digits keep nearby ticks
+ * distinct down to tick steps of div/1000 (e.g. 2.99k, 3k, 3.01k); on a
+ * near-flat line the labels may repeat ("1m", "1m"), which is honest and
+ * matches the user's compact-label rule.
  */
-export function formatMcapAxis(v: number, span: number): string {
+export function formatMcapAxis(v: number, span: number, maxV: number): string {
   if (!Number.isFinite(v)) return '-';
   if (v === 0) return '0';
   const step = span / 3;
@@ -23,8 +26,9 @@ export function formatMcapAxis(v: number, span: number): string {
     [1e6, 'm'],
     [1e3, 'k'],
   ];
+  const ref = Number.isFinite(maxV) ? Math.abs(maxV) : Math.abs(v);
   for (const [div, suffix] of SUFFIXES) {
-    if (Math.abs(v) >= div && step >= div / 1000) {
+    if (ref >= div) {
       // Enough fraction digits that adjacent ticks differ in the label.
       const digits = Math.min(
         3,

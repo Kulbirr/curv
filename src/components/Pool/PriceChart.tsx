@@ -53,8 +53,8 @@ function toSegments<T>(items: { t: number; v: number }[]): { t: number; v: numbe
 }
 
 /** Y-axis tick label: adaptive decimals for price, adaptive compact for market cap. */
-function formatAxisValue(v: number, mode: Mode, span: number): string {
-  if (mode === 'mcap') return formatMcapAxis(v, span);
+function formatAxisValue(v: number, mode: Mode, span: number, maxV: number): string {
+  if (mode === 'mcap') return formatMcapAxis(v, span, maxV);
   return formatPriceAxis(v, span);
 }
 
@@ -137,6 +137,7 @@ export default function PriceChart({ poolAddress, quoteSymbol, supply }: Props) 
     const values = items.map((i) => i.v);
     let min = Math.min(...values);
     let max = Math.max(...values);
+    const dataMax = max;
     if (min === max) {
       min = min * 0.999;
       max = max * 1.001;
@@ -161,7 +162,7 @@ export default function PriceChart({ poolAddress, quoteSymbol, supply }: Props) 
 
     const yTicks = [0, 1 / 3, 2 / 3, 1].map((f) => {
       const v = min + span * f;
-      return { v, y: y(v), label: formatAxisValue(v, effectiveMode, span) };
+      return { v, y: y(v), label: formatAxisValue(v, effectiveMode, span, dataMax) };
     });
     const xTicks = [0, 0.25, 0.5, 0.75, 1].map((f) => {
       const t = t0 + tSpan * f;
