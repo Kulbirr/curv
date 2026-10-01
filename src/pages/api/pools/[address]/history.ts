@@ -33,12 +33,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(400).json({ error: 'Invalid time window' });
   }
 
-  // History and 24h volume are independent reads; run them together so a
-  // slow database does not serialize them.
-  const [history, volume24h] = await Promise.all([
-    getHistory(tracked.poolAddress, from, to, points),
-    getVolume24h(tracked.poolAddress),
-  ]);
+  // NOTE: kept sequential (not Promise.all). The pg pool is small (max 5)
+  // and serverless instances share it; concurrent queries from one
+  // request starve the pool when the database is degraded, turning a
+  // slow DB into 500s. Sequential degrades gracefully instead.
+  const history = await getHistory(tracked.poolAddress, from, to, points);
+  const volume24h = await getVolume24h(tracked.poolAddress);
   return res.status(200).json({
     poolAddress: tracked.poolAddress,
     from,
