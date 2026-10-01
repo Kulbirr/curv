@@ -4,6 +4,7 @@ import {
   buildUnsubscribeFrame,
   computePushReconnectDelay,
   MAX_SUBSCRIBE_POOLS,
+  mergePushedState,
   parsePushClientMessage,
   parsePushServerMessage,
   POOL_STATE_POLL_MS,
@@ -170,5 +171,28 @@ describe('resolvePoolStateRefetchInterval', () => {
     expect(
       resolvePoolStateRefetchInterval({ wsUrl: 'ws://localhost:8787', wsConnected: false }),
     ).toBe(POOL_STATE_POLL_MS);
+  });
+});
+
+describe('mergePushedState', () => {
+  it('keeps the cached baseMint when a push frame omits it', () => {
+    const cached = minimalState();
+    const pushed = { ...minimalState(), price: 0.75 } as PoolStateResponse;
+    delete (pushed as Partial<PoolStateResponse>).baseMint;
+    const merged = mergePushedState(cached, pushed);
+    expect(merged.baseMint).toBe(cached.baseMint);
+    expect(merged.price).toBe(0.75);
+  });
+
+  it('prefers the pushed baseMint when present', () => {
+    const cached = minimalState();
+    const pushed = { ...minimalState(), baseMint: 'NewMint11111111111111111111111111111111111' };
+    expect(mergePushedState(cached, pushed).baseMint).toBe(pushed.baseMint);
+  });
+
+  it('degrades to empty string when neither side has a mint', () => {
+    const pushed = { ...minimalState() } as PoolStateResponse;
+    delete (pushed as Partial<PoolStateResponse>).baseMint;
+    expect(mergePushedState(undefined, pushed).baseMint).toBe('');
   });
 });

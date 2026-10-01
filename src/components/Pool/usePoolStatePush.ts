@@ -4,6 +4,7 @@ import type { PoolStateResponse } from './types';
 import { fetchJson } from './usePoolData';
 import { PUSH_WS_URL, resolvePoolStateRefetchInterval } from '@/lib/pool-push-protocol';
 import { PoolPushClient } from '@/lib/pool-push-client';
+import { mergePushedState } from '@/lib/pool-push-protocol';
 
 /**
  * Pool state with WebSocket push when NEXT_PUBLIC_CURV_WS_URL is set.
@@ -54,7 +55,7 @@ export function usePoolStatePush(
         if (current.poolAddress === state.poolAddress) {
           current.queryClient.setQueryData<PoolStateResponse>(
             ['pool-state', current.poolAddress],
-            state,
+            (old) => mergePushedState(old, state),
           );
         }
       },

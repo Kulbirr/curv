@@ -125,3 +125,23 @@ export function resolvePoolStateRefetchInterval(args: {
 }): number | false {
   return args.wsUrl && args.wsConnected ? false : POOL_STATE_POLL_MS;
 }
+
+/**
+ * Merge a pushed pool state into the cached REST state.
+ *
+ * The push server (indexer) is deployed independently of the web app, so a
+ * push frame can predate a field the web app already knows about. Immutable
+ * per-pool fields must survive such frames: a push that omits baseMint must
+ * not wipe the mint the REST response already provided, or the token header
+ * loses its coin address row the moment the first push lands.
+ */
+export function mergePushedState(
+  cached: PoolStateResponse | undefined,
+  pushed: PoolStateResponse,
+): PoolStateResponse {
+  const pushedMint = (pushed as Partial<PoolStateResponse>).baseMint;
+  return {
+    ...pushed,
+    baseMint: pushedMint ?? cached?.baseMint ?? '',
+  };
+}
