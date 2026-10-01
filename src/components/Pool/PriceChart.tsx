@@ -1,6 +1,11 @@
 import { useMemo, useRef, useState } from 'react';
 import { usePoolHistory } from './usePoolData';
 import type { HistoryPoint } from './types';
+import {
+  formatFullValue,
+  formatMcapAxis,
+  formatPriceAxis,
+} from './chartFormat';
 
 const W = 800;
 const H = 300;
@@ -47,29 +52,10 @@ function toSegments<T>(items: { t: number; v: number }[]): { t: number; v: numbe
   return segments.filter((s) => s.length > 0);
 }
 
-const compactFmt = new Intl.NumberFormat('en-US', {
-  notation: 'compact',
-  maximumFractionDigits: 2,
-});
-
-/** Y-axis tick label: adaptive decimals for price, compact for market cap. */
+/** Y-axis tick label: adaptive decimals for price, adaptive compact for market cap. */
 function formatAxisValue(v: number, mode: Mode, span: number): string {
-  if (!Number.isFinite(v)) return '-';
-  if (mode === 'mcap') return compactFmt.format(v);
-  if (v === 0) return '0';
-  const decimals =
-    span > 0
-      ? Math.min(8, Math.max(2, Math.ceil(-Math.log10(span / 4)) + 1))
-      : 4;
-  // Trim trailing zeros so 0.00100000 renders as 0.001.
-  return Number(v.toFixed(decimals)).toString();
-}
-
-/** Full value for the tooltip and the header stat. */
-function formatFullValue(v: number, mode: Mode): string {
-  if (!Number.isFinite(v)) return '-';
-  if (mode === 'mcap') return compactFmt.format(v);
-  return Number(v.toPrecision(6)).toString();
+  if (mode === 'mcap') return formatMcapAxis(v, span);
+  return formatPriceAxis(v, span);
 }
 
 function formatAxisTime(t: number, range: RangeId): string {

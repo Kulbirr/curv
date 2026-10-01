@@ -99,7 +99,7 @@ export const CURVE_PRESETS: Array<{
 }> = [
   { id: 'flat', name: 'Flat', blurb: 'Slow, steady climb. Built for fair launches.' },
   { id: 'exponential', name: 'Exponential', blurb: 'Aggressive early curve. Rewards the earliest buyers most.' },
-  { id: 'long', name: 'Long', blurb: 'Extended runway with six segments before graduation.' },
+  { id: 'long', name: 'Long', blurb: 'Extended runway with five segments before graduation.' },
   { id: 'gentle', name: 'Gentle', blurb: 'A calm slope between flat and exponential.' },
 ];
 

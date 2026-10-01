@@ -6,7 +6,24 @@ interface Props {
   quoteSymbol: string;
 }
 
-function StackedBar({ buyShare }: { buyShare: number }) {
+function StackedBar({ buyShare }: { buyShare: number | null }) {
+  // No sampled movement: render a neutral full-width bar instead of a
+  // misleading 50/50 split.
+  if (buyShare === null) {
+    return (
+      <div
+        style={{
+          display: 'flex',
+          height: 7,
+          width: '100%',
+          overflow: 'hidden',
+          borderRadius: 999,
+          background: '#222929',
+        }}
+        title="No trades sampled"
+      />
+    );
+  }
   const sellShare = 1 - buyShare;
   return (
     <div
@@ -42,8 +59,8 @@ export default function TradeStats({ stats, quoteSymbol }: Props) {
 
   const totalMoves = stats.buys + stats.sells;
   const totalVolume = stats.buyVolume + stats.sellVolume;
-  const buyMoveShare = totalMoves > 0 ? stats.buys / totalMoves : 0.5;
-  const buyVolShare = totalVolume > 0 ? stats.buyVolume / totalVolume : 0.5;
+  const buyMoveShare = totalMoves > 0 ? stats.buys / totalMoves : null;
+  const buyVolShare = totalVolume > 0 ? stats.buyVolume / totalVolume : null;
 
   return (
     <section className="sc-position-card" aria-label="Buys versus sells">

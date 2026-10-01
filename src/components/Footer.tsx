@@ -1,8 +1,11 @@
 /**
  * Site footer, styled after the curv-ui spec.
- * Social channels are plain text, not links: there are no real URLs to point
- * at yet, and a link to nowhere would be dishonest.
+ * Docs points at the FAQ page, which is the current user documentation.
+ * Terms and the social channels stay plain text: there are no real URLs to
+ * point at yet, and a link to nowhere would be dishonest.
  */
+import Link from 'next/link';
+
 export default function Footer() {
   return (
     <footer className="sc-page-foot sc-reference-footer">
@@ -16,7 +19,9 @@ export default function Footer() {
         <b>Telegram</b>
       </div>
       <span>
-        <b>Docs</b>
+        <Link href="/faqs" prefetch={false}>
+          <b>Docs</b>
+        </Link>
         <b>Terms</b>
       </span>
     </footer>

@@ -104,8 +104,8 @@ export const Header = () => {
             setSearch(e.target.value);
             setSearchMsg(null);
           }}
-          placeholder="Search tokens or tickers"
-          aria-label="Search tokens or tickers"
+          placeholder="Search tokens by address"
+          aria-label="Search tokens by address"
           spellCheck={false}
         />
         {searchMsg && (

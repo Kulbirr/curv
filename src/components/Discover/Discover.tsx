@@ -198,7 +198,7 @@ export default function Discover() {
             Launch a token on a curve <em>you design</em>
           </h1>
           <p>
-            Bonding curve launches for memecoins and tokenized stock style
+            Bonding curve launches for tokens and tokenized stock style
             assets. No presale and no team allocation, just fair curves that
             graduate to DEX liquidity.
           </p>
@@ -237,7 +237,7 @@ export default function Discover() {
       <section className="sc-discover-market" aria-label="Discover tokens">
         <div className="sc-market-head">
           <div className="sc-market-title">
-            <span>Live market</span>
+            <span>Market</span>
             <span className="sc-market-count">
               {isLoading
                 ? '…'
@@ -251,8 +251,8 @@ export default function Discover() {
             <input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search tokens or tickers"
-              aria-label="Search tokens or tickers"
+              placeholder="Search tokens by address"
+              aria-label="Search tokens by address"
             />
           </label>
         </div>

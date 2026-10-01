@@ -2218,7 +2218,9 @@ export default function CreatePool() {
                   </div>
                   <span className="sc-preview-stock-badge">
                     {tokenType === 'Tokenized Stock'
-                      ? `Stocks · ${underlying.trim() || ','}`
+                      ? underlying.trim()
+                        ? `Stocks · ${underlying.trim()}`
+                        : 'Stocks'
                       : 'Token'}
                   </span>
                 </div>
@@ -2227,7 +2229,7 @@ export default function CreatePool() {
                     Mcap<strong>$0</strong>
                   </span>
                   <span>
-                    24h<strong>,</strong>
+                    24h<strong>—</strong>
                   </span>
                 </div>
                 <div className="sc-progress">
