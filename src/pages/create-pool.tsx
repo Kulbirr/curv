@@ -47,7 +47,7 @@ import {
   type VanityProgress,
 } from '@/lib/vanity-mint'
 import { fetchVanityHandout } from '@/lib/vanity-handout'
-import { buildFeeDisclosureRows, LAUNCH_FEE_CONFIG } from '@/lib/launch-fees'
+import { buildFeeDisclosureRows, buildFeeConsequenceLines, LAUNCH_FEE_CONFIG } from '@/lib/launch-fees'
 import {
   isSignTimeout,
   signingTimeoutMessage,
@@ -616,6 +616,35 @@ export default function CreatePool() {
       startFeeBps,
       endFeeBps,
       quoteSymbol,
+      feePeriods,
+      feeDuration,
+      dynamicFee,
+      migrationFeePct,
+      dammFeeBps,
+      dammDynamicFee,
+    ]
+  )
+
+  // Concrete consequences of the fee config in plain numbers: every fee
+  // translated into what it means for the creator. Nothing invented, all
+  // computed from the effective economics and the SDK graduation threshold.
+  const feeConsequences = useMemo(
+    () =>
+      buildFeeConsequenceLines({
+        startingFeeBps: mode === 'quick' ? 119 : parseInt(startFeeBps, 10) || 0,
+        graduationThreshold: graduationPreview,
+        quoteSymbol,
+        econ: resolveEcon(
+          buildSpec('https://placeholder.invalid/metadata.json')
+        ),
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [
+      mode,
+      quickCurve,
+      startFeeBps,
+      quoteSymbol,
+      graduationPreview,
       feePeriods,
       feeDuration,
       dynamicFee,
@@ -2321,6 +2350,10 @@ export default function CreatePool() {
                 <h2 id="sc-fees-heading">Fees</h2>
                 <span>From your config</span>
               </div>
+              <div className="sc-fee-cost-line">
+                <span>Cost to launch</span>
+                <strong>{deployTotalLabel} + network fees</strong>
+              </div>
               <dl className="sc-fee-rows">
                 {feeRows.map((r) => (
                   <div key={r.label}>
@@ -2332,6 +2365,16 @@ export default function CreatePool() {
                   </div>
                 ))}
               </dl>
+              <div className="sc-fee-consequences">
+                <p className="sc-fee-consequences-title">
+                  What this means for you
+                </p>
+                <ul>
+                  {feeConsequences.map((c, i) => (
+                    <li key={i}>{c}</li>
+                  ))}
+                </ul>
+              </div>
             </section>
 
             <section className="sc-builder-chart-card">

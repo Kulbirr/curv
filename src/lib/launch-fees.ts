@@ -154,6 +154,52 @@ function two(n: number): string {
   return n.toFixed(2);
 }
 
+export interface FeeConsequenceInput {
+  startingFeeBps: number;
+  /** Effective economics (defaults merged with the creator's overrides).
+   *  When omitted, LAUNCH_FEE_CONFIG is used. */
+  econ?: ResolvedEcon;
+  /** Graduation threshold in quote units, from the DBC SDK. Null when the
+   *  spec is invalid and the threshold cannot be computed. */
+  graduationThreshold: number | null;
+  quoteSymbol: string;
+}
+
+function fmtQuote(v: number): string {
+  return v.toLocaleString('en-US', { maximumFractionDigits: 4 });
+}
+
+/**
+ * Plain language consequences of the fee config, Ember style: every fee
+ * gets its "this means X for you" translation in concrete numbers. All
+ * copy is dash free. Every number is computed from the effective
+ * economics, the fee schedule, or the SDK computed graduation threshold,
+ * nothing is invented.
+ */
+export function buildFeeConsequenceLines(
+  input: FeeConsequenceInput
+): string[] {
+  const c = input.econ ?? LAUNCH_FEE_CONFIG;
+  const lines: string[] = [];
+  const split = effectiveTradeFeeSplit(input.startingFeeBps, c);
+  const perMillion = Math.round((split.creator / 100) * 1_000_000);
+  lines.push(
+    `If $1M of trading moves through your curve, you earn about $${perMillion.toLocaleString('en-US')} in trading fees.`
+  );
+  const t = input.graduationThreshold;
+  if (t !== null && Number.isFinite(t) && t > 0) {
+    const creatorLiquidity =
+      t * (c.migrationFeePercent / 100) * (c.creatorMigrationFeePercent / 100);
+    lines.push(
+      `At graduation (about ${fmtQuote(t)} ${input.quoteSymbol} in the curve), you keep about ${fmtQuote(creatorLiquidity)} ${input.quoteSymbol} of the migrating liquidity.`
+    );
+  }
+  lines.push(
+    `After graduation you earn ${c.creatorLockedLiquidityPercent}% of the DAMM v2 pool's trading fees, forever. The graduated liquidity is locked permanently, so nobody can pull it.`
+  );
+  return lines;
+}
+
 /**
  * Rows for the launch review page's fee-disclosure box. Every number
  * comes from LAUNCH_FEE_CONFIG (the same constants the on-chain config

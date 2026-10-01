@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { LAUNCH_FEE_CONFIG, buildFeeDisclosureRows, effectiveTradeFeeSplit } from './launch-fees';
+import { LAUNCH_FEE_CONFIG, buildFeeConsequenceLines, buildFeeDisclosureRows, effectiveTradeFeeSplit } from './launch-fees';
 
 describe('LAUNCH_FEE_CONFIG', () => {
   it('carries the exact on-chain economics buildCurveParams uses', async () => {
@@ -139,5 +139,81 @@ describe('effectiveTradeFeeSplit', () => {
     expect(split.trader).toBeCloseTo(5, 6);
     expect(split.creator).toBeCloseTo(1.2604, 6);
     expect(split.platform).toBeCloseTo(2.7396, 6);
+  });
+});
+
+describe('buildFeeConsequenceLines', () => {
+  it('translates the flat 1.19% fee into creator earnings per $1M volume', async () => {
+    const lines = buildFeeConsequenceLines({
+      startingFeeBps: 119,
+      graduationThreshold: 74.44,
+      quoteSymbol: 'SOL',
+    });
+    // 0.30% of $1M = $3,000 to the creator.
+    expect(lines[0]).toBe(
+      'If $1M of trading moves through your curve, you earn about $3,000 in trading fees.'
+    );
+  });
+
+  it('translates the graduation threshold into the creator liquidity cut', async () => {
+    const lines = buildFeeConsequenceLines({
+      startingFeeBps: 119,
+      graduationThreshold: 74.44,
+      quoteSymbol: 'SOL',
+    });
+    // 4% migration fee, creator keeps 50% of it = 2% of 74.44 = 1.4888 SOL.
+    expect(lines[1]).toBe(
+      'At graduation (about 74.44 SOL in the curve), you keep about 1.4888 SOL of the migrating liquidity.'
+    );
+  });
+
+  it('states the permanent post-graduation fee share', async () => {
+    const lines = buildFeeConsequenceLines({
+      startingFeeBps: 119,
+      graduationThreshold: 74.44,
+      quoteSymbol: 'SOL',
+    });
+    expect(lines[2]).toBe(
+      "After graduation you earn 80% of the DAMM v2 pool's trading fees, forever. The graduated liquidity is locked permanently, so nobody can pull it."
+    );
+  });
+
+  it('skips the graduation line when the threshold is unknown', async () => {
+    const lines = buildFeeConsequenceLines({
+      startingFeeBps: 119,
+      graduationThreshold: null,
+      quoteSymbol: 'SOL',
+    });
+    expect(lines).toHaveLength(2);
+    expect(lines[1]).toContain('After graduation');
+  });
+
+  it('scales with a custom fee schedule and overridden economics', async () => {
+    const lines = buildFeeConsequenceLines({
+      startingFeeBps: 500,
+      graduationThreshold: 100,
+      quoteSymbol: 'USDC',
+      econ: {
+        ...LAUNCH_FEE_CONFIG,
+        migrationFeePercent: 20,
+        creatorMigrationFeePercent: 50,
+        creatorLockedLiquidityPercent: 80,
+      },
+    });
+    // 5% fee -> creator 1.2604% of volume -> ~$12,604 per $1M.
+    expect(lines[0]).toContain('$12,604');
+    // 20% migration fee, creator keeps half = 10% of 100 = 10 USDC.
+    expect(lines[1]).toContain('about 10 USDC of the migrating liquidity');
+  });
+
+  it('keeps every line dash free', async () => {
+    const lines = buildFeeConsequenceLines({
+      startingFeeBps: 119,
+      graduationThreshold: 74.44,
+      quoteSymbol: 'SOL',
+    });
+    for (const line of lines) {
+      expect(line).not.toMatch(/[–—-]/);
+    }
   });
 });
