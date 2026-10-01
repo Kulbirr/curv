@@ -19,7 +19,9 @@ function resolvePrimaryRpcUrl(): string {
     // Client: a keyed RPC URL must never ship in the browser bundle (any
     // visitor could copy it). Browser chain reads go through the same-origin
     // /api/rpc proxy, which forwards from the server's keyed lane.
-    return '/api/rpc';
+    // Must be absolute: @solana/web3.js rejects relative endpoint URLs
+    // ("Endpoint URL must start with `http:` or `https:`").
+    return `${window.location.origin}/api/rpc`;
   }
   return clusterApiUrl(SOLANA_NETWORK);
 }
