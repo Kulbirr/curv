@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   LAMPORTS_PER_SOL,
@@ -655,9 +656,9 @@ export default function StrategiesPage() {
 
         <p className="mt-8 text-center text-xs text-neutral-600">
           {SUBSCRIPTION_DURATION_MS / 86_400_000} days · {(SUBSCRIPTION_PRICE_LAMPORTS / LAMPORTS_PER_SOL).toFixed(2)} SOL flat ·{' '}
-          <a href="/faqs" className="underline hover:text-neutral-400">
+          <Link href="/faqs" className="underline hover:text-neutral-400">
             How mirroring works
-          </a>
+          </Link>
         </p>
       </div>
 
