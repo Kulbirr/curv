@@ -57,6 +57,22 @@ function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+/**
+ * Race a promise against a wall-clock timeout. node-postgres'
+ * connectionTimeoutMillis does not always fire when the network path hangs
+ * mid-handshake (e.g. a proxy that accepts TCP but never answers), which
+ * used to wedge the worker forever on its first stats query instead of
+ * hitting the retry logic below. The loser of the race is left to settle on
+ * its own; the pool evicts dead clients.
+ */
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 function dbErrorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
@@ -123,7 +139,7 @@ async function main(): Promise<void> {
     // not a reason to exit.
     let stats;
     try {
-      stats = await vanityPoolStats();
+      stats = await withTimeout(vanityPoolStats(), 30_000, 'vanityPoolStats');
     } catch (e) {
       console.error(`[grind-pool] db error on stats, retrying in 60s: ${dbErrorMessage(e)}`);
       await sleep(DB_RETRY_MS);
@@ -131,7 +147,11 @@ async function main(): Promise<void> {
     }
     if (stats.ready >= TARGET) {
       try {
-        await pruneConsumedVanityMints(Date.now() - CONSUMED_RETENTION_MS);
+        await withTimeout(
+          pruneConsumedVanityMints(Date.now() - CONSUMED_RETENTION_MS),
+          30_000,
+          'pruneConsumedVanityMints'
+        );
       } catch (e) {
         console.error(`[grind-pool] db error on prune, skipping: ${dbErrorMessage(e)}`);
       }
@@ -169,7 +189,7 @@ async function main(): Promise<void> {
     // Retry the store until it lands or we are asked to stop.
     for (;;) {
       try {
-        await storeVanityMint(pubkey, encrypted, Date.now());
+        await withTimeout(storeVanityMint(pubkey, encrypted, Date.now()), 30_000, 'storeVanityMint');
         break;
       } catch (e) {
         console.error(
