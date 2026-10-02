@@ -1715,7 +1715,7 @@ export default function CreatePool() {
               <p className="sc-split-summary">
                 {splitPreview.error ? (
                   <span className="sc-form-error">{splitPreview.error}</span>
-                ) : splitPreview.totalBps === 0 ? (
+                ) : splitRows.length === 0 ? (
                   'No splits set. You keep the full creator fee.'
                 ) : (
                   <>
