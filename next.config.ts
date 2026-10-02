@@ -8,6 +8,9 @@ import type { NextConfig } from 'next';
  * - wss://push.curvpad.fun: Oracle price-state pushes (usePoolStatePush)
  * - wss://relay.walletconnect.com: WalletConnect relay (MetaMask path)
  * - wss://*.jup.ag: Jupiter streams (DataStreamProvider / future use)
+ * - https://*.jup.ag: Jupiter HTTPS APIs (lite-api swap quotes, price API)
+ *   plus https://plugin.jup.ag in script-src for the Jupiter plugin bundle
+ *   loaded in _document.tsx
  * - https://api.devnet.solana.com, https://api.mainnet-beta.solana.com:
  *   public RPC fallback when the server lane fails (fetchWithFallback)
  * - https://*.helius-rpc.com: keyed RPC lane if ever called browser-side
@@ -29,6 +32,8 @@ function contentSecurityPolicy(): string {
     'wss://push.curvpad.fun',
     'wss://relay.walletconnect.com',
     'wss://*.jup.ag',
+    'https://*.jup.ag',
+    'https://plugin.jup.ag',
     'https://api.devnet.solana.com',
     'https://api.mainnet-beta.solana.com',
     'https://*.helius-rpc.com',
@@ -37,7 +42,7 @@ function contentSecurityPolicy(): string {
   return [
     "default-src 'self'",
     // See the comment above: 'unsafe-inline' is intentional for now.
-    "script-src 'self' 'unsafe-inline'",
+    "script-src 'self' 'unsafe-inline' https://plugin.jup.ag",
     // React inline styles are applied via the style attribute everywhere.
     "style-src 'self' 'unsafe-inline'",
     `img-src ${img}`,
