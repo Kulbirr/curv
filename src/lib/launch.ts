@@ -16,6 +16,7 @@ import {
   deriveDbcPoolAddress,
 } from '@meteora-ag/dynamic-bonding-curve-sdk';
 import { getConnection, getDbcClient } from './solana';
+import { parseUiAmountToRaw } from './swap-math';
 import { LAUNCH_FEE_CONFIG, defaultEcon, type ResolvedEcon } from './launch-fees';
 
 /**
@@ -455,4 +456,39 @@ export async function buildLaunchTransaction(
   const poolAddress = deriveDbcPoolAddress(quoteMint, baseMintKeypair.publicKey, configKeypair.publicKey);
 
   return { transaction, configKeypair, baseMintKeypair, poolAddress };
+}
+
+/**
+ * Validate the optional dev buy amount typed on the launch form (quote UI
+ * units, e.g. SOL). Returns { ok: true, lamports } where lamports is null
+ * when the field is empty (no dev buy), or { ok: false, error } with a
+ * user-safe message.
+ *
+ * The upper cap is the quote reserve required to graduate the pool: a dev
+ * buy larger than that would graduate the pool in its very first buy,
+ * which is a snipe, not a dev buy. When the graduation threshold is
+ * unknown the cap check is skipped; spec validation blocks the launch
+ * anyway in that case.
+ */
+export function validateDevBuy(
+  amount: string,
+  quoteDecimals: number,
+  graduationThresholdQuoteUi: number | null,
+): { ok: true; lamports: number | null } | { ok: false; error: string } {
+  const trimmed = amount.trim();
+  if (trimmed === '') return { ok: true, lamports: null };
+  const raw = parseUiAmountToRaw(trimmed, quoteDecimals);
+  if (raw === null) return { ok: false, error: 'Dev buy must be a positive number' };
+  if (raw.toString().length > 15)
+    return { ok: false, error: 'Dev buy amount is too large' };
+  const lamports = raw.toNumber();
+  if (graduationThresholdQuoteUi !== null && graduationThresholdQuoteUi > 0) {
+    const capRaw = Math.floor(graduationThresholdQuoteUi * 10 ** quoteDecimals);
+    if (lamports > capRaw)
+      return {
+        ok: false,
+        error: `Dev buy cannot exceed the graduation threshold (${graduationThresholdQuoteUi} quote)`,
+      };
+  }
+  return { ok: true, lamports };
 }

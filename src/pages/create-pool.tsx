@@ -29,10 +29,13 @@ import {
   quickDefaultStartPrice,
   resolveEcon,
   scaleCurveToGraduationTarget,
+  validateDevBuy,
   validateLaunchSpec,
   type LaunchEconOverrides,
   type LaunchSpec,
 } from '@/lib/launch'
+import { buildDevBuyTransaction } from '@/lib/dev-buy'
+import { BN } from '@coral-xyz/anchor'
 import { getConnection, isDevnet, SOLANA_NETWORK } from '@/lib/solana'
 import { getUsdcMint, inspectQuoteMint } from '@/lib/quote-assets'
 import type { QuoteMintProgram } from '@/lib/quote-assets'
@@ -72,6 +75,7 @@ type LaunchStatus =
   | 'signing'
   | 'sending'
   | 'confirming'
+  | 'devbuy'
   | 'registering'
   | 'done'
   | 'error'
@@ -86,6 +90,7 @@ const STATUS_LABEL: Record<
   signing: 'Waiting for wallet signature…',
   sending: 'Sending transaction…',
   confirming: 'Confirming on-chain…',
+  devbuy: 'Executing your dev buy…',
   registering: 'Registering pool…',
 }
 
@@ -262,6 +267,7 @@ export default function CreatePool() {
   const [splitRows, setSplitRows] = useState<
     Array<{ wallet: string; percent: string; handle: string }>
   >([])
+  const [devBuy, setDevBuy] = useState('')
   const [launchError, setLaunchError] = useState<string | null>(null)
   const [txSig, setTxSig] = useState<string | null>(null)
   const [launchedPool, setLaunchedPool] = useState<string | null>(null)
@@ -925,6 +931,16 @@ export default function CreatePool() {
       const errors = validateLaunchSpec(spec)
       if (errors.length > 0) throw new Error(errors[0])
 
+      // 2.6 Optional dev buy, validated against the graduation threshold.
+      // Empty means no dev buy.
+      const devBuyCheck = validateDevBuy(
+        devBuy,
+        quoteDecimals,
+        graduationThresholdQuote(spec)
+      )
+      if (devBuyCheck.ok === false) throw new Error(devBuyCheck.error)
+      const devBuyLamports = devBuyCheck.lamports
+
       // 2.5 Vanity mint: claim a pre-ground address from the server pool
       // ONLY at launch confirmation, never on page open, so casual visits
       // never burn pool addresses. Then the background grind (usually
@@ -989,6 +1005,41 @@ export default function CreatePool() {
       setStatus('confirming')
       await pollConfirmation(sig)
 
+      // 6.5 Optional dev buy: a second transaction in the same signing
+      // session, executed right after pool creation confirms. The
+      // creator's wallet signs everything; the server never holds funds
+      // or keys. If the buy fails the launch stops here so the trust
+      // panel never discloses a buy that did not happen.
+      if (devBuyLamports !== null) {
+        setStatus('devbuy')
+        const devTx = await buildDevBuyTransaction({
+          poolAddress: poolAddr,
+          owner: publicKey,
+          amountRaw: new BN(String(devBuyLamports)),
+        })
+        let devSigned
+        try {
+          devSigned = await withSignTimeout(signTransaction(devTx))
+        } catch (e) {
+          if (isSignTimeout(e)) throw new Error(signingTimeoutMessage())
+          throw new Error(
+            `Dev buy signing was rejected. Your pool is live at ${poolAddr}, but no dev buy was executed.`
+          )
+        }
+        const devSig = await getConnection().sendRawTransaction(
+          devSigned.serialize()
+        )
+        setStatus('confirming')
+        try {
+          await pollConfirmation(devSig)
+        } catch (e) {
+          throw new Error(
+            `Dev buy could not be confirmed: ${e instanceof Error ? e.message : 'unknown error'}. ` +
+              `Your pool is live at ${poolAddr}. Check Solscan before retrying the buy manually.`
+          )
+        }
+      }
+
       // 7. Register with a wallet-signed message (server verifies ed25519).
       //    Fee splits, when set, are validated to the canonical form first
       //    and bound into the signed message, so the terms the server
@@ -1019,7 +1070,8 @@ export default function CreatePool() {
         poolAddr,
         publicKey.toBase58(),
         timestamp,
-        normalizedSplits
+        normalizedSplits,
+        devBuyLamports
       )
       if (!signMessage) throw new Error('Connected wallet cannot sign messages')
       let sigBytes: Uint8Array
@@ -1054,6 +1106,7 @@ export default function CreatePool() {
           signature: bs58.encode(sigBytes),
           launchedAt: timestamp,
           feeSplits: normalizedSplits ?? undefined,
+          devBuyLamports: devBuyLamports ?? undefined,
         }),
       })
       if (!regRes.ok) {
@@ -1108,6 +1161,14 @@ export default function CreatePool() {
       return { error: e instanceof Error ? e.message : 'Invalid fee splits', totalBps: 0 }
     }
   }, [splitRows, publicKey])
+
+  // Dev buy preview: validated live against the graduation threshold so
+  // the form shows the error before the user ever signs.
+  const devBuyPreview = useMemo(() => {
+    const res = validateDevBuy(devBuy, quoteDecimals, graduationPreview)
+    if (res.ok === false) return { error: res.error, lamports: null as number | null }
+    return { error: null as string | null, lamports: res.lamports }
+  }, [devBuy, quoteDecimals, graduationPreview])
 
   const allErrors = [
     ...tokenErrors,
@@ -1732,6 +1793,60 @@ export default function CreatePool() {
               </p>
             </section>
 
+            {/* ---- Dev buy: the creator's own opening buy, public from block one ---- */}
+            <section className="sc-builder-section">
+              <div className="sc-builder-section-head">
+                <span className="sc-section-glyph">✦</span>
+                <div>
+                  <h2>Dev buy</h2>
+                  <p>
+                    Buy your own token the moment the pool opens. It is
+                    executed in the launch flow and shown publicly from
+                    block one.
+                  </p>
+                </div>
+              </div>
+              <div className="rounded-lg border border-primary/40 bg-primary/5 p-4">
+                <Field
+                  label={`Dev buy (${quoteSymbol})`}
+                  hint="Optional. Runs as a buy right after your pool is created, in the same signing session. A dev buy you can see is trust."
+                  error={devBuyPreview.error ?? undefined}
+                >
+                  <div className="flex items-center gap-3">
+                    <input
+                      inputMode="decimal"
+                      value={devBuy}
+                      onChange={(e) =>
+                        setDevBuy(e.target.value.replace(/[^0-9.]/g, ''))
+                      }
+                      placeholder="0.5"
+                      autoComplete="off"
+                      className="text-lg font-semibold"
+                    />
+                    <span className="shrink-0 text-sm font-medium text-neutral-400">
+                      {quoteSymbol}
+                    </span>
+                  </div>
+                </Field>
+                {devBuyPreview.lamports !== null && !devBuyPreview.error && (
+                  <p className="mt-3 text-sm text-neutral-300">
+                    You will buy{' '}
+                    <strong className="text-primary">
+                      {devBuy.trim()} {quoteSymbol}
+                    </strong>{' '}
+                    worth of your token at launch, visible to everyone on
+                    the trust panel.
+                  </p>
+                )}
+                {devBuy.trim() === '' && (
+                  <p className="mt-3 text-xs text-neutral-500">
+                    Leave empty for no dev buy. You can always buy from the
+                    public curve after launch.
+                  </p>
+                )}
+              </div>
+            </section>
+
             {/* ---- Bonding Curve Settings (pro mode only) ---- */}
             {mode === 'pro' && (
               <section className="sc-builder-section sc-curve-settings">
@@ -2300,6 +2415,29 @@ export default function CreatePool() {
                     Computed from your curve with the DBC SDK, not an estimate.
                   </p>
                 </div>
+                {devBuyPreview.lamports !== null && !devBuyPreview.error && (
+                  <div className="rounded-lg border border-primary/40 bg-primary/5 p-4">
+                    <div className="flex items-center gap-2">
+                      <span className="sc-section-glyph" aria-hidden="true">
+                        ✦
+                      </span>
+                      <p className="text-xs uppercase tracking-wide text-neutral-500">
+                        Dev buy
+                      </p>
+                    </div>
+                    <p className="mt-2 text-neutral-100">
+                      You buy{' '}
+                      <strong className="text-primary">
+                        {devBuy.trim()} {quoteSymbol}
+                      </strong>{' '}
+                      of ${symbol || ','} in the launch flow.
+                    </p>
+                    <p className="mt-1 text-xs text-neutral-500">
+                      Signed by your wallet right after pool creation, shown
+                      publicly from block one.
+                    </p>
+                  </div>
+                )}
               </div>
 
               {metadataConfigured === false && (

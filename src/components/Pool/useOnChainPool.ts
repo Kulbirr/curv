@@ -19,7 +19,7 @@ export interface OnChainPool {
   quoteMint: string;
 }
 
-async function fetchOnChainPool(poolAddress: string): Promise<OnChainPool> {
+export async function fetchOnChainPool(poolAddress: string): Promise<OnChainPool> {
   const client = getDbcClient();
   const poolPubkey = new PublicKey(poolAddress);
   const virtualPool = await client.state.getPool(poolPubkey);

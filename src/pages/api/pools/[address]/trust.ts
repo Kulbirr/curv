@@ -10,6 +10,7 @@ import { platformFeeWallet } from '@/lib/launch';
 import { verifyLiquidityLock } from '@/lib/liquidity-lock';
 import { getFeeSplits } from '@/lib/db/fee-splits';
 import { creatorRemainderBps } from '@/lib/fee-split-terms';
+import { NATIVE_SOL_MINT } from '@/components/Pool/types';
 
 /**
  * GET /api/pools/[address]/trust
@@ -90,6 +91,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const stats = await getTradeStats24h(tracked.poolAddress);
   const splits = await getFeeSplits(tracked.poolAddress);
 
+  // Quote decimals for the dev buy display: prefer the indexer's sampled
+  // state, fall back to a direct mint read. Native SOL is always 9.
+  let quoteDecimals: number | null = state?.quoteDecimals ?? null;
+  if (quoteDecimals === null) {
+    if (tracked.quoteMint === NATIVE_SOL_MINT) {
+      quoteDecimals = 9;
+    } else {
+      try {
+        const qm = await getMint(getConnection(), new PublicKey(tracked.quoteMint));
+        quoteDecimals = qm.decimals;
+      } catch {
+        quoteDecimals = null;
+      }
+    }
+  }
+
   const body = {
     poolAddress: tracked.poolAddress,
     verified: tracked.verified === true,
@@ -97,6 +114,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     createdAt: tracked.createdAt,
     baseSymbol: tracked.baseSymbol,
     quoteSymbol: tracked.quoteSymbol,
+    quoteDecimals,
+    devBuyLamports: tracked.devBuyLamports ?? null,
     graduated,
     mintAuthority,
     freezeAuthority,

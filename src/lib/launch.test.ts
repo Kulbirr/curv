@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BN } from '@coral-xyz/anchor';
-import { CURVE_PRESETS, buildCurveParams, formatPriceInput, graduationThresholdQuote, platformFeeWallet, presetCurve, quickCurveDesign, quickDefaultStartPrice, resolveEcon, scaleCurveToGraduationTarget, validateLaunchSpec, type LaunchSpec } from './launch';
+import { CURVE_PRESETS, buildCurveParams, formatPriceInput, graduationThresholdQuote, platformFeeWallet, presetCurve, quickCurveDesign, quickDefaultStartPrice, resolveEcon, scaleCurveToGraduationTarget, validateDevBuy, validateLaunchSpec, type LaunchSpec } from './launch';
 import { SOL_MINT } from './quote-assets';
 import { randomAddress } from '@/test-support/db';
 
@@ -483,3 +483,52 @@ describe('platformFeeWallet', () => {
   });
 });
 
+describe('validateDevBuy', () => {
+  const DECIMALS = 9;
+  const THRESHOLD = 74.44; // quote UI units, like the Quick graduation threshold
+
+  it('empty string means no dev buy', () => {
+    expect(validateDevBuy('', DECIMALS, THRESHOLD)).toEqual({ ok: true, lamports: null });
+    expect(validateDevBuy('   ', DECIMALS, THRESHOLD)).toEqual({ ok: true, lamports: null });
+  });
+
+  it('accepts a valid amount and converts to lamports', () => {
+    const res = validateDevBuy('0.5', DECIMALS, THRESHOLD);
+    expect(res).toEqual({ ok: true, lamports: 500_000_000 });
+  });
+
+  it('rejects zero', () => {
+    const res = validateDevBuy('0', DECIMALS, THRESHOLD);
+    expect(res.ok).toBe(false);
+  });
+
+  it('rejects negative amounts', () => {
+    const res = validateDevBuy('-1', DECIMALS, THRESHOLD);
+    expect(res.ok).toBe(false);
+  });
+
+  it('rejects non numeric input', () => {
+    expect(validateDevBuy('abc', DECIMALS, THRESHOLD).ok).toBe(false);
+    expect(validateDevBuy('1.2.3', DECIMALS, THRESHOLD).ok).toBe(false);
+  });
+
+  it('rejects more decimals than the quote mint supports', () => {
+    expect(validateDevBuy('0.1234567891', DECIMALS, THRESHOLD).ok).toBe(false);
+  });
+
+  it('rejects amounts above the graduation threshold cap', () => {
+    const res = validateDevBuy('74.45', DECIMALS, THRESHOLD);
+    expect(res.ok).toBe(false);
+    if (res.ok === false) expect(res.error).toMatch(/graduation threshold/);
+  });
+
+  it('accepts exactly the graduation threshold', () => {
+    const res = validateDevBuy('74.44', DECIMALS, THRESHOLD);
+    expect(res.ok).toBe(true);
+  });
+
+  it('skips the cap check when the threshold is unknown', () => {
+    const res = validateDevBuy('1000', DECIMALS, null);
+    expect(res).toEqual({ ok: true, lamports: 1_000_000_000_000 });
+  });
+});

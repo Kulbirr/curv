@@ -31,6 +31,11 @@ export interface TrackedPool {
   /** Unix ms when the pool was created on-chain (if known) */
   launchedAt?: number;
   /**
+   * Optional dev buy in quote lamports, disclosed by the creator at
+   * launch. Undefined/null = no dev buy.
+   */
+  devBuyLamports?: number;
+  /**
    * True only when every submitted field (config, creator, baseMint,
    * quoteMint) matched the on-chain accounts at registration time.
    * False when the RPC was unreachable during registration (honest
@@ -56,6 +61,7 @@ interface PoolRow {
   created_at: number;
   launched_at: number | null;
   verified: number;
+  dev_buy_lamports: number | null;
 }
 
 function rowToPool(r: PoolRow): TrackedPool {
@@ -75,6 +81,7 @@ function rowToPool(r: PoolRow): TrackedPool {
     createdAt: r.created_at,
     launchedAt: r.launched_at ?? undefined,
     verified: r.verified === 1,
+    devBuyLamports: r.dev_buy_lamports ?? undefined,
   };
 }
 
@@ -150,6 +157,12 @@ export async function insertPool(input: RegisterPoolInput): Promise<TrackedPool>
     launchedAt: typeof input.launchedAt === 'number' ? input.launchedAt : undefined,
     createdAt: typeof input.createdAt === 'number' ? input.createdAt : Date.now(),
     verified: input.verified === true,
+    devBuyLamports:
+      typeof input.devBuyLamports === 'number' &&
+      Number.isInteger(input.devBuyLamports) &&
+      input.devBuyLamports > 0
+        ? input.devBuyLamports
+        : undefined,
   };
   if (!entry.baseSymbol) throw new Error('baseSymbol is required');
   if (!entry.baseName) throw new Error('baseName is required');
@@ -164,8 +177,8 @@ export async function insertPool(input: RegisterPoolInput): Promise<TrackedPool>
       `INSERT INTO pools
        (pool_address, config_address, base_mint, quote_mint, base_symbol, base_name,
         quote_symbol, description, image_url, website, twitter, creator,
-        created_at, launched_at, verified)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+        created_at, launched_at, verified, dev_buy_lamports)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
       [
         entry.poolAddress,
         entry.configAddress,
@@ -182,6 +195,7 @@ export async function insertPool(input: RegisterPoolInput): Promise<TrackedPool>
         entry.createdAt,
         entry.launchedAt ?? null,
         entry.verified ? 1 : 0,
+        entry.devBuyLamports ?? null,
       ],
     );
     return entry;

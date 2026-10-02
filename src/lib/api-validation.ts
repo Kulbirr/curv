@@ -95,6 +95,12 @@ export interface RegistrationInput {
   launchedAt?: number;
   /** Creator fee splits fixed at launch; validated by fee-split-terms. */
   feeSplits?: FeeSplitRecipient[];
+  /**
+   * Optional dev buy in quote lamports, disclosed at launch and shown on
+   * the trust panel. Bound into the signed registration message so the
+   * stored value is exactly what the creator committed.
+   */
+  devBuyLamports?: number;
 }
 
 export type ValidationResult<T> = { ok: true; value: T } | { ok: false; error: string };
@@ -160,6 +166,18 @@ export function validateRegistrationBody(body: unknown): ValidationResult<Regist
       if (parsedSplits.length > 0) feeSplits = parsedSplits;
     }
 
+    // Dev buy is optional. Positive integer lamports only; the exact
+    // amount is bound into the signed registration message, so a forged
+    // value fails signature verification.
+    let devBuyLamports: number | undefined;
+    if (b.devBuyLamports !== undefined && b.devBuyLamports !== null) {
+      const n = Number(b.devBuyLamports);
+      if (!Number.isInteger(n) || n <= 0 || n > Number.MAX_SAFE_INTEGER) {
+        return fail('devBuyLamports must be a positive integer');
+      }
+      devBuyLamports = n;
+    }
+
     return {
       ok: true,
       value: {
@@ -179,6 +197,7 @@ export function validateRegistrationBody(body: unknown): ValidationResult<Regist
         signature,
         launchedAt,
         feeSplits,
+        devBuyLamports,
       },
     };
   } catch (e) {

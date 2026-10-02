@@ -134,3 +134,41 @@ describe('buildRecipientBindingMessage', () => {
     expect(verifyWalletSignature(other, bs58.encode(sig), wallet)).toBe(false);
   });
 });
+describe('buildRegistrationMessage with dev buy', () => {
+  it('keeps the historical format when no dev buy is given', () => {
+    const msg = buildRegistrationMessage('pool1', 'creator1', 123);
+    expect(msg).toBe(
+      ['StockCurve pool registration', 'pool: pool1', 'creator: creator1', 'timestamp: 123'].join(
+        '\n',
+      ),
+    );
+  });
+
+  it('appends the dev buy line in lamports', () => {
+    const msg = buildRegistrationMessage('pool1', 'creator1', 123, undefined, 500_000_000);
+    expect(msg.endsWith('dev buy: 500000000 lamports')).toBe(true);
+  });
+
+  it('combines fee splits and dev buy in one message', () => {
+    const alice = Keypair.generate().publicKey.toBase58();
+    const msg = buildRegistrationMessage(
+      'pool1',
+      'creator1',
+      123,
+      [{ wallet: alice, bps: 2500 }],
+      500_000_000,
+    );
+    expect(msg).toContain('fee splits:');
+    expect(msg).toContain('dev buy: 500000000 lamports');
+  });
+
+  it('binds the dev buy amount so tampering breaks verification', () => {
+    const kp = Keypair.generate();
+    const wallet = kp.publicKey.toBase58();
+    const message = buildRegistrationMessage('pool1', wallet, Date.now(), undefined, 500_000_000);
+    const sig = sign(message, kp.secretKey);
+    expect(verifyWalletSignature(message, sig, wallet)).toBe(true);
+    const tampered = message.replace('500000000', '900000000');
+    expect(verifyWalletSignature(tampered, sig, wallet)).toBe(false);
+  });
+});

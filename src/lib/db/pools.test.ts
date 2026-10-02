@@ -86,6 +86,25 @@ describe('insertPool', () => {
     const u = await insertPool(validInput({ verified: false }));
     expect((await getPool(u.poolAddress))?.verified).toBe(false);
   });
+
+  it('records the dev buy amount at registration and reads it back', async () => {
+    const entry = await insertPool(validInput({ devBuyLamports: 500_000_000 }));
+    expect(entry.devBuyLamports).toBe(500_000_000);
+    const fetched = await getPool(entry.poolAddress);
+    expect(fetched?.devBuyLamports).toBe(500_000_000);
+  });
+
+  it('leaves devBuyLamports undefined when no dev buy was set', async () => {
+    const entry = await insertPool(validInput());
+    expect(entry.devBuyLamports).toBeUndefined();
+    expect((await getPool(entry.poolAddress))?.devBuyLamports).toBeUndefined();
+  });
+
+  it('drops non-positive dev buy amounts instead of storing them', async () => {
+    const entry = await insertPool(validInput({ devBuyLamports: 0 }));
+    expect(entry.devBuyLamports).toBeUndefined();
+    expect((await getPool(entry.poolAddress))?.devBuyLamports).toBeUndefined();
+  });
 });
 
 describe('getPool / listPools', () => {

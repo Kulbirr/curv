@@ -32,6 +32,7 @@ export function buildRegistrationMessage(
   creator: string,
   timestamp: number,
   feeSplits?: FeeSplitRecipient[],
+  devBuyLamports?: number | null,
 ): string {
   const lines = [
     'StockCurve pool registration',
@@ -41,6 +42,10 @@ export function buildRegistrationMessage(
   ];
   const terms = canonicalFeeSplitsTerms(feeSplits);
   if (terms) lines.push(`fee splits: ${terms}`);
+  // The dev buy the creator disclosed. Bound into the signature so the
+  // server stores exactly what the creator committed, and the trust
+  // panel can show it from block one.
+  if (devBuyLamports) lines.push(`dev buy: ${devBuyLamports} lamports`);
   return lines.join('\n');
 }
 

@@ -342,6 +342,7 @@ async function handlePost(req: NextApiRequest, res: NextApiResponse) {
     input.creator,
     input.timestamp,
     input.feeSplits,
+    input.devBuyLamports,
   );
   if (!verifyWalletSignature(message, input.signature, input.creator)) {
     return res.status(401).json({ error: 'Invalid wallet signature' });

@@ -201,6 +201,29 @@ describe('validateRegistrationBody', () => {
     expect(r.value.description).toBeUndefined();
     expect(r.value.website).toBeUndefined();
   });
+
+  it('accepts a positive integer devBuyLamports', async () => {
+    const r = validateRegistrationBody(validBody({ devBuyLamports: 500_000_000 }));
+    expect(r.ok).toBe(true);
+    if (r.ok === false) throw new Error('unreachable');
+    expect(r.value.devBuyLamports).toBe(500_000_000);
+  });
+
+  it('leaves devBuyLamports undefined when absent', async () => {
+    const r = validateRegistrationBody(validBody());
+    expect(r.ok).toBe(true);
+    if (r.ok === false) throw new Error('unreachable');
+    expect(r.value.devBuyLamports).toBeUndefined();
+  });
+
+  it('rejects non-positive or non-integer devBuyLamports', async () => {
+    for (const bad of [0, -1, 1.5, 'lots', NaN, Number.MAX_SAFE_INTEGER + 1]) {
+      const r = validateRegistrationBody(validBody({ devBuyLamports: bad }));
+      expect(r.ok).toBe(false);
+      if (r.ok === true) throw new Error('unreachable');
+      expect(r.error).toContain('devBuyLamports');
+    }
+  });
 });
 
 describe('getClientIp', () => {

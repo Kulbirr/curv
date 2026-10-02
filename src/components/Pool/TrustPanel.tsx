@@ -1,6 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
+import { BN } from '@coral-xyz/anchor';
 import { fetchJson } from './usePoolData';
 import { formatFeeRaw } from '@/lib/claim-creator-fees';
+import { rawToUi } from '@/lib/swap-math';
 
 /**
  * Trust panel: checkable facts about this pool, no scores and no
@@ -20,6 +22,10 @@ interface TrustResponse {
   graduated: boolean;
   mintAuthority: 'none' | 'held' | null;
   freezeAuthority: 'none' | 'held' | null;
+  /** Optional dev buy in quote lamports, disclosed by the creator at launch. */
+  devBuyLamports: number | null;
+  /** Quote decimals for rendering the dev buy amount. Null when unknown. */
+  quoteDecimals: number | null;
   lock: { allLocked: boolean; positionCount: number } | null;
   creatorFeesUnclaimed: {
     baseRaw: string | null;
@@ -36,6 +42,19 @@ interface TrustResponse {
 
 function shortAddress(addr: string): string {
   return addr.length > 12 ? `${addr.slice(0, 4)}…${addr.slice(-4)}` : addr;
+}
+
+/**
+ * Dev buy display amount (quote UI units) for the trust panel banner.
+ * Null when there is no dev buy to show: missing amount, zero, or
+ * unknown quote decimals. Pure so it is unit-testable without a DOM.
+ */
+export function devBuyDisplay(
+  devBuyLamports: number | null | undefined,
+  quoteDecimals: number | null | undefined,
+): string | null {
+  if (devBuyLamports == null || devBuyLamports <= 0 || quoteDecimals == null) return null;
+  return rawToUi(new BN(String(devBuyLamports)), quoteDecimals);
 }
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
@@ -67,10 +86,30 @@ export default function TrustPanel({ poolAddress }: { poolAddress: string }) {
     day: 'numeric',
     year: 'numeric',
   });
+  const devBuy = devBuyDisplay(t.devBuyLamports, t.quoteDecimals);
 
   return (
     <section className="sc-pool-info-card sc-trust-panel" aria-label="Pool facts">
       <div className="sc-trade-card-label">Facts, checked</div>
+      {devBuy !== null && (
+        <div className="mb-3 rounded-lg border border-primary/40 bg-primary/5 p-4">
+          <div className="flex items-center gap-2">
+            <span className="sc-section-glyph" aria-hidden="true">
+              ✦
+            </span>
+            <span className="text-xs font-semibold uppercase tracking-wide text-neutral-400">
+              Dev buy
+            </span>
+          </div>
+          <p className="mt-2 text-xl font-bold text-primary">
+            {devBuy} {t.quoteSymbol}
+          </p>
+          <p className="mt-1 text-xs leading-relaxed text-neutral-500">
+            The creator bought this in the launch flow. It is public from
+            block one.
+          </p>
+        </div>
+      )}
       <Row label="Launch record">
         {t.verified ? 'Matched the chain at launch' : 'Not verified at launch'}
       </Row>

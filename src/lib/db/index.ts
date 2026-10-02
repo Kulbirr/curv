@@ -66,7 +66,10 @@ CREATE TABLE IF NOT EXISTS pools (
   creator TEXT NOT NULL,
   created_at BIGINT NOT NULL,
   launched_at BIGINT,
-  verified BIGINT NOT NULL DEFAULT 0
+  verified BIGINT NOT NULL DEFAULT 0,
+  -- Optional dev buy in quote lamports, disclosed by the creator at
+  -- launch and shown on the trust panel. NULL = no dev buy.
+  dev_buy_lamports BIGINT
 );
 CREATE INDEX IF NOT EXISTS idx_pools_created ON pools (created_at DESC);
 
@@ -512,6 +515,9 @@ export function ensureSchema(db?: DbClient): Promise<void> {
     schemaReady = (async () => {
       const client = db ?? getPool();
       await client.query(SCHEMA);
+      // Column added after the pools table already existed in
+      // production: backfill it idempotently on every schema check.
+      await client.query('ALTER TABLE pools ADD COLUMN IF NOT EXISTS dev_buy_lamports BIGINT');
       await runSeedImport();
     })();
     schemaReady.catch(() => { schemaReady = null; });
