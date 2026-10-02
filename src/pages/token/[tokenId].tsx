@@ -266,9 +266,6 @@ function PoolPageContent({ poolAddress }: { poolAddress: string }) {
   if (stateQuery.isLoading) {
     return (
       <div className="sc-pool-page" aria-busy="true">
-        <div className="sc-pool-breadcrumb">
-          <span>Loading pool…</span>
-        </div>
         <div className="sc-pool-layout">
           <div className="sc-pool-main-column">
             <section className="sc-pool-token-head">
@@ -397,9 +394,6 @@ export default function TokenPage() {
     <Page>
       {!router.isReady || !poolAddress ? (
         <div className="sc-pool-page" aria-busy="true">
-          <div className="sc-pool-breadcrumb">
-            <span>Loading pool…</span>
-          </div>
           <div className="sc-pool-layout">
             <div className="sc-pool-main-column">
               <section className="sc-pool-token-head">
