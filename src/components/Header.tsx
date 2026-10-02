@@ -28,6 +28,7 @@ export function CurveMark({ className = '' }: { className?: string }) {
 const NAV_LINKS = [
   { label: 'Discover', href: '/' },
   { label: 'Launch', href: '/create-pool' },
+  { label: 'Strategies', href: '/strategies' },
   { label: 'Presets', href: '/presets' },
   { label: 'Portfolio', href: '/portfolio' },
   { label: 'FAQs', href: '/faqs' },
@@ -35,6 +36,7 @@ const NAV_LINKS = [
 
 function activeForPath(pathname: string): string {
   if (pathname === '/create-pool') return 'Launch';
+  if (pathname === '/strategies') return 'Strategies';
   if (pathname === '/presets') return 'Presets';
   if (pathname === '/portfolio') return 'Portfolio';
   if (pathname === '/faqs') return 'FAQs';

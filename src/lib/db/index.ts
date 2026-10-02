@@ -159,6 +159,48 @@ CREATE TABLE IF NOT EXISTS fee_split_bindings (
   bound_at BIGINT NOT NULL,
   PRIMARY KEY (pool_address, entry_index)
 );
+
+-- Trading strategy signals (mirror feed). Signals are published by the
+-- operator through the admin API and are identical for every subscriber:
+-- crypto spot buys only, no leverage, no personalization. Rows are never
+-- edited; a signal is cancelled by flipping status. The public feed only
+-- serves status = 'active' rows whose expires_at is in the future.
+CREATE TABLE IF NOT EXISTS strategy_signals (
+  id TEXT PRIMARY KEY,
+  base_mint TEXT NOT NULL,
+  quote_mint TEXT NOT NULL,
+  base_symbol TEXT NOT NULL,
+  quote_symbol TEXT NOT NULL,
+  base_decimals BIGINT NOT NULL DEFAULT 9,
+  quote_decimals BIGINT NOT NULL DEFAULT 9,
+  entry_price DOUBLE PRECISION NOT NULL,
+  max_price DOUBLE PRECISION NOT NULL,
+  size_text TEXT,
+  note TEXT,
+  status TEXT NOT NULL DEFAULT 'active',
+  expires_at BIGINT NOT NULL,
+  created_at BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_strategy_signals_live ON strategy_signals (status, expires_at DESC);
+
+-- Strategy feed subscriptions. A subscription is bought with a plain SOL
+-- transfer the subscriber signs themselves; the server only verifies the
+-- transfer on chain and records the expiry. Flat fee only, no performance
+-- cut. wallet is the subscriber's address.
+CREATE TABLE IF NOT EXISTS strategy_subscriptions (
+  wallet TEXT PRIMARY KEY,
+  expires_at BIGINT NOT NULL,
+  tx_signature TEXT,
+  created_at BIGINT NOT NULL
+);
+
+-- Idempotency for subscription payments: one signature pays for one
+-- subscription window. A signature seen here is rejected as already used.
+CREATE TABLE IF NOT EXISTS strategy_used_signatures (
+  signature TEXT PRIMARY KEY,
+  wallet TEXT NOT NULL,
+  created_at BIGINT NOT NULL
+);
 `;
 
 // pg returns BIGINT (int8) columns as strings by default. Unix-ms
