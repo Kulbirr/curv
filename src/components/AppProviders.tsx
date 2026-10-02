@@ -21,6 +21,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'sonner';
 import { useWindowWidthListener } from '@/lib/device';
 import { SOLANA_NETWORK } from '@/lib/solana';
+import { markLoadableForAndroidDeepLink } from '@/lib/mobile-wallet';
 
 // Client-only: wallet adapters pull in Ledger deps that break Node SSR
 // (this module is dynamically imported with ssr:false from _app.tsx).
@@ -40,9 +41,16 @@ const MWA_CHAINS: [`${string}:${string}`] =
 // hardcoded mainnet-first chain list (rewritten at install time by
 // scripts/patch-jup-mwa.cjs). Expose our chain list on window before any
 // provider renders so the patched bundle picks it up.
+//
+// Jupiter's provider also calls registerMwa() on every render with no dedupe,
+// which produced duplicate "Mobile" tiles alongside our own once-guarded
+// registration. Setting __CURV_MWA_DONE__ here (honored by the same patch
+// script) suppresses Jupiter's registration; ours below is the single MWA
+// wallet.
 if (typeof window !== 'undefined') {
   (window as unknown as Record<string, unknown>).__CURV_MWA_CHAINS__ =
     MWA_CHAINS;
+  (window as unknown as Record<string, unknown>).__CURV_MWA_DONE__ = true;
 }
 
 let mwaRegistered = false;
@@ -84,8 +92,15 @@ export default function AppProviders({ Component, pageProps }: AppProps) {
     const appUrl = (
       process.env.NEXT_PUBLIC_APP_URL || 'https://curvpad.fun'
     ).replace(/\/+$/, '');
+    const phantom = new PhantomWalletAdapter();
+    // Upstream only deep-links Phantom's in-app browser on iOS; Android
+    // supports the same ul/browse link. Without this the Phantom tile on
+    // Android is a dead end that just opens the wallet's home screen.
+    markLoadableForAndroidDeepLink(
+      phantom as unknown as Parameters<typeof markLoadableForAndroidDeepLink>[0]
+    );
     const list: Adapter[] = [
-      new PhantomWalletAdapter(),
+      phantom,
       new SolflareWalletAdapter(),
       new BackpackWalletAdapter(),
       new CoinbaseWalletAdapter(),
