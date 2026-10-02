@@ -14,6 +14,7 @@ export {
   getLatestPrice,
   getPrice24hAgo,
   getPrices24hAgoBatch,
+  getSparklinesBatch,
   recordTick,
   pruneTicks,
   getVolume24h,

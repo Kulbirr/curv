@@ -3,8 +3,8 @@ import { useRouter } from 'next/router'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useInfiniteQuery } from '@tanstack/react-query'
 import PoolCard from './PoolCard'
+import HeroCurve from './HeroCurve'
 import { matchesQuery } from './search'
-import { DASH } from '@/lib/format/number'
 import type { PoolSummary, PoolsResponse } from './types'
 
 type QuoteFilter = 'all' | 'SOL' | 'USDC' | 'stocks'
@@ -202,46 +202,49 @@ export default function Discover() {
       {/* Hero */}
       <section className="sc-discover-hero">
         <div className="sc-discover-intro">
-          <span className="sc-mainnet-label">
-            <i /> MARKET PREVIEW · {networkName}
-          </span>
+          <div className="sc-hero-toprow">
+            <span className="sc-hero-eyebrow">
+              <i />
+              FAIR LAUNCHES, BY DESIGN
+            </span>
+            <span className="sc-mainnet-label">
+              <i /> MARKET PREVIEW · {networkName}
+            </span>
+          </div>
           <h1>
-            Launch a token on a curve <em>you design</em>
+            Launch on a curve <em>you design.</em>
           </h1>
           <p>
-            Bonding curve launches for tokens and tokenized stock style
-            assets. No presale and no team allocation, just fair curves that
-            graduate to DEX liquidity.
+            No presale. No team allocation. Just a fair start and a curve
+            that can grow into market liquidity.
           </p>
           <div className="sc-discover-ctas">
-            <Link
-              href="/create-pool"
-              className="sc-button sc-button-primary"
+            <button
+              type="button"
+              className="sc-hero-cta-primary"
+              onClick={() =>
+                marketRef.current?.scrollIntoView({
+                  behavior: 'smooth',
+                  block: 'start',
+                })
+              }
             >
-              <span aria-hidden="true">↗</span> Launch token
+              Explore the market
+              <span aria-hidden="true">↘</span>
+            </button>
+            <Link href="/presets" className="sc-hero-cta-secondary">
+              See how curves work
             </Link>
-            <Link href="/presets" className="sc-button sc-button-secondary">
-              View presets
-            </Link>
+          </div>
+          <div className="sc-hero-points">
+            <span>Open launch</span>
+            <i />
+            <span>Community owned</span>
+            <i />
+            <span>DEX graduation</span>
           </div>
         </div>
-        <div
-          className="sc-platform-stats"
-          style={{ gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' }}
-        >
-          <div>
-            <span>Tokens launched</span>
-            <strong className="sc-number">
-              {isLoading ? DASH : totalCount.toLocaleString('en-US')}
-            </strong>
-          </div>
-          <div>
-            <span>Graduated to DEX</span>
-            <strong className="sc-number">
-              {isLoading ? DASH : graduatedTotal.toLocaleString('en-US')}
-            </strong>
-          </div>
-        </div>
+        <HeroCurve />
       </section>
 
       {/* Market */}
@@ -256,7 +259,11 @@ export default function Discover() {
             <span className="sc-market-count">
               {isLoading
                 ? '…'
-                : `${totalCount} token${totalCount === 1 ? '' : 's'}`}
+                : `${totalCount} token${totalCount === 1 ? '' : 's'}${
+                    graduatedTotal > 0
+                      ? ` · ${graduatedTotal} graduated`
+                      : ''
+                  }`}
             </span>
           </div>
           <label className="sc-search">

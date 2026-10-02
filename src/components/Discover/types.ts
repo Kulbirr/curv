@@ -36,6 +36,12 @@ export interface PoolSummary {
   marketCapUsd: number | null
   /** 24h volume in quote tokens. */
   volume24h: number | null
+  /**
+   * Card sparkline: real sampled prices (quote units), oldest first,
+   * bucketed across the trailing 24h. Null when fewer than 2 samples
+   * exist; the UI must draw nothing rather than invent a shape.
+   */
+  sparkline?: number[] | null
   /** Pool creation time (epoch; used for sorting only). */
   createdAt: number
   /** True while the backend is still refreshing this pool's numbers. */

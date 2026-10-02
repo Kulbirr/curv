@@ -14,7 +14,7 @@ import {
   hitRateLimit,
   pruneRateLimits,
 } from '@/lib/db/rate-limits';
-import { getPrices24hAgoBatch, getVolumes24hBatch } from '@/lib/price-history';
+import { getPrices24hAgoBatch, getSparklinesBatch, getVolumes24hBatch } from '@/lib/price-history';
 import { getQuoteUsdPrice, isUsdReferencePrice } from '@/lib/quote-prices';
 import { SOLANA_NETWORK } from '@/lib/solana';
 import {
@@ -60,6 +60,12 @@ export interface PoolSummary {
   marketCap: number | null;
   marketCapUsd: number | null;
   volume24h: number | null;
+  /**
+   * Card sparkline: real sampled prices (quote units), oldest first,
+   * bucketed across the trailing 24h. Null when fewer than 2 samples
+   * exist; the UI must draw nothing rather than invent a shape.
+   */
+  sparkline: number[] | null;
   stale: boolean;
   /** True only when every submitted field matched the on-chain accounts. */
   verified: boolean;
@@ -81,6 +87,7 @@ interface BatchReads {
   states: Map<string, StoredPoolState>;
   prices24hAgo: Map<string, number>;
   volumes24h: Map<string, number>;
+  sparklines: Map<string, number[]>;
 }
 
 function buildSummary(
@@ -127,6 +134,7 @@ function buildSummary(
     // Estimated activity only: sampled reserve movement, not exact trade
     // volume. UI must label it as an estimate, never as exact volume.
     volume24h: batch.volumes24h.get(tracked.poolAddress) ?? null,
+    sparkline: batch.sparklines.get(tracked.poolAddress) ?? null,
     stale,
     verified: tracked.verified === true,
   };
@@ -183,7 +191,12 @@ async function buildListBody(): Promise<ListBody> {
     getPrices24hAgoBatch(addresses),
     getVolumes24hBatch(addresses),
   ]);
-  const batch: BatchReads = { states, prices24hAgo, volumes24h };
+  // Sequential on purpose: the shared pg pool is small (max 5) and the
+  // history route's parallel reads were reverted for starving it. A list
+  // rebuild is singleflight and cached, so the extra serial query costs
+  // latency only on rebuild, never per request.
+  const sparklines = await getSparklinesBatch(addresses);
+  const batch: BatchReads = { states, prices24hAgo, volumes24h, sparklines };
   const summaries = pools.map((p) =>
     buildSummary(p, quoteUsdByMint.get(p.quoteMint) ?? null, batch),
   );

@@ -116,6 +116,54 @@ export async function getPrices24hAgoBatch(poolAddresses: string[]): Promise<Map
 }
 
 /**
+ * Batch sparklines for list cards: the last real tick in each of
+ * SPARKLINE_BUCKETS equal time buckets across the trailing 24h, per pool,
+ * oldest first. Same honesty rules as the rest of this module: points are
+ * real samples, never interpolated; pools with fewer than 2 points are
+ * absent from the map (caller serves null and the card draws nothing).
+ * One query per chunk, window-function bucketing like getPrices24hAgoBatch.
+ */
+export const SPARKLINE_BUCKETS = 14;
+
+export async function getSparklinesBatch(
+  poolAddresses: string[],
+): Promise<Map<string, number[]>> {
+  const out = new Map<string, number[]>();
+  const now = Date.now();
+  const cutoff = now - 24 * 3600 * 1000;
+  const bucketMs = Math.floor((24 * 3600 * 1000) / SPARKLINE_BUCKETS);
+  for (const chunk of chunkArray([...new Set(poolAddresses)], 500)) {
+    const placeholders = chunk.map((_, i) => `$${i + 1}`).join(',');
+    const rows = await query<{ pool_address: string; price: number }>(
+      `SELECT pool_address, price FROM (
+         SELECT pool_address, price, ts,
+                ROW_NUMBER() OVER (
+                  PARTITION BY pool_address, (ts / $${chunk.length + 2})
+                  ORDER BY ts DESC
+                ) AS rn
+         FROM ticks WHERE pool_address IN (${placeholders}) AND ts >= $${chunk.length + 1}
+       ) WHERE rn = 1 ORDER BY pool_address ASC, ts ASC`,
+      [...chunk, cutoff, bucketMs],
+    );
+    let cur: string | null = null;
+    let series: number[] = [];
+    const flush = () => {
+      if (cur !== null && series.length >= 2) out.set(cur, series);
+    };
+    for (const row of rows) {
+      if (row.pool_address !== cur) {
+        flush();
+        cur = row.pool_address;
+        series = [];
+      }
+      series.push(row.price);
+    }
+    flush();
+  }
+  return out;
+}
+
+/**
  * Record one sample. quoteReserve is in UI units (not lamports).
  * Portable ON CONFLICT upsert so an indexer restart never double-counts
  * a tick.
