@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Keypair } from '@solana/web3.js';
 import { useTempDb } from '@/test-support/db';
 import { mockReqRes } from '@/test-support/http';
-import handler from './signals';
+import handler from '@/pages/api/strategies/signals';
 import { STRATEGIES_ADMIN_HEADER, SUBSCRIPTION_DURATION_MS } from '@/lib/strategies';
 import { insertStrategySignal, recordSubscription } from '@/lib/db/strategies';
 

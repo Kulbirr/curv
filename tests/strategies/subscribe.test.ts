@@ -4,7 +4,7 @@ import bs58 from 'bs58';
 import { randomBytes } from 'crypto';
 import { useTempDb } from '@/test-support/db';
 import { mockReqRes } from '@/test-support/http';
-import handler, { isValidPassPayment } from './subscribe';
+import handler, { isValidPassPayment } from '@/pages/api/strategies/subscribe';
 import { SUBSCRIPTION_PRICE_LAMPORTS } from '@/lib/strategies';
 
 const wallet = Keypair.generate().publicKey.toBase58();
