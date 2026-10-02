@@ -1642,7 +1642,10 @@ export default function CreatePool() {
                   <p>
                     Share your 0.3% creator trading fees with collaborators.
                     Fixed at launch and public forever, so everyone can see
-                    the deal before they buy.
+                    the deal before they buy. Entries without a bound wallet
+                    are skipped at claim time and their share stays with you:
+                    send each collaborator their invite link from your pool
+                    page so they can bind their wallet.
                   </p>
                 </div>
               </div>
@@ -1656,7 +1659,7 @@ export default function CreatePool() {
                           rs.map((r, j) => (j === i ? { ...r, wallet: e.target.value } : r))
                         )
                       }
-                      placeholder="Solana address"
+                      placeholder="Solana address, or leave empty with an X handle"
                       spellCheck={false}
                       autoComplete="off"
                     />

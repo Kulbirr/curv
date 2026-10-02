@@ -4,6 +4,7 @@ import bs58 from 'bs58';
 import nacl from 'tweetnacl';
 import {
   buildMetadataUploadMessage,
+  buildRecipientBindingMessage,
   buildRegistrationMessage,
   isFreshTimestamp,
   SIGNATURE_TTL_MS,
@@ -112,5 +113,24 @@ describe('buildRegistrationMessage with fee splits', () => {
     expect(verifyWalletSignature(message, sig, wallet)).toBe(true);
     const tampered = message.replace('2500', '9000');
     expect(verifyWalletSignature(tampered, sig, wallet)).toBe(false);
+  });
+});
+
+describe('buildRecipientBindingMessage', () => {
+  it('builds a domain-separated binding message the wallet can sign and the server verifies', () => {
+    const kp = Keypair.generate();
+    const wallet = kp.publicKey.toBase58();
+    const pool = Keypair.generate().publicKey.toBase58();
+    const timestamp = Date.now();
+    const message = buildRecipientBindingMessage(pool, 2, wallet, timestamp);
+    expect(message).toContain('Curv recipient binding');
+    expect(message).toContain(`pool: ${pool}`);
+    expect(message).toContain('entry: 2');
+    expect(message).toContain(`wallet: ${wallet}`);
+    const sig = nacl.sign.detached(new TextEncoder().encode(message), kp.secretKey);
+    expect(verifyWalletSignature(message, bs58.encode(sig), wallet)).toBe(true);
+    // A signature for a different entry does not verify for this one
+    const other = buildRecipientBindingMessage(pool, 3, wallet, timestamp);
+    expect(verifyWalletSignature(other, bs58.encode(sig), wallet)).toBe(false);
   });
 });

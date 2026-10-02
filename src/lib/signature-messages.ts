@@ -21,10 +21,10 @@ export const SIGNATURE_TTL_MS = 5 * 60 * 1000;
  */
 export function canonicalFeeSplitsTerms(recipients: FeeSplitRecipient[] | undefined): string {
   if (!recipients || recipients.length === 0) return '';
-  const sorted = [...recipients].sort((a, b) => (a.wallet < b.wallet ? -1 : 1));
-  return sorted
-    .map((r) => `${r.wallet}:${r.bps}${r.handle ? `:${r.handle}` : ''}`)
-    .join(',');
+  const rendered = recipients.map((r) =>
+    r.wallet ? `${r.wallet}:${r.bps}${r.handle ? `:${r.handle}` : ''}` : `@${r.handle}:${r.bps}`,
+  );
+  return rendered.sort().join(',');
 }
 
 export function buildRegistrationMessage(
@@ -57,4 +57,26 @@ export function buildMetadataUploadMessage(wallet: string, timestamp: number): s
 
 export function isFreshTimestamp(timestamp: number): boolean {
   return Number.isFinite(timestamp) && Math.abs(Date.now() - timestamp) <= SIGNATURE_TTL_MS;
+}
+
+/**
+ * Message a collaborator signs to bind their wallet to one fee split
+ * entry. Domain-separated, names the pool, the entry index, the wallet
+ * and a fresh timestamp so a binding signature cannot be replayed
+ * against another pool, entry or wallet.
+ */
+export function buildRecipientBindingMessage(
+  poolAddress: string,
+  entryIndex: number,
+  wallet: string,
+  timestamp: number,
+): string {
+  return [
+    'Curv recipient binding',
+    `pool: ${poolAddress}`,
+    `entry: ${entryIndex}`,
+    `wallet: ${wallet}`,
+    `timestamp: ${timestamp}`,
+    'Binding is permanent: the first valid signature wins.',
+  ].join('\n');
 }

@@ -143,6 +143,19 @@ CREATE TABLE IF NOT EXISTS fee_splits (
   recipients TEXT NOT NULL,
   created_at BIGINT NOT NULL
 );
+
+-- Wallet bindings for fee split entries, written through the recipient
+-- onboarding links. One row per (pool, entry), first valid signature
+-- wins: the INSERT uses ON CONFLICT DO NOTHING and the application
+-- checks eligibility first. Rows are never updated or deleted; the
+-- bound wallet becomes the entry's payout wallet at claim time.
+CREATE TABLE IF NOT EXISTS fee_split_bindings (
+  pool_address TEXT NOT NULL,
+  entry_index INTEGER NOT NULL,
+  wallet TEXT NOT NULL,
+  bound_at BIGINT NOT NULL,
+  PRIMARY KEY (pool_address, entry_index)
+);
 `;
 
 // pg returns BIGINT (int8) columns as strings by default. Unix-ms

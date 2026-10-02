@@ -12,7 +12,7 @@ import {
   withdrawCreatorMigrationFeeFlow,
 } from '@/lib/claim-creator-fees';
 import { claimAndSplitFlow, planDistribution } from '@/lib/fee-split-claim';
-import type { FeeSplitRecipient } from '@/lib/fee-split-terms';
+import type { EffectiveFeeSplitRecipient, FeeSplitBinding } from '@/lib/fee-split-terms';
 import type { PoolStateResponse } from './types';
 import type { TrackedPool } from '@/lib/pool-registry';
 
@@ -22,7 +22,8 @@ interface FeeSplitsResponse {
   quoteMint: string;
   configAddress: string;
   creator: string;
-  recipients: FeeSplitRecipient[];
+  recipients: EffectiveFeeSplitRecipient[];
+  bindings: FeeSplitBinding[];
   creatorRemainderBps: number;
 }
 
@@ -56,6 +57,7 @@ export default function CreatorEarnings({
   const { publicKey, signTransaction, signAllTransactions, connected } = useWallet();
   const queryClient = useQueryClient();
   const [status, setStatus] = useState<Status>('idle');
+  const [copiedLink, setCopiedLink] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [txSig, setTxSig] = useState<string | null>(null);
   const runningRef = useRef(false);
@@ -105,6 +107,7 @@ export default function CreatorEarnings({
     retry: 1,
   });
   const splits = splitsQuery.data?.recipients ?? [];
+  const bindings = splitsQuery.data?.bindings ?? [];
   const hasSplits = splits.length > 0;
   const distribution = hasSplits
     ? planDistribution(state.creatorBaseFeeRaw, state.creatorQuoteFeeRaw, splits)
@@ -142,6 +145,7 @@ export default function CreatorEarnings({
           signAllTransactions: signAllTransactions ?? undefined,
           tracked,
           recipients: splits,
+          bindings,
         });
         setTxSig(signatures[0] ?? null);
         setStatus('confirmed');
@@ -267,6 +271,40 @@ export default function CreatorEarnings({
                     .filter(Boolean)
                     .join(' · ')}
                 </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {hasSplits && (
+        <div className="sc-split-plan" aria-label="Invite collaborators">
+          <div className="sc-trade-card-label">Invite collaborators to bind their wallets</div>
+          <p className="sc-fee-split-note">
+            Share each link with the right person. They connect their wallet and sign once to bind
+            it to their share. The first valid signature wins and a binding cannot be changed later.
+          </p>
+          {splits.map((r, i) => {
+            const link = `${typeof window !== 'undefined' ? window.location.origin : ''}/claim/onboard/${poolAddress}/${i}`;
+            const label = r.handle ? `@${r.handle}` : r.wallet ? `${r.wallet.slice(0, 4)}…${r.wallet.slice(-4)}` : `Entry ${i + 1}`;
+            return (
+              <div key={i} className="sc-split-row">
+                <span className="sc-split-who">
+                  {label} · {(r.bps / 100).toFixed(2)}%
+                  {r.bound || r.wallet ? ' · bound' : ' · waiting for wallet'}
+                </span>
+                <button
+                  type="button"
+                  className="sc-button sc-button-ghost"
+                  onClick={() => {
+                    void navigator.clipboard.writeText(link).then(() => {
+                      setCopiedLink(i);
+                      setTimeout(() => setCopiedLink((cur) => (cur === i ? null : cur)), 2000);
+                    });
+                  }}
+                >
+                  {copiedLink === i ? 'Copied' : 'Copy invite link'}
+                </button>
               </div>
             );
           })}

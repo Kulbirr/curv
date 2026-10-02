@@ -15,7 +15,8 @@ import { buildClaimCreatorFeesTx } from './claim-creator-fees';
 import { fetchPoolLiveState } from './pool-state';
 import type { TrackedPool } from './pool-registry';
 import { splitShareRaw } from './fee-split-terms';
-import type { FeeSplitRecipient } from './fee-split-terms';
+import type { EffectiveFeeSplitRecipient, FeeSplitBinding, FeeSplitRecipient } from './fee-split-terms';
+import { resolveEffectiveRecipients } from './fee-split-terms';
 
 /**
  * The DBC SDK appends an unwrap (CloseAccount) of the creator's wSOL ATA
@@ -60,6 +61,23 @@ export interface SplitPayout {
   quoteRaw: string;
 }
 
+/**
+ * Recipients with a wallet to pay: bound wallet when set, otherwise
+ * the registered one. Handle-only entries with no bound wallet have
+ * nothing to pay to, so they are skipped and their share stays with
+ * the creator remainder.
+ */
+export function payableRecipients(
+  recipients: FeeSplitRecipient[],
+  bindings: FeeSplitBinding[] = [],
+): FeeSplitRecipient[] {
+  return resolveEffectiveRecipients(recipients, bindings)
+    .filter(
+      (r): r is EffectiveFeeSplitRecipient & { effectiveWallet: string } => !!r.effectiveWallet,
+    )
+    .map((r) => ({ ...r, wallet: r.effectiveWallet }));
+}
+
 /** Pure payout plan: every recipient's share of the accrued fees. */
 export function planDistribution(
   accruedBaseRaw: string | null | undefined,
@@ -68,6 +86,9 @@ export function planDistribution(
 ): SplitPayout[] {
   const out: SplitPayout[] = [];
   for (const r of recipients) {
+    // Entries with no wallet anywhere are skipped: their share stays
+    // with the creator remainder.
+    if (!r.wallet) continue;
     const baseRaw = splitShareRaw(accruedBaseRaw, r.bps);
     const quoteRaw = splitShareRaw(accruedQuoteRaw, r.bps);
     if (baseRaw === '0' && quoteRaw === '0') continue;
@@ -93,12 +114,14 @@ export async function buildClaimAndSplitTransactions(args: {
   connection: Connection;
   tracked: TrackedPool;
   recipients: FeeSplitRecipient[];
+  bindings?: FeeSplitBinding[];
 }): Promise<ClaimAndSplitBuild> {
   const { connection, tracked, recipients } = args;
   const creator = new PublicKey(tracked.creator);
 
   const live = await fetchPoolLiveState(tracked);
-  const distribution = planDistribution(live.creatorBaseFeeRaw, live.creatorQuoteFeeRaw, recipients);
+  const payable = payableRecipients(recipients, args.bindings);
+  const distribution = planDistribution(live.creatorBaseFeeRaw, live.creatorQuoteFeeRaw, payable);
 
   const claimTx = await buildClaimCreatorFeesTx({
     poolAddress: tracked.poolAddress,
@@ -176,11 +199,13 @@ export async function claimAndSplitFlow(args: {
   signAllTransactions?: (txs: Transaction[]) => Promise<Transaction[]>;
   tracked: TrackedPool;
   recipients: FeeSplitRecipient[];
+  bindings?: FeeSplitBinding[];
 }): Promise<{ signatures: string[]; distribution: SplitPayout[] }> {
   const build = await buildClaimAndSplitTransactions({
     connection: args.connection,
     tracked: args.tracked,
     recipients: args.recipients,
+    bindings: args.bindings,
   });
 
   const signed =

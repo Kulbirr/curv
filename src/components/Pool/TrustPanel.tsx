@@ -29,7 +29,7 @@ interface TrustResponse {
   } | null;
   activity24h: { buys: number; sells: number } | null;
   feeSplits: {
-    recipients: Array<{ wallet: string; bps: number; handle?: string }>;
+    recipients: Array<{ wallet?: string; bps: number; handle?: string }>;
     creatorRemainderBps: number;
   } | null;
 }
@@ -119,7 +119,7 @@ export default function TrustPanel({ poolAddress }: { poolAddress: string }) {
             `Creator ${(t.feeSplits.creatorRemainderBps / 100).toFixed(2)}%`,
             ...t.feeSplits.recipients.map(
               (r) =>
-                `${(r.bps / 100).toFixed(2)}% ${r.handle ? `@${r.handle}` : shortAddress(r.wallet)}`,
+                `${(r.bps / 100).toFixed(2)}% ${r.handle ? `@${r.handle}` : r.wallet ? shortAddress(r.wallet) : 'unbound'}`,
             ),
           ].join(' · ')}
         </Row>

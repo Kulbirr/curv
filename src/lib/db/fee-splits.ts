@@ -1,12 +1,14 @@
 import { execute, query } from './index';
-import type { FeeSplitRecipient } from '../fee-split-terms';
+import type { FeeSplitBinding, FeeSplitRecipient } from '../fee-split-terms';
 
-export type { FeeSplitRecipient } from '../fee-split-terms';
+export type { FeeSplitBinding, FeeSplitRecipient } from '../fee-split-terms';
 export {
   BPS_TOTAL,
   MAX_SPLIT_RECIPIENTS,
   MAX_SPLIT_TOTAL_BPS,
+  checkBindingEligibility,
   creatorRemainderBps,
+  resolveEffectiveRecipients,
   splitShareRaw,
   validateFeeSplits,
 } from '../fee-split-terms';
@@ -44,6 +46,42 @@ export async function getFeeSplits(poolAddress: string): Promise<FeeSplitRecipie
   } catch {
     return [];
   }
+}
+
+/**
+ * All wallet bindings recorded for a pool, ordered by entry index.
+ */
+export async function getFeeSplitBindings(poolAddress: string): Promise<FeeSplitBinding[]> {
+  const rows = await query<{ entry_index: number; wallet: string; bound_at: number }>(
+    'SELECT entry_index, wallet, bound_at FROM fee_split_bindings WHERE pool_address = $1 ORDER BY entry_index',
+    [poolAddress],
+  );
+  return rows.map((r) => ({
+    poolAddress,
+    entryIndex: r.entry_index,
+    wallet: r.wallet,
+    boundAt: r.bound_at,
+  }));
+}
+
+/**
+ * Record a wallet binding for one split entry. First valid signature
+ * wins: ON CONFLICT DO NOTHING makes the insert a no-op when a row
+ * already exists, and the returned flag tells the caller whether this
+ * call was the one that won. Bindings are never updated or deleted.
+ */
+export async function insertFeeSplitBinding(
+  poolAddress: string,
+  entryIndex: number,
+  wallet: string,
+): Promise<boolean> {
+  const rowCount = await execute(
+    `INSERT INTO fee_split_bindings (pool_address, entry_index, wallet, bound_at)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT (pool_address, entry_index) DO NOTHING`,
+    [poolAddress, entryIndex, wallet, Date.now()],
+  );
+  return rowCount === 1;
 }
 
 /** All pools where this wallet is a split recipient (the claim loop inbox). */
