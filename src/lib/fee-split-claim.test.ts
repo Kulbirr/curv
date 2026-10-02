@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
-import { Keypair, Transaction, TransactionInstruction } from '@solana/web3.js';
+import { Keypair, PublicKey, Transaction, TransactionInstruction } from '@solana/web3.js';
+import {
+  NATIVE_MINT,
+  TOKEN_PROGRAM_ID,
+  createCloseAccountInstruction,
+  getAssociatedTokenAddressSync,
+} from '@solana/spl-token';
 import { buildClaimAndSplitTransactions, planDistribution } from './fee-split-claim';
 import type { FeeSplitRecipient } from './fee-split-terms';
 
@@ -10,15 +16,22 @@ vi.mock('./pool-state', () => ({
   }),
 }));
 
+// Mimics the DBC SDK's claim: one claim instruction plus the wSOL unwrap
+// (CloseAccount) it appends for SOL-quoted pools.
 vi.mock('./claim-creator-fees', () => ({
-  buildClaimCreatorFeesTx: vi.fn().mockResolvedValue({
-    instructions: [
-      new TransactionInstruction({
-        keys: [],
-        programId: Keypair.generate().publicKey,
-        data: Buffer.from([1, 2, 3]),
-      }),
-    ],
+  buildClaimCreatorFeesTx: vi.fn().mockImplementation(async (args: { creator: string }) => {
+    const creator = new PublicKey(args.creator);
+    const wsolAta = getAssociatedTokenAddressSync(NATIVE_MINT, creator);
+    return {
+      instructions: [
+        new TransactionInstruction({
+          keys: [],
+          programId: Keypair.generate().publicKey,
+          data: Buffer.from([1, 2, 3]),
+        }),
+        createCloseAccountInstruction(wsolAta, creator, creator),
+      ],
+    };
   }),
 }));
 
@@ -104,6 +117,61 @@ describe('buildClaimAndSplitTransactions', () => {
     expect(build.transactions.length).toBeGreaterThan(1);
     const ixCounts = build.transactions.map((t) => t.instructions.length);
     expect(ixCounts[0]).toBeGreaterThan(0);
+  });
+
+  it('removes the SDK wSOL unwrap when recipients are owed the SOL leg', async () => {
+    const nativeSol = NATIVE_MINT.toBase58();
+    const tracked = makeTracked();
+    tracked.quoteMint = nativeSol;
+    const build = await buildClaimAndSplitTransactions({
+      connection: makeConnection({ accountExists: false }),
+      tracked,
+      recipients: recipients(2, 1000),
+    });
+    const ixs = build.transactions.flatMap((t) => t.instructions);
+    const creatorWsolAta = getAssociatedTokenAddressSync(
+      NATIVE_MINT,
+      new PublicKey(tracked.creator),
+    ).toBase58();
+    const unwraps = ixs.filter(
+      (ix) =>
+        ix.programId.equals(TOKEN_PROGRAM_ID) &&
+        ix.data[0] === 9 &&
+        ix.keys[0]?.pubkey.toBase58() === creatorWsolAta,
+    );
+    // The unwrap must go: payouts are wSOL SPL transfers from that ATA.
+    expect(unwraps).toHaveLength(0);
+    // The wSOL legs are paid as SPL transfers, so they work for dust too.
+    const tokenProg = TOKEN_PROGRAM_ID.toBase58();
+    const transfers = ixs.filter(
+      (ix) => ix.programId.toBase58() === tokenProg && ix.data[0] === 3,
+    );
+    expect(transfers.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('keeps the claim untouched when no SOL payout is owed', async () => {
+    const nativeSol = NATIVE_MINT.toBase58();
+    const tracked = makeTracked();
+    tracked.quoteMint = nativeSol;
+    // Zero-bps recipients: distribution is empty, so the SDK unwrap stays
+    // and a plain claim still pays the creator native SOL.
+    const build = await buildClaimAndSplitTransactions({
+      connection: makeConnection({ accountExists: false }),
+      tracked,
+      recipients: [],
+    });
+    const ixs = build.transactions.flatMap((t) => t.instructions);
+    const creatorWsolAta = getAssociatedTokenAddressSync(
+      NATIVE_MINT,
+      new PublicKey(tracked.creator),
+    ).toBase58();
+    const unwraps = ixs.filter(
+      (ix) =>
+        ix.programId.equals(TOKEN_PROGRAM_ID) &&
+        ix.data[0] === 9 &&
+        ix.keys[0]?.pubkey.toBase58() === creatorWsolAta,
+    );
+    expect(unwraps).toHaveLength(1);
   });
 
   it('creates missing recipient token accounts before paying them', async () => {

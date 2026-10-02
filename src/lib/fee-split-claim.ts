@@ -5,15 +5,35 @@ import {
   TransactionInstruction,
 } from '@solana/web3.js';
 import {
+  TOKEN_PROGRAM_ID,
   createAssociatedTokenAccountInstruction,
   createTransferInstruction,
   getAssociatedTokenAddressSync,
 } from '@solana/spl-token';
+import { NATIVE_MINT } from '@solana/spl-token';
 import { buildClaimCreatorFeesTx } from './claim-creator-fees';
 import { fetchPoolLiveState } from './pool-state';
 import type { TrackedPool } from './pool-registry';
 import { splitShareRaw } from './fee-split-terms';
 import type { FeeSplitRecipient } from './fee-split-terms';
+
+/**
+ * The DBC SDK appends an unwrap (CloseAccount) of the creator's wSOL ATA
+ * for SOL-quoted pools, paying the creator in native SOL. When split
+ * recipients are owed wSOL, that close must go: the payout transfers below
+ * read the creator's wSOL ATA, which would otherwise be a closed account.
+ * Removing it is safe: the SDK creates the ATA idempotently, so repeat
+ * claims keep working, and recipients receive wSOL (1:1 with SOL).
+ */
+function isWsolUnwrapOf(ix: TransactionInstruction, wsolAta: PublicKey): boolean {
+  return (
+    ix.programId.equals(TOKEN_PROGRAM_ID) &&
+    ix.data.length > 0 &&
+    ix.data[0] === 9 && // CloseAccount
+    ix.keys.length > 0 &&
+    ix.keys[0].pubkey.equals(wsolAta)
+  );
+}
 
 /**
  * Claim and distribute: the atomic heart of fee splits.
@@ -90,12 +110,24 @@ export async function buildClaimAndSplitTransactions(args: {
 
   const transactions: Transaction[] = [];
   let current = newTx();
-  current.add(...claimTx.instructions);
+  // When recipients are owed the native SOL leg, drop the SDK's wSOL
+  // unwrap: payouts below are wSOL SPL transfers from the creator's wSOL
+  // ATA, which the unwrap would close first. With no SOL payouts the
+  // claim is untouched, so a plain claim still pays native SOL.
+  const quoteMintPk = new PublicKey(tracked.quoteMint);
+  const owesSolPayouts =
+    quoteMintPk.equals(NATIVE_MINT) && distribution.some((p) => BigInt(p.quoteRaw) > BigInt(0));
+  const claimInstructions = owesSolPayouts
+    ? claimTx.instructions.filter(
+        (ix) => !isWsolUnwrapOf(ix, getAssociatedTokenAddressSync(NATIVE_MINT, creator)),
+      )
+    : claimTx.instructions;
+  current.add(...claimInstructions);
   transactions.push(current);
 
   // Distribution instructions, packed after the claim while they fit.
   const baseMint = new PublicKey(tracked.baseMint);
-  const quoteMint = new PublicKey(tracked.quoteMint);
+  const quoteMint = quoteMintPk;
   const pushIx = (ix: TransactionInstruction) => {
     current.add(ix);
     if (txSize(current) > TX_SIZE_BUDGET) {
