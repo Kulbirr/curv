@@ -8,20 +8,40 @@
  * formats cannot drift apart.
  */
 
+import type { FeeSplitRecipient } from './fee-split-terms';
+
 /** Wallet-signed backend writes expire after 5 minutes to prevent replays. */
 export const SIGNATURE_TTL_MS = 5 * 60 * 1000;
+
+/**
+ * Canonical fee split terms for the signature: wallets sorted, no
+ * handles' @, handles included (they are part of the public record).
+ * Empty when there are no splits, so registrations without splits keep
+ * the exact historical message format.
+ */
+export function canonicalFeeSplitsTerms(recipients: FeeSplitRecipient[] | undefined): string {
+  if (!recipients || recipients.length === 0) return '';
+  const sorted = [...recipients].sort((a, b) => (a.wallet < b.wallet ? -1 : 1));
+  return sorted
+    .map((r) => `${r.wallet}:${r.bps}${r.handle ? `:${r.handle}` : ''}`)
+    .join(',');
+}
 
 export function buildRegistrationMessage(
   poolAddress: string,
   creator: string,
   timestamp: number,
+  feeSplits?: FeeSplitRecipient[],
 ): string {
-  return [
+  const lines = [
     'StockCurve pool registration',
     `pool: ${poolAddress}`,
     `creator: ${creator}`,
     `timestamp: ${timestamp}`,
-  ].join('\n');
+  ];
+  const terms = canonicalFeeSplitsTerms(feeSplits);
+  if (terms) lines.push(`fee splits: ${terms}`);
+  return lines.join('\n');
 }
 
 /**

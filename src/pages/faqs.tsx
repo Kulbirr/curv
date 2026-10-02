@@ -59,6 +59,14 @@ const FAQS: { q: string; a: string }[] = [
     a: 'Curv is currently live on Solana devnet. Mainnet support is on the roadmap.',
   },
   {
+    q: 'Can I split creator fees with collaborators?',
+    a: 'Yes. When you launch you can split your 0.3% creator trading fee with up to 10 wallets, by percentage, with optional X handles so people know who they are. Recipients can share at most 90% of your fee in total. The splits are fixed at launch, signed by your wallet, and shown publicly on the token page, so nobody can change the deal after people buy in. When you claim your earnings through Curv, your claim also pays every recipient their share in the same signing session.',
+  },
+  {
+    q: 'Can bots and terminals read Curv data?',
+    a: 'Yes. There is a free public read API at /api/v1/pools for the token list and /api/v1/pools/[address] for one pool, with open cross origin access and no key needed. Every token page also has an embeddable live chart widget: press Embed on the page and paste the snippet into your site.',
+  },
+  {
     q: 'Is this financial advice?',
     a: 'No. Tokens are volatile and smart contracts carry risk. Never trade money you cannot afford to lose, and do your own research before launching or buying.',
   },

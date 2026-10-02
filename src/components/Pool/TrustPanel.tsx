@@ -1,0 +1,129 @@
+import { useQuery } from '@tanstack/react-query';
+import { fetchJson } from './usePoolData';
+import { formatFeeRaw } from '@/lib/claim-creator-fees';
+
+/**
+ * Trust panel: checkable facts about this pool, no scores and no
+ * labels. Every row is backed by the registry, the indexer, or a
+ * direct chain read served by /api/pools/[address]/trust. A fact the
+ * API could not establish comes back null and the row is omitted,
+ * never guessed. The panel renders nothing until facts arrive, so a
+ * failed lookup never shows a half empty box of claims.
+ */
+
+interface TrustResponse {
+  verified: boolean;
+  creator: string;
+  createdAt: number;
+  baseSymbol: string;
+  quoteSymbol: string;
+  graduated: boolean;
+  mintAuthority: 'none' | 'held' | null;
+  freezeAuthority: 'none' | 'held' | null;
+  lock: { allLocked: boolean; positionCount: number } | null;
+  creatorFeesUnclaimed: {
+    baseRaw: string | null;
+    quoteRaw: string | null;
+    baseDecimals: number;
+    quoteDecimals: number;
+  } | null;
+  activity24h: { buys: number; sells: number } | null;
+  feeSplits: {
+    recipients: Array<{ wallet: string; bps: number; handle?: string }>;
+    creatorRemainderBps: number;
+  } | null;
+}
+
+function shortAddress(addr: string): string {
+  return addr.length > 12 ? `${addr.slice(0, 4)}…${addr.slice(-4)}` : addr;
+}
+
+function Row({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <span>{label}</span>
+      <strong>{children}</strong>
+    </div>
+  );
+}
+
+export default function TrustPanel({ poolAddress }: { poolAddress: string }) {
+  const query = useQuery<TrustResponse>({
+    queryKey: ['pool-trust', poolAddress],
+    queryFn: () => fetchJson<TrustResponse>(`/api/pools/${poolAddress}/trust`),
+    enabled: !!poolAddress,
+    staleTime: 60_000,
+    retry: 1,
+  });
+
+  const t = query.data;
+  if (!t) return null;
+
+  const fees = t.creatorFeesUnclaimed;
+  const baseFee = fees ? formatFeeRaw(fees.baseRaw, fees.baseDecimals) : null;
+  const quoteFee = fees ? formatFeeRaw(fees.quoteRaw, fees.quoteDecimals) : null;
+  const launched = new Date(t.createdAt).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+
+  return (
+    <section className="sc-pool-info-card sc-trust-panel" aria-label="Pool facts">
+      <div className="sc-trade-card-label">Facts, checked</div>
+      <Row label="Launch record">
+        {t.verified ? 'Matched the chain at launch' : 'Not verified at launch'}
+      </Row>
+      <Row label="Creator">
+        <span className="sc-mono">{shortAddress(t.creator)}</span>
+      </Row>
+      <Row label="Launched">{launched}</Row>
+      <Row label="Pair">
+        {t.baseSymbol} / {t.quoteSymbol}
+        {t.graduated ? ' · DAMM v2' : ' · bonding curve'}
+      </Row>
+      {t.mintAuthority !== null && (
+        <Row label="Mint authority">
+          {t.mintAuthority === 'none' ? 'None, supply is fixed' : 'Held, supply can grow'}
+        </Row>
+      )}
+      {t.freezeAuthority !== null && (
+        <Row label="Freeze authority">
+          {t.freezeAuthority === 'none' ? 'None, wallets cannot be frozen' : 'Held'}
+        </Row>
+      )}
+      <Row label="Liquidity">
+        {t.graduated
+          ? t.lock
+            ? t.lock.allLocked
+              ? 'Locked permanently in DAMM v2'
+              : 'In DAMM v2, lock not fully verified'
+            : 'In DAMM v2'
+          : 'Locks permanently at graduation'}
+      </Row>
+      {fees && (baseFee !== null || quoteFee !== null) && (
+        <Row label="Creator fees unclaimed">
+          {[baseFee ? `${baseFee} ${t.baseSymbol}` : null, quoteFee ? `${quoteFee} ${t.quoteSymbol}` : null]
+            .filter(Boolean)
+            .join(' · ')}
+        </Row>
+      )}
+      {t.activity24h && (
+        <Row label="Activity, 24h est">
+          {t.activity24h.buys} buys · {t.activity24h.sells} sells
+        </Row>
+      )}
+      {t.feeSplits && (
+        <Row label="Fee splits">
+          {[
+            `Creator ${(t.feeSplits.creatorRemainderBps / 100).toFixed(2)}%`,
+            ...t.feeSplits.recipients.map(
+              (r) =>
+                `${(r.bps / 100).toFixed(2)}% ${r.handle ? `@${r.handle}` : shortAddress(r.wallet)}`,
+            ),
+          ].join(' · ')}
+        </Row>
+      )}
+    </section>
+  );
+}

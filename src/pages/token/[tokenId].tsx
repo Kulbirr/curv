@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react';
 import type { CSSProperties } from 'react';
+import type { GetServerSideProps } from 'next';
+import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
+import { getTrackedPool } from '@/lib/pool-registry';
 import { BN } from '@coral-xyz/anchor';
 import { PublicKey } from '@solana/web3.js';
 import { useWallet } from '@solana/wallet-adapter-react';
@@ -22,6 +25,7 @@ import {
   PriceChart,
   TradePanel,
   TradeStats,
+  TrustPanel,
   useOnChainPool,
   usePoolHistory,
   usePoolStatePush,
@@ -255,6 +259,67 @@ function ActivityCard({
   );
 }
 
+/**
+ * Share row for the token page: post to X (the link unfurls with the
+ * OG share card), copy the page link, or copy an embed snippet for the
+ * live chart widget. All copy is written out in full here so it can be
+ * reviewed as public facing text.
+ */
+function ShareRow({
+  poolAddress,
+  baseName,
+  baseSymbol,
+}: {
+  poolAddress: string;
+  baseName: string;
+  baseSymbol: string;
+}) {
+  const [copied, setCopied] = useState<'link' | 'embed' | null>(null);
+
+  const pageUrl =
+    typeof window !== 'undefined'
+      ? `${window.location.origin}/token/${poolAddress}`
+      : `https://curvpad.fun/token/${poolAddress}`;
+  const shareText = `${baseName} ($${baseSymbol}) is live on Curv. Fair launch, no presale, liquidity locked at graduation.`;
+  const xUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(pageUrl)}`;
+  const embedCode = `<iframe src="${pageUrl.replace('/token/', '/embed/')}" width="380" height="230" style="border:0;border-radius:14px" title="${baseName} on Curv" loading="lazy"></iframe>`;
+
+  const copy = async (kind: 'link' | 'embed', text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    }
+    setCopied(kind);
+    window.setTimeout(() => setCopied((c) => (c === kind ? null : c)), 2000);
+  };
+
+  return (
+    <div className="sc-share-row">
+      <a
+        className="sc-share-btn"
+        href={xUrl}
+        target="_blank"
+        rel="noreferrer"
+        aria-label={`Share ${baseName} on X`}
+      >
+        Share on X
+      </a>
+      <button type="button" className="sc-share-btn" onClick={() => copy('link', pageUrl)}>
+        {copied === 'link' ? 'Copied' : 'Copy link'}
+      </button>
+      <button type="button" className="sc-share-btn" onClick={() => copy('embed', embedCode)}>
+        {copied === 'embed' ? 'Copied' : 'Embed'}
+      </button>
+    </div>
+  );
+}
+
 function PoolPageContent({ poolAddress }: { poolAddress: string }) {
   const stateQuery = usePoolStatePush(poolAddress);
   const historyQuery = usePoolHistory(poolAddress);
@@ -349,6 +414,11 @@ function PoolPageContent({ poolAddress }: { poolAddress: string }) {
         <Link href="/">Discover</Link>
         <span>›</span>
         <strong>{state.baseName || state.baseSymbol}</strong>
+        <ShareRow
+          poolAddress={poolAddress}
+          baseName={state.baseName || state.baseSymbol}
+          baseSymbol={state.baseSymbol}
+        />
       </div>
 
       <div className="sc-pool-layout">
@@ -369,6 +439,7 @@ function PoolPageContent({ poolAddress }: { poolAddress: string }) {
             }
           />
           <GraduationCard state={state} />
+          <TrustPanel poolAddress={poolAddress} />
           {state.graduated && <LiquidityLock poolAddress={poolAddress} />}
           <CreatorEarnings poolAddress={poolAddress} state={state} />
           <ActivityCard state={state} onChain={onChainQuery.data} />
@@ -385,13 +456,76 @@ function PoolPageContent({ poolAddress }: { poolAddress: string }) {
   );
 }
 
-export default function TokenPage() {
+export interface TokenOgProps {
+  name: string;
+  symbol: string;
+  quoteSymbol: string;
+  address: string;
+}
+
+/**
+ * Server side meta for link unfurling: when a token link is pasted into
+ * X or a chat, the crawler reads these tags and shows the share card
+ * from /api/og/pool/[address]. Data comes from the pool registry only
+ * (names and pair), never from live price state, so the meta is stable
+ * while the card image itself stays fresh.
+ */
+export const getServerSideProps: GetServerSideProps<{ og: TokenOgProps | null }> = async (
+  ctx,
+) => {
+  const raw = ctx.params?.tokenId;
+  const address = typeof raw === 'string' && raw.length >= 32 ? raw : null;
+  if (!address) return { props: { og: null } };
+  try {
+    const tracked = await getTrackedPool(address);
+    if (!tracked) return { props: { og: null } };
+    return {
+      props: {
+        og: {
+          name: tracked.baseName,
+          symbol: tracked.baseSymbol,
+          quoteSymbol: tracked.quoteSymbol,
+          address: tracked.poolAddress,
+        },
+      },
+    };
+  } catch {
+    return { props: { og: null } };
+  }
+};
+
+export default function TokenPage({ og }: { og: TokenOgProps | null }) {
   const router = useRouter();
   const raw = router.query.tokenId;
   const poolAddress = typeof raw === 'string' && raw.length >= 32 ? raw : null;
 
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://curvpad.fun';
+  const title = og ? `${og.name} ($${og.symbol}) · Curv` : 'Token · Curv';
+  const description = og
+    ? `${og.name} ($${og.symbol}) is live on Curv, paired with ${og.quoteSymbol}. Fair launch on Meteora DBC with liquidity locked at graduation.`
+    : 'A fair launch token on Curv, built on Meteora DBC.';
+
   return (
     <Page>
+      <Head>
+        <title>{title}</title>
+        <meta name="description" content={description} />
+        <meta property="og:type" content="website" />
+        <meta property="og:title" content={title} />
+        <meta property="og:description" content={description} />
+        {og ? (
+          <>
+            <meta property="og:url" content={`${appUrl}/token/${og.address}`} />
+            <meta property="og:image" content={`${appUrl}/api/og/pool/${og.address}`} />
+            <meta property="og:image:width" content="1200" />
+            <meta property="og:image:height" content="630" />
+            <meta name="twitter:card" content="summary_large_image" />
+            <meta name="twitter:title" content={title} />
+            <meta name="twitter:description" content={description} />
+            <meta name="twitter:image" content={`${appUrl}/api/og/pool/${og.address}`} />
+          </>
+        ) : null}
+      </Head>
       {!router.isReady || !poolAddress ? (
         <div className="sc-pool-page" aria-busy="true">
           <div className="sc-pool-layout">

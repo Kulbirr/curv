@@ -2210,6 +2210,7 @@ select {
 
 .sc-pool-breadcrumb {
   display: flex;
+  flex-wrap: wrap;
   min-height: 48px;
   align-items: center;
   gap: 10px;
@@ -2239,6 +2240,34 @@ select {
 .sc-pool-breadcrumb strong {
   color: #d4dbd2;
   font-weight: 550;
+}
+
+
+.sc-share-row {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+
+.sc-share-btn {
+  padding: 5px 10px;
+  border: 1px solid #2a332c;
+  border-radius: 999px;
+  background: #101613;
+  color: #b9c4ba;
+  font-size: 10.5px;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+
+.sc-share-btn:hover {
+  color: #eef2eb;
+  border-color: #3a463c;
 }
 
 
@@ -6001,4 +6030,355 @@ select {
   opacity: 0.65;
   vertical-align: baseline;
   cursor: help;
+}
+
+
+/* Embeddable chart widget (/embed/[address]): framed by other sites,
+   so it is a self contained card with no page chrome around it. */
+.sc-embed {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  max-width: 420px;
+  margin: 0 auto;
+  padding: 16px 18px 13px;
+  background: #0a0e0c;
+  border: 1px solid #223028;
+  border-radius: 14px;
+  color: #eef2eb;
+}
+
+
+.sc-embed-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+
+.sc-embed-head img {
+  border-radius: 50%;
+}
+
+
+.sc-embed-initial {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: #101613;
+  border: 1px solid #223028;
+  color: #32f27b;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+
+.sc-embed-name {
+  font-weight: 650;
+  font-size: 15px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+
+.sc-embed-symbol {
+  color: #32f27b;
+  font-weight: 600;
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+
+
+.sc-embed-price {
+  margin-left: auto;
+  font-weight: 700;
+  font-size: 15px;
+  white-space: nowrap;
+}
+
+
+.sc-embed-spark {
+  width: 100%;
+  height: 84px;
+  display: block;
+}
+
+
+.sc-embed-spark-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #77817b;
+  font-size: 12px;
+  border: 1px dashed #223028;
+  border-radius: 8px;
+}
+
+
+.sc-embed-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  color: #8b968d;
+  font-size: 11.5px;
+}
+
+
+.sc-embed-meta b {
+  color: #dfe5dc;
+}
+
+
+.sc-embed-progress {
+  height: 6px;
+}
+
+
+.sc-embed-foot {
+  display: flex;
+  align-items: center;
+  border-top: 1px solid #1c2620;
+  padding-top: 10px;
+}
+
+
+.sc-embed-brand {
+  color: #8b968d;
+  font-weight: 700;
+  font-size: 13px;
+}
+
+
+.sc-embed-trade {
+  margin-left: auto;
+  color: #32f27b;
+  font-weight: 650;
+  font-size: 12.5px;
+  text-decoration: none;
+}
+
+
+.sc-embed-trade:hover {
+  text-decoration: underline;
+}
+
+
+.sc-embed-pulse {
+  border-radius: 8px;
+  background: #161c1a;
+  width: 100%;
+}
+
+
+.sc-embed-error {
+  align-items: center;
+  justify-content: center;
+  color: #77817b;
+  font-size: 13px;
+  min-height: 120px;
+}
+
+
+/* Fee split distribution plan inside the creator earnings panel. */
+.sc-split-plan {
+  margin: 14px 0 0;
+  padding: 12px 14px;
+  border: 1px solid #223028;
+  border-radius: 10px;
+  background: #0d1210;
+}
+
+
+.sc-split-plan .sc-trade-card-label {
+  margin-bottom: 8px;
+}
+
+
+.sc-split-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 5px 0;
+  font-size: 12px;
+}
+
+
+.sc-split-row + .sc-split-row {
+  border-top: 1px solid #1c2620;
+}
+
+
+.sc-split-who {
+  color: #dfe5dc;
+  font-weight: 600;
+}
+
+
+.sc-split-share {
+  color: #8b968d;
+  text-align: right;
+}
+
+
+/* Trust panel: same card language as the other token page info cards. */
+.sc-trust-panel .sc-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px;
+}
+
+
+/* Claim loop inbox on the Portfolio page: pools where this wallet is a
+   fee split recipient and has fees waiting. */
+.sc-waiting-section {
+  margin-top: 30px;
+}
+
+
+.sc-waiting-section h2 {
+  font-size: 17px;
+  font-weight: 700;
+  color: #eef2eb;
+  margin: 0 0 6px;
+}
+
+
+.sc-waiting-lead {
+  margin: 0 0 16px;
+  font-size: 12.5px;
+  color: #8b968d;
+  max-width: 640px;
+  line-height: 1.55;
+}
+
+
+.sc-waiting-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+
+.sc-waiting-card {
+  border: 1px solid #223028;
+  border-radius: 14px;
+  background: #0d1210;
+  padding: 14px 16px;
+}
+
+
+.sc-waiting-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+
+.sc-waiting-head img {
+  border-radius: 50%;
+}
+
+
+.sc-waiting-initial {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: #101613;
+  border: 1px solid #223028;
+  color: #32f27b;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 15px;
+}
+
+
+.sc-waiting-name {
+  font-weight: 650;
+  font-size: 14px;
+  color: #eef2eb;
+}
+
+
+.sc-waiting-sub {
+  font-size: 11px;
+  color: #8b968d;
+  margin-top: 2px;
+}
+
+
+.sc-waiting-amount {
+  margin: 12px 0;
+  font-size: 19px;
+  font-weight: 700;
+  color: #32f27b;
+}
+
+
+.sc-waiting-actions {
+  display: flex;
+  gap: 8px;
+}
+
+
+.sc-waiting-actions .sc-button {
+  flex: 1;
+  text-align: center;
+}
+
+
+/* Launch form fee split rows. */
+.sc-split-form-row {
+  display: grid;
+  grid-template-columns: 1fr 110px 150px 34px;
+  gap: 10px;
+  align-items: end;
+  margin-bottom: 10px;
+}
+
+
+.sc-split-remove {
+  height: 34px;
+  width: 34px;
+  border: 1px solid #2a332c;
+  border-radius: 8px;
+  background: transparent;
+  color: #8b968d;
+  font-size: 16px;
+  cursor: pointer;
+  line-height: 1;
+}
+
+
+.sc-split-remove:hover {
+  color: #fb7185;
+  border-color: #fb7185;
+}
+
+
+.sc-split-summary {
+  margin: 10px 0 0;
+  font-size: 12.5px;
+  color: #8b968d;
+}
+
+
+.sc-split-summary strong {
+  color: #dfe5dc;
+}
+
+
+@media (max-width: 720px) {
+  .sc-split-form-row {
+    grid-template-columns: 1fr 100px;
+  }
+  .sc-split-form-row .sc-split-wallet-field {
+    grid-column: 1 / -1;
+  }
 }

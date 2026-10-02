@@ -93,6 +93,8 @@ import {
   buildRegistrationMessage,
   buildMetadataUploadMessage,
 } from '@/lib/signature-messages'
+import { validateFeeSplits } from '@/lib/fee-split-terms'
+import type { FeeSplitRecipient } from '@/lib/fee-split-terms'
 
 function parsePositiveFloat(s: string): number | null {
   const v = parseFloat(s)
@@ -257,6 +259,9 @@ export default function CreatePool() {
   const [manualUri, setManualUri] = useState('')
   const [status, setStatus] = useState<LaunchStatus>('idle')
   const [mode, setMode] = useState<'quick' | 'pro'>('quick')
+  const [splitRows, setSplitRows] = useState<
+    Array<{ wallet: string; percent: string; handle: string }>
+  >([])
   const [launchError, setLaunchError] = useState<string | null>(null)
   const [txSig, setTxSig] = useState<string | null>(null)
   const [launchedPool, setLaunchedPool] = useState<string | null>(null)
@@ -984,13 +989,37 @@ export default function CreatePool() {
       setStatus('confirming')
       await pollConfirmation(sig)
 
-      // 7. Register with a wallet-signed message (server verifies ed25519)
+      // 7. Register with a wallet-signed message (server verifies ed25519).
+      //    Fee splits, when set, are validated to the canonical form first
+      //    and bound into the signed message, so the terms the server
+      //    stores are exactly the terms the creator signed.
       setStatus('registering')
       const timestamp = Date.now()
+      let normalizedSplits: FeeSplitRecipient[] | undefined
+      const filledSplitRows = splitRows.filter(
+        (r) => r.wallet.trim() || r.percent.trim() || r.handle.trim()
+      )
+      if (filledSplitRows.length > 0) {
+        try {
+          normalizedSplits = validateFeeSplits(
+            filledSplitRows.map((r) => ({
+              wallet: r.wallet.trim(),
+              bps: Math.round(Number(r.percent) * 100),
+              handle: r.handle.trim(),
+            })),
+            publicKey.toBase58()
+          )
+        } catch (e) {
+          throw new Error(
+            `Fee splits are invalid: ${e instanceof Error ? e.message : 'check the form'}`
+          )
+        }
+      }
       const message = buildRegistrationMessage(
         poolAddr,
         publicKey.toBase58(),
-        timestamp
+        timestamp,
+        normalizedSplits
       )
       if (!signMessage) throw new Error('Connected wallet cannot sign messages')
       let sigBytes: Uint8Array
@@ -1024,6 +1053,7 @@ export default function CreatePool() {
           timestamp,
           signature: bs58.encode(sigBytes),
           launchedAt: timestamp,
+          feeSplits: normalizedSplits ?? undefined,
         }),
       })
       if (!regRes.ok) {
@@ -1057,6 +1087,28 @@ export default function CreatePool() {
   const presetName = isCustom
     ? 'Custom'
     : (CURVE_PRESETS.find((p) => p.id === preset)?.name ?? 'Custom')
+  /** Live validation of the fee split form: mirrors the server rules. */
+  const splitPreview = useMemo(() => {
+    const filled = splitRows.filter((r) => r.wallet.trim() || r.percent.trim() || r.handle.trim())
+    if (filled.length === 0) return { error: null as string | null, totalBps: 0 }
+    try {
+      const validated = validateFeeSplits(
+        filled.map((r) => ({
+          wallet: r.wallet.trim(),
+          bps: Math.round(Number(r.percent) * 100),
+          handle: r.handle.trim(),
+        })),
+        publicKey?.toBase58() ?? ''
+      )
+      return {
+        error: null as string | null,
+        totalBps: validated.reduce((sum, r) => sum + r.bps, 0),
+      }
+    } catch (e) {
+      return { error: e instanceof Error ? e.message : 'Invalid fee splits', totalBps: 0 }
+    }
+  }, [splitRows, publicKey])
+
   const allErrors = [
     ...tokenErrors,
     ...curveErrors,
@@ -1577,6 +1629,105 @@ export default function CreatePool() {
                 </ul>
               </section>
             )}
+
+            {/* ---- Fee splits: share creator fees with collaborators ---- */}
+            <section
+              className="sc-builder-section"
+              aria-labelledby="sc-fee-splits-heading"
+            >
+              <div className="sc-builder-section-head">
+                <span className="sc-section-glyph">◈</span>
+                <div>
+                  <h2 id="sc-fee-splits-heading">Fee splits</h2>
+                  <p>
+                    Share your 0.3% creator trading fees with collaborators.
+                    Fixed at launch and public forever, so everyone can see
+                    the deal before they buy.
+                  </p>
+                </div>
+              </div>
+              {splitRows.map((row, i) => (
+                <div key={i} className="sc-split-form-row">
+                  <Field label="Recipient wallet" className="sc-split-wallet-field">
+                    <input
+                      value={row.wallet}
+                      onChange={(e) =>
+                        setSplitRows((rs) =>
+                          rs.map((r, j) => (j === i ? { ...r, wallet: e.target.value } : r))
+                        )
+                      }
+                      placeholder="Solana address"
+                      spellCheck={false}
+                      autoComplete="off"
+                    />
+                  </Field>
+                  <Field label="Share %">
+                    <input
+                      inputMode="decimal"
+                      value={row.percent}
+                      onChange={(e) =>
+                        setSplitRows((rs) =>
+                          rs.map((r, j) =>
+                            j === i
+                              ? { ...r, percent: e.target.value.replace(/[^0-9.]/g, '') }
+                              : r
+                          )
+                        )
+                      }
+                      placeholder="10"
+                      autoComplete="off"
+                    />
+                  </Field>
+                  <Field label="X handle (optional)">
+                    <input
+                      value={row.handle}
+                      onChange={(e) =>
+                        setSplitRows((rs) =>
+                          rs.map((r, j) => (j === i ? { ...r, handle: e.target.value } : r))
+                        )
+                      }
+                      placeholder="name"
+                      spellCheck={false}
+                      autoComplete="off"
+                    />
+                  </Field>
+                  <button
+                    type="button"
+                    className="sc-split-remove"
+                    aria-label="Remove recipient"
+                    onClick={() => setSplitRows((rs) => rs.filter((_, j) => j !== i))}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+              {splitRows.length < 10 && (
+                <button
+                  type="button"
+                  className="sc-button sc-button-secondary"
+                  onClick={() =>
+                    setSplitRows((rs) => [...rs, { wallet: '', percent: '', handle: '' }])
+                  }
+                >
+                  Add recipient
+                </button>
+              )}
+              <p className="sc-split-summary">
+                {splitPreview.error ? (
+                  <span className="sc-form-error">{splitPreview.error}</span>
+                ) : splitPreview.totalBps === 0 ? (
+                  'No splits set. You keep the full creator fee.'
+                ) : (
+                  <>
+                    You assign{' '}
+                    <strong>{(splitPreview.totalBps / 100).toFixed(2)}%</strong> to
+                    collaborators and keep{' '}
+                    <strong>{((10000 - splitPreview.totalBps) / 100).toFixed(2)}%</strong>.
+                    Recipients can share at most 90% in total.
+                  </>
+                )}
+              </p>
+            </section>
 
             {/* ---- Bonding Curve Settings (pro mode only) ---- */}
             {mode === 'pro' && (

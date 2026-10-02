@@ -80,3 +80,37 @@ describe('checkUploadAuthorization', () => {
     expect(isFreshTimestamp(ts)).toBe(true);
   });
 });
+
+describe('buildRegistrationMessage with fee splits', () => {
+  const alice = Keypair.generate().publicKey.toBase58();
+  const bob = Keypair.generate().publicKey.toBase58();
+
+  it('keeps the historical format when no splits are given', () => {
+    const msg = buildRegistrationMessage('pool1', 'creator1', 123);
+    expect(msg).toBe(
+      ['StockCurve pool registration', 'pool: pool1', 'creator: creator1', 'timestamp: 123'].join(
+        '\n',
+      ),
+    );
+  });
+
+  it('appends canonical split terms sorted by wallet', () => {
+    const msg = buildRegistrationMessage('pool1', 'creator1', 123, [
+      { wallet: bob, bps: 1000, handle: 'bob' },
+      { wallet: alice, bps: 2500 },
+    ]);
+    const terms = [alice, bob].sort().map((w) => (w === alice ? `${w}:2500` : `${w}:1000:bob`)).join(',');
+    expect(msg.endsWith(`fee splits: ${terms}`)).toBe(true);
+  });
+
+  it('binds the signed terms so any tampering breaks verification', () => {
+    const kp = Keypair.generate();
+    const wallet = kp.publicKey.toBase58();
+    const splits = [{ wallet: alice, bps: 2500 }];
+    const message = buildRegistrationMessage('pool1', wallet, Date.now(), splits);
+    const sig = sign(message, kp.secretKey);
+    expect(verifyWalletSignature(message, sig, wallet)).toBe(true);
+    const tampered = message.replace('2500', '9000');
+    expect(verifyWalletSignature(tampered, sig, wallet)).toBe(false);
+  });
+});

@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { getConnection, isDevnet } from '@/lib/solana';
+import { fetchJson } from './usePoolData';
 import {
   claimCreatorFeesFlow,
   formatFeeRaw,
@@ -10,7 +11,20 @@ import {
   shouldShowCreatorEarnings,
   withdrawCreatorMigrationFeeFlow,
 } from '@/lib/claim-creator-fees';
+import { claimAndSplitFlow, planDistribution } from '@/lib/fee-split-claim';
+import type { FeeSplitRecipient } from '@/lib/fee-split-terms';
 import type { PoolStateResponse } from './types';
+import type { TrackedPool } from '@/lib/pool-registry';
+
+interface FeeSplitsResponse {
+  poolAddress: string;
+  baseMint: string;
+  quoteMint: string;
+  configAddress: string;
+  creator: string;
+  recipients: FeeSplitRecipient[];
+  creatorRemainderBps: number;
+}
 
 type Status = 'idle' | 'signing' | 'sending' | 'confirming' | 'confirmed' | 'failed';
 
@@ -39,7 +53,7 @@ export default function CreatorEarnings({
   poolAddress: string;
   state: PoolStateResponse;
 }) {
-  const { publicKey, signTransaction, connected } = useWallet();
+  const { publicKey, signTransaction, signAllTransactions, connected } = useWallet();
   const queryClient = useQueryClient();
   const [status, setStatus] = useState<Status>('idle');
   const [error, setError] = useState<string | null>(null);
@@ -80,6 +94,22 @@ export default function CreatorEarnings({
     };
   }, [isCreator, showMigration, poolAddress]);
 
+  // Fee split terms for this pool (public, fixed at launch). Only the
+  // creator claims; the claim transaction pays every recipient in the
+  // same atomic transaction.
+  const splitsQuery = useQuery<FeeSplitsResponse>({
+    queryKey: ['pool-fee-splits', poolAddress],
+    queryFn: () => fetchJson<FeeSplitsResponse>(`/api/pools/${poolAddress}/fee-splits`),
+    enabled: isCreator,
+    staleTime: 5 * 60_000,
+    retry: 1,
+  });
+  const splits = splitsQuery.data?.recipients ?? [];
+  const hasSplits = splits.length > 0;
+  const distribution = hasSplits
+    ? planDistribution(state.creatorBaseFeeRaw, state.creatorQuoteFeeRaw, splits)
+    : [];
+
   if (!isCreator) {
     return null;
   }
@@ -95,6 +125,29 @@ export default function CreatorEarnings({
     setError(null);
     setTxSig(null);
     try {
+      if (hasSplits && splitsQuery.data) {
+        // One atomic claim: the transaction claims the fees and pays
+        // every split recipient their published share.
+        setStatus('signing');
+        const tracked = {
+          poolAddress,
+          configAddress: splitsQuery.data.configAddress,
+          baseMint: splitsQuery.data.baseMint,
+          quoteMint: splitsQuery.data.quoteMint,
+          creator: publicKey.toBase58(),
+        } as TrackedPool;
+        const { signatures } = await claimAndSplitFlow({
+          connection: getConnection(),
+          signTransaction,
+          signAllTransactions: signAllTransactions ?? undefined,
+          tracked,
+          recipients: splits,
+        });
+        setTxSig(signatures[0] ?? null);
+        setStatus('confirmed');
+        queryClient.invalidateQueries({ queryKey: ['pool-state', poolAddress] });
+        return;
+      }
       const sig = await claimCreatorFeesFlow({
         connection: getConnection(),
         signTransaction,
@@ -197,6 +250,29 @@ export default function CreatorEarnings({
         </dl>
       )}
 
+      {hasSplits && distribution.length > 0 && (
+        <div className="sc-split-plan" aria-label="Fee split distribution">
+          <div className="sc-trade-card-label">Pays out with this claim</div>
+          {distribution.map((p) => {
+            const b = formatFeeRaw(p.baseRaw, state.baseDecimals ?? 9);
+            const q = formatFeeRaw(p.quoteRaw, state.quoteDecimals ?? 9);
+            return (
+              <div key={p.wallet} className="sc-split-row">
+                <span className="sc-split-who">
+                  {p.handle ? `@${p.handle}` : `${p.wallet.slice(0, 4)}…${p.wallet.slice(-4)}`}
+                </span>
+                <span className="sc-split-share">
+                  {(p.bps / 100).toFixed(2)}% ·{' '}
+                  {[b ? `${b} ${state.baseSymbol}` : null, q ? `${q} ${state.quoteSymbol}` : null]
+                    .filter(Boolean)
+                    .join(' · ')}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {!unknown && !empty && (
         <div className="sc-creator-earnings-actions">
           <span>
@@ -209,14 +285,14 @@ export default function CreatorEarnings({
             disabled={busy}
             className="sc-button sc-button-primary"
           >
-            {busy ? statusText : 'Claim earnings'}
+            {busy ? statusText : hasSplits ? 'Claim and distribute' : 'Claim earnings'}
           </button>
         </div>
       )}
 
       {status === 'confirmed' && txSig && (
         <p className="sc-creator-claim-message">
-          Claimed.{' '}
+          {hasSplits ? 'Claimed and distributed.' : 'Claimed.'}{' '}
           <a
             href={`https://solscan.io/tx/${txSig}${isDevnet() ? '?cluster=devnet' : ''}`}
             target="_blank"

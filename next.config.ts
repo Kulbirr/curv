@@ -67,6 +67,18 @@ const securityHeaders = [
   { key: 'Content-Security-Policy', value: contentSecurityPolicy() },
 ];
 
+/**
+ * The chart widget under /embed is meant to be framed by other sites.
+ * Only its CSP changes: frame-ancestors opens to any origin. Modern
+ * browsers let frame-ancestors govern framing where both it and
+ * X-Frame-Options are present, so the rest of the site stays locked.
+ */
+const embedSecurityHeaders = securityHeaders.map((h) =>
+  h.key === 'Content-Security-Policy'
+    ? { ...h, value: h.value.replace("frame-ancestors 'self'", 'frame-ancestors *') }
+    : h,
+);
+
 const nextConfig: NextConfig = {
   /* config options here */
   reactStrictMode: true,
@@ -76,6 +88,12 @@ const nextConfig: NextConfig = {
         // Security headers on every page and API route.
         source: '/:path*',
         headers: securityHeaders,
+      },
+      {
+        // Later entries win per header key: the widget page gets the
+        // embed CSP (frameable) while keeping every other header.
+        source: '/embed/:path*',
+        headers: embedSecurityHeaders,
       },
     ];
   },

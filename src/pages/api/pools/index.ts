@@ -15,6 +15,7 @@ import {
   pruneRateLimits,
 } from '@/lib/db/rate-limits';
 import { getPrices24hAgoBatch, getSparklinesBatch, getVolumes24hBatch } from '@/lib/price-history';
+import { insertFeeSplits } from '@/lib/db/fee-splits';
 import { getQuoteUsdPrice, isUsdReferencePrice } from '@/lib/quote-prices';
 import { SOLANA_NETWORK } from '@/lib/solana';
 import {
@@ -164,7 +165,7 @@ function invalidateListCache(): void {
   listCache = null;
 }
 
-async function buildListBody(): Promise<ListBody> {
+export async function buildListBody(): Promise<ListBody> {
   const pools = await listTrackedPools();
   // Backfill card images for pools whose imageUrl never reached the
   // registry (pre-Oct-2026 launches hit R2 CORS on the browser-side
@@ -336,7 +337,12 @@ async function handlePost(req: NextApiRequest, res: NextApiResponse) {
   if (!isFreshTimestamp(input.timestamp)) {
     return res.status(400).json({ error: 'Registration expired, sign again' });
   }
-  const message = buildRegistrationMessage(input.poolAddress, input.creator, input.timestamp);
+  const message = buildRegistrationMessage(
+    input.poolAddress,
+    input.creator,
+    input.timestamp,
+    input.feeSplits,
+  );
   if (!verifyWalletSignature(message, input.signature, input.creator)) {
     return res.status(401).json({ error: 'Invalid wallet signature' });
   }
@@ -358,9 +364,20 @@ async function handlePost(req: NextApiRequest, res: NextApiResponse) {
     return res.status(400).json({ error: `Pool verification failed: ${verification.detail}` });
   }
 
-  // 6. Transactional registry insert.
+  // 6. Transactional registry insert, then the fee split terms (fixed
+  // forever once written). Splits go in after the pool row exists; a
+  // splits failure does not roll back a pool that is real on chain, so
+  // it is logged loudly instead of failing the registration.
   try {
-    const entry = await registerPool({ ...input, verified: verification.status === 'verified' });
+    const { feeSplits, ...poolInput } = input;
+    const entry = await registerPool({ ...poolInput, verified: verification.status === 'verified' });
+    if (feeSplits && feeSplits.length > 0) {
+      try {
+        await insertFeeSplits(entry.poolAddress, feeSplits);
+      } catch (e) {
+        console.error('[registration] fee splits insert failed', entry.poolAddress, e);
+      }
+    }
     invalidateListCache();
     return res.status(201).json({ pool: entry });
   } catch (e) {

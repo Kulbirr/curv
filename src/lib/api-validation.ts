@@ -4,6 +4,8 @@ import bs58 from 'bs58';
 import { SOLANA_NETWORK } from './solana';
 import { isCrossNetworkKnownMint } from './quote-assets';
 import { normalizeTwitterUrl } from './twitter';
+import { validateFeeSplits } from './fee-split-terms';
+import type { FeeSplitRecipient } from './fee-split-terms';
 
 /**
  * Strict input schemas for the API routes.
@@ -91,6 +93,8 @@ export interface RegistrationInput {
   timestamp: number;
   signature: string;
   launchedAt?: number;
+  /** Creator fee splits fixed at launch; validated by fee-split-terms. */
+  feeSplits?: FeeSplitRecipient[];
 }
 
 export type ValidationResult<T> = { ok: true; value: T } | { ok: false; error: string };
@@ -148,6 +152,14 @@ export function validateRegistrationBody(body: unknown): ValidationResult<Regist
       }
     }
 
+    // Fee splits are optional and fixed at launch. The validator throws
+    // with a user safe message, which becomes the 400 text.
+    let feeSplits: FeeSplitRecipient[] | undefined;
+    if (b.feeSplits !== undefined && b.feeSplits !== null) {
+      const parsedSplits = validateFeeSplits(b.feeSplits, creator);
+      if (parsedSplits.length > 0) feeSplits = parsedSplits;
+    }
+
     return {
       ok: true,
       value: {
@@ -166,6 +178,7 @@ export function validateRegistrationBody(body: unknown): ValidationResult<Regist
         timestamp,
         signature,
         launchedAt,
+        feeSplits,
       },
     };
   } catch (e) {

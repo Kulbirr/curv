@@ -133,6 +133,16 @@ CREATE TABLE IF NOT EXISTS pool_viewers (
   PRIMARY KEY (pool_address, session_id)
 );
 CREATE INDEX IF NOT EXISTS idx_pool_viewers_seen ON pool_viewers (last_seen);
+
+-- Creator fee splits fixed at launch: recipients JSON is an array of
+-- { wallet, bps, handle? } sharing the creator trading fee. The
+-- creator keeps the remainder (10000 minus the sum). Terms are public
+-- and immutable once the pool is registered.
+CREATE TABLE IF NOT EXISTS fee_splits (
+  pool_address TEXT PRIMARY KEY,
+  recipients TEXT NOT NULL,
+  created_at BIGINT NOT NULL
+);
 `;
 
 // pg returns BIGINT (int8) columns as strings by default. Unix-ms
