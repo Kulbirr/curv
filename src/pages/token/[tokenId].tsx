@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { CSSProperties } from 'react';
 import type { GetServerSideProps } from 'next';
-import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { getTrackedPool } from '@/lib/pool-registry';
@@ -499,33 +498,13 @@ export default function TokenPage({ og }: { og: TokenOgProps | null }) {
   const raw = router.query.tokenId;
   const poolAddress = typeof raw === 'string' && raw.length >= 32 ? raw : null;
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://curvpad.fun';
-  const title = og ? `${og.name} ($${og.symbol}) · Curv` : 'Token · Curv';
-  const description = og
-    ? `${og.name} ($${og.symbol}) is live on Curv, paired with ${og.quoteSymbol}. Fair launch on Meteora DBC with liquidity locked at graduation.`
-    : 'A fair launch token on Curv, built on Meteora DBC.';
-
+  // NOTE: the page's own <Head> is intentionally absent. The page
+  // component renders inside a client-only provider boundary, so a Head
+  // placed here would never reach server-rendered HTML and link
+  // crawlers would miss it. The open graph tags live in _app's Head,
+  // fed by the og props from getServerSideProps above.
   return (
     <Page>
-      <Head>
-        <title>{title}</title>
-        <meta name="description" content={description} />
-        <meta property="og:type" content="website" />
-        <meta property="og:title" content={title} />
-        <meta property="og:description" content={description} />
-        {og ? (
-          <>
-            <meta property="og:url" content={`${appUrl}/token/${og.address}`} />
-            <meta property="og:image" content={`${appUrl}/api/og/pool/${og.address}`} />
-            <meta property="og:image:width" content="1200" />
-            <meta property="og:image:height" content="630" />
-            <meta name="twitter:card" content="summary_large_image" />
-            <meta name="twitter:title" content={title} />
-            <meta name="twitter:description" content={description} />
-            <meta name="twitter:image" content={`${appUrl}/api/og/pool/${og.address}`} />
-          </>
-        ) : null}
-      </Head>
       {!router.isReady || !poolAddress ? (
         <div className="sc-pool-page" aria-busy="true">
           <div className="sc-pool-layout">
