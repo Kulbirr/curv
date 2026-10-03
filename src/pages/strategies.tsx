@@ -388,16 +388,38 @@ function SignalCard({
 
       {signal.note && <p className="mt-4 text-sm text-neutral-400 italic">{signal.note}</p>}
 
-      <dl className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {[
-          { label: 'Entry ref', value: `${fmtPrice(signal.entryPrice)} ${signal.quoteSymbol}` },
-          { label: 'Max price', value: `${fmtPrice(signal.maxPrice)} ${signal.quoteSymbol}` },
-          { label: 'Size', value: signal.sizeText ?? 'Your choice' },
-          { label: 'Published', value: fmtAgo(signal.createdAt, now) },
-        ].map((s) => (
+      <dl className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
+        {(
+          [
+            { label: 'Entry ref', value: `${fmtPrice(signal.entryPrice)} ${signal.quoteSymbol}` },
+            { label: 'Max price', value: `${fmtPrice(signal.maxPrice)} ${signal.quoteSymbol}` },
+            ...(signal.stopPrice !== null
+              ? [
+                  {
+                    label: 'Stop loss',
+                    value: `${fmtPrice(signal.stopPrice)} ${signal.quoteSymbol}`,
+                    valueClass: 'text-[#fa6d74]',
+                  },
+                ]
+              : []),
+            ...(signal.targets && signal.targets.length > 0
+              ? [
+                  {
+                    label: signal.targets.length > 1 ? 'Targets' : 'Target',
+                    value: `${signal.targets.map((t) => fmtPrice(t)).join(' · ')} ${signal.quoteSymbol}`,
+                    valueClass: 'text-[#32f27b]',
+                  },
+                ]
+              : []),
+            { label: 'Size', value: signal.sizeText ?? 'Your choice' },
+            { label: 'Published', value: fmtAgo(signal.createdAt, now) },
+          ] as { label: string; value: string; valueClass?: string }[]
+        ).map((s) => (
           <div key={s.label} className="rounded-2xl bg-white/[3%] px-3.5 py-3">
             <dt className="text-[11px] font-medium text-neutral-500">{s.label}</dt>
-            <dd className="sc-number mt-1 text-sm font-semibold text-neutral-100">{s.value}</dd>
+            <dd className={cn('sc-number mt-1 text-sm font-semibold text-neutral-100', s.valueClass)}>
+              {s.value}
+            </dd>
           </div>
         ))}
       </dl>
