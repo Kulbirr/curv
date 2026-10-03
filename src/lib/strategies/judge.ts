@@ -54,13 +54,15 @@ export const JUDGE_MODEL_NVIDIA = 'nvidia/nemotron-3-super-120b-a12b';
 export const JUDGE_MODEL = JUDGE_MODEL_OPENROUTER;
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const NVIDIA_URL = 'https://integrate.api.nvidia.com/v1/chat/completions';
-const JUDGE_TIMEOUT_MS = 20_000;
 
 interface JudgeEndpoint {
   url: string;
   apiKey: string;
   model: string;
   headers: Record<string, string>;
+  /** Reasoning models need room to think before writing the verdict. */
+  maxTokens: number;
+  timeoutMs: number;
 }
 
 /** Resolve the judge endpoint from the environment. Null when no key. */
@@ -73,6 +75,8 @@ export function judgeEndpoint(): JudgeEndpoint | null {
       apiKey,
       model: process.env.JUDGE_MODEL || JUDGE_MODEL_NVIDIA,
       headers: {},
+      maxTokens: 4096,
+      timeoutMs: 120_000,
     };
   }
   const apiKey = process.env.OPENROUTER_API_KEY;
@@ -85,6 +89,8 @@ export function judgeEndpoint(): JudgeEndpoint | null {
       'http-referer': 'https://curvpad.fun',
       'x-title': 'Curv strategies signal judge',
     },
+    maxTokens: 800,
+    timeoutMs: 20_000,
   };
 }
 
@@ -124,15 +130,20 @@ Use these check names: entry quality, no chase, volume health, unlock risk, crow
 export interface JudgePromptInput {
   candidate: CandidateInput;
   market: MarketSnapshot | null;
+  /** Live price expressed in the signal quote currency, for the no chase check. */
+  marketPriceInQuote: number | null;
   gateResults: GateResult[];
 }
 
 export function buildJudgePrompt(input: JudgePromptInput): { system: string; user: string } {
-  const { candidate, market, gateResults } = input;
+  const { candidate, market, marketPriceInQuote, gateResults } = input;
   const gates = gateResults.map((g) => `${g.name}: ${g.status} (${g.reason})`).join('\n');
   const marketBlock = market
     ? [
         `Live price: $${market.price}`,
+        `Live price in ${candidate.quoteSymbol}: ${
+          marketPriceInQuote === null ? 'unknown' : marketPriceInQuote.toString()
+        }`,
         `24h change: ${market.change24hPct === null ? 'unknown' : `${market.change24hPct.toFixed(2)} percent`}`,
         `7d change: ${market.change7dPct === null ? 'unknown' : `${market.change7dPct.toFixed(2)} percent`}`,
         `24h volume: $${Math.round(market.volume24h).toLocaleString('en-US')}`,
@@ -215,7 +226,7 @@ export async function runJudge(input: JudgePromptInput): Promise<JudgeResult> {
   }
   const { system, user } = buildJudgePrompt(input);
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), JUDGE_TIMEOUT_MS);
+  const timer = setTimeout(() => ctrl.abort(), endpoint.timeoutMs);
   try {
     const res = await fetch(endpoint.url, {
       method: 'POST',
@@ -232,17 +243,24 @@ export async function runJudge(input: JudgePromptInput): Promise<JudgeResult> {
           { role: 'user', content: user },
         ],
         temperature: 0.2,
-        max_tokens: 800,
+        max_tokens: endpoint.maxTokens,
       }),
     });
     if (!res.ok) {
       return { status: 'error', reason: `Judge request failed with http ${res.status}` };
     }
     const json = (await res.json()) as {
-      choices?: Array<{ message?: { content?: string } }>;
+      choices?: Array<{ message?: { content?: unknown; reasoning_content?: unknown } }>;
     };
-    const content = json.choices?.[0]?.message?.content;
-    if (typeof content !== 'string' || content.length === 0) {
+    // Reasoning models answer in reasoning_content and may leave content null.
+    const msg = json.choices?.[0]?.message;
+    const content =
+      typeof msg?.content === 'string' && msg.content.length > 0
+        ? msg.content
+        : typeof msg?.reasoning_content === 'string'
+          ? msg.reasoning_content
+          : '';
+    if (content.length === 0) {
       return { status: 'error', reason: 'Judge returned an empty reply' };
     }
     const parsed = parseJudgeReply(content);

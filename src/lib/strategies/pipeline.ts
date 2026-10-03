@@ -23,7 +23,7 @@ import {
   type SignalCandidate,
 } from '@/lib/db/strategy-pipeline';
 import { insertStrategySignal } from '@/lib/db/strategies';
-import { runGates, type CandidateInput, type GateResult } from './gates';
+import { runGates, fetchMarketSnapshot, type CandidateInput, type GateResult } from './gates';
 import { runJudge } from './judge';
 
 const DEFAULT_TTL_MS = 48 * 3600_000;
@@ -120,9 +120,25 @@ export async function evaluateCandidate(id: string): Promise<EvaluateResult> {
 
   let judge;
   try {
+    // The mirror guard and the feed quote prices in the signal quote
+    // currency, so the judge gets the live price in the same unit for
+    // its no chase check.
+    let marketPriceInQuote: number | null = null;
+    if (evaluation.market) {
+      const quoteEntry = toGateUniverse(universe).find(
+        (u) => u.baseMint === gateInput.quoteMint && u.active,
+      );
+      if (quoteEntry) {
+        const quoteMarket = await fetchMarketSnapshot(quoteEntry.coingeckoId);
+        if (quoteMarket && quoteMarket.price > 0) {
+          marketPriceInQuote = evaluation.market.price / quoteMarket.price;
+        }
+      }
+    }
     judge = await runJudge({
       candidate: gateInput,
       market: evaluation.market,
+      marketPriceInQuote,
       gateResults: evaluation.results,
     });
   } catch {

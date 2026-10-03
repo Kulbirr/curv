@@ -16,7 +16,12 @@ afterEach(() => {
   delete process.env.JUDGE_MODEL;
 });
 
-function input(): { candidate: CandidateInput; market: MarketSnapshot | null; gateResults: GateResult[] } {
+function input(): {
+  candidate: CandidateInput;
+  market: MarketSnapshot | null;
+  marketPriceInQuote: number | null;
+  gateResults: GateResult[];
+} {
   return {
     candidate: {
       baseMint: 'SOL_MINT',
@@ -41,6 +46,7 @@ function input(): { candidate: CandidateInput; market: MarketSnapshot | null; ga
       mcap: 70_000_000_000,
       fetchedAt: Date.now(),
     },
+    marketPriceInQuote: 102,
     gateResults: [{ name: 'universe', status: 'pass', reason: 'in universe' }],
   };
 }
@@ -193,5 +199,33 @@ describe('judgeEndpoint', () => {
     const r = await runJudge(input());
     expect(r.status).toBe('unavailable');
     if (r.status === 'unavailable') expect(r.reason).toContain('NVIDIA_API_KEY');
+  });
+});
+
+describe('runJudge reasoning models', () => {
+  it('reads the verdict from reasoning_content when content is null', async () => {
+    process.env.OPENROUTER_API_KEY = 'test-key';
+    const verdict = JSON.stringify({
+      verdict: 'approved',
+      reasons: ['clean setup'],
+      checks: [{ name: 'entry quality', pass: true, note: 'ok' }],
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: true,
+        json: async (): Promise<unknown> => ({
+          choices: [{ message: { content: null, reasoning_content: `thinking...\n${verdict}` } }],
+        }),
+      })),
+    );
+    const r = await runJudge(input());
+    expect(r.status).toBe('ok');
+    if (r.status === 'ok') expect(r.verdict).toBe('approved');
+  });
+
+  it('shows the quote denominated price in the prompt', () => {
+    const { user } = buildJudgePrompt({ ...input(), marketPriceInQuote: 1.7 });
+    expect(user).toContain('Live price in USDC: 1.7');
   });
 });

@@ -130,8 +130,9 @@ export interface GeneratedIdea {
 
 /**
  * Build a complete candidate from a momentum setup: entry at market,
- * a 7 percent invalidation, targets near 1.7R and 3R. Prices are USD,
- * matching the CoinGecko reference the gates compare against.
+ * a 7 percent invalidation, targets near 1.7R and 3R. The snapshot price
+ * is denominated in the signal quote currency (SOL), matching what the
+ * feed shows and what the mirror guard compares against.
  */
 export function buildIdea(
   entry: UniverseEntry,
@@ -149,7 +150,7 @@ export function buildIdea(
     `Systematic momentum, rank ${rank} of ${of} in the universe: ${entry.symbol} is ` +
     `${fmtPct(snapshot.change30dPct)} over 30 days, ${fmtPct(snapshot.change14dPct)} over 14 days and ` +
     `${fmtPct(snapshot.change7dPct)} over 7 days, the strongest 1 to 4 week relative strength ` +
-    `available, trading at $${price.toLocaleString('en-US')}. Entry at market, invalidation 7 percent ` +
+    `available, trading at ${price.toLocaleString('en-US')} SOL. Entry at market, invalidation 7 percent ` +
     `below entry, targets at plus 12 and plus 22 percent.`;
   return {
     entry,
@@ -179,6 +180,10 @@ export function buildIdea(
  * Scan the active universe, rank by momentum, return the top ideas.
  * Coins with a live signal are skipped: the duplicate gate would reject
  * them anyway, so there is no point spending a judge call.
+ *
+ * Prices are denominated in SOL, the signal quote currency: the mirror
+ * guard compares the live Jupiter price (SOL per coin) against the entry
+ * zone, so the zone must be in the same unit.
  */
 export async function generateIdeas(
   universe: UniverseEntry[],
@@ -189,7 +194,13 @@ export async function generateIdeas(
     (u) => u.active && !liveBaseMints.includes(u.baseMint) && u.coingeckoId,
   );
   if (eligible.length === 0) return [];
-  const snaps = await fetchMomentumSnapshots(eligible.map((u) => u.coingeckoId));
+  const ids = eligible.map((u) => u.coingeckoId);
+  if (!ids.includes('solana')) ids.push('solana');
+  const snaps = await fetchMomentumSnapshots(ids);
+  const solUsd = snaps.get('solana')?.price ?? null;
+  // Without the SOL reference the ideas cannot be priced in the quote
+  // currency, so generating nothing beats generating wrong units.
+  if (!solUsd || solUsd <= 0) return [];
   const scored: Array<{ entry: UniverseEntry; snapshot: MomentumSnapshot; score: number }> = [];
   for (const entry of eligible) {
     const snapshot = snaps.get(entry.coingeckoId);
@@ -197,7 +208,9 @@ export async function generateIdeas(
     if (!isEligibleMomentum(snapshot)) continue;
     const score = scoreMomentum(snapshot);
     if (score === null) continue;
-    scored.push({ entry, snapshot, score });
+    // Percent changes are unit free; only the traded levels convert.
+    const inQuote: MomentumSnapshot = { ...snapshot, price: snapshot.price / solUsd };
+    scored.push({ entry, snapshot: inQuote, score });
   }
   scored.sort((a, b) => b.score - a.score);
   const take = Math.max(1, Math.min(count, 5));

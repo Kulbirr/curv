@@ -146,6 +146,7 @@ export default function StrategiesAdmin() {
   const [overrideReason, setOverrideReason] = useState('');
   const [genCount, setGenCount] = useState(2);
   const [genNote, setGenNote] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!secret) return;
@@ -300,8 +301,26 @@ export default function StrategiesAdmin() {
     async (id: string) => {
       setBusy(id);
       setError(null);
+      setNotice(null);
       try {
-        await api(`/api/strategies/candidates/${id}/evaluate`, { method: 'POST' });
+        const res = (await api(`/api/strategies/candidates/${id}/evaluate`, {
+          method: 'POST',
+        })) as {
+          candidate?: { status?: string; baseSymbol?: string };
+          judgeSkipped?: boolean;
+          judgeUnavailable?: boolean;
+          judgeError?: string;
+          note?: string;
+        };
+        const status = res.candidate?.status ?? 'pending';
+        const symbol = res.candidate?.baseSymbol ?? 'idea';
+        if (res.note || res.judgeError) {
+          setNotice(`${symbol}: ${res.note ?? res.judgeError}`);
+        } else if (status === 'approved') {
+          setNotice(`${symbol} approved by the judge, ready to publish`);
+        } else if (status === 'rejected') {
+          setNotice(`${symbol} rejected, see the reasons below`);
+        }
         await load();
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Evaluation failed');
@@ -381,6 +400,12 @@ export default function StrategiesAdmin() {
         {error && (
           <div className="mt-4 rounded-2xl border border-[#fa6d74]/30 bg-[#fa6d74]/10 px-4 py-3">
             <p className="text-sm font-semibold text-[#fa6d74]">{error}</p>
+          </div>
+        )}
+
+        {notice && (
+          <div className="mt-4 rounded-2xl border border-[#32f27b]/30 bg-[#32f27b]/10 px-4 py-3">
+            <p className="text-sm font-semibold text-neutral-100">{notice}</p>
           </div>
         )}
 
@@ -480,7 +505,7 @@ export default function StrategiesAdmin() {
                   />
                 </div>
                 <div>
-                  <label className={labelCls}>Entry low</label>
+                  <label className={labelCls}>Entry low (in SOL)</label>
                   <input
                     value={form.entryLow}
                     onChange={(e) => setForm({ ...form, entryLow: e.target.value })}
@@ -490,7 +515,7 @@ export default function StrategiesAdmin() {
                   />
                 </div>
                 <div>
-                  <label className={labelCls}>Entry high</label>
+                  <label className={labelCls}>Entry high (in SOL)</label>
                   <input
                     value={form.entryHigh}
                     onChange={(e) => setForm({ ...form, entryHigh: e.target.value })}
@@ -500,7 +525,7 @@ export default function StrategiesAdmin() {
                   />
                 </div>
                 <div>
-                  <label className={labelCls}>Stop</label>
+                  <label className={labelCls}>Stop (in SOL)</label>
                   <input
                     value={form.stopPrice}
                     onChange={(e) => setForm({ ...form, stopPrice: e.target.value })}
@@ -510,7 +535,7 @@ export default function StrategiesAdmin() {
                   />
                 </div>
                 <div>
-                  <label className={labelCls}>Targets (comma separated)</label>
+                  <label className={labelCls}>Targets in SOL (comma separated)</label>
                   <input
                     value={form.targets}
                     onChange={(e) => setForm({ ...form, targets: e.target.value })}
