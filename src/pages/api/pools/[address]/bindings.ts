@@ -7,11 +7,13 @@ import {
   getFeeSplits,
   insertFeeSplitBinding,
 } from '@/lib/db/fee-splits';
+import { insertNotification } from '@/lib/db/notifications';
 import {
   buildRecipientBindingMessage,
   isFreshTimestamp,
 } from '@/lib/signature-messages';
 import { verifyWalletSignature } from '@/lib/signatures';
+import { parseCookies, verifyXSession } from '@/lib/x-oauth';
 import { parseAddress } from '@/lib/api-validation';
 
 /**
@@ -97,6 +99,23 @@ export default async function handler(
       .json({ error: e instanceof Error ? e.message : 'Binding not allowed' });
   }
 
+  // Handle-only entries (no registered wallet) must be claimed by the
+  // X account named in the entry: the session's verified username has
+  // to match the handle. This is the anti-hijack check, first-come
+  // signatures alone cannot prove handle ownership.
+  const entry = recipients[entryIndex];
+  let x: { xUserId: string; xHandle: string } | undefined;
+  if (entry?.handle && !entry.wallet) {
+    const cookies = parseCookies(req.headers.cookie);
+    const session = cookies.x_session ? verifyXSession(cookies.x_session) : null;
+    if (!session || session.xUsername.toLowerCase() !== entry.handle.toLowerCase()) {
+      return res.status(401).json({
+        error: `Log in with the X account @${entry.handle} to bind this entry`,
+      });
+    }
+    x = { xUserId: session.xUserId, xHandle: session.xUsername };
+  }
+
   const message = buildRecipientBindingMessage(
     tracked.poolAddress,
     entryIndex,
@@ -113,13 +132,26 @@ export default async function handler(
   const inserted = await insertFeeSplitBinding(
     tracked.poolAddress,
     entryIndex,
-    normalizedWallet
+    normalizedWallet,
+    x
   );
   if (!inserted) {
     return res
       .status(409)
       .json({ error: 'This split entry already has a bound wallet' });
   }
+  // Tell the creator: someone bound, their share is now payable on the
+  // next claim.
+  const sharePct = entry ? (entry.bps / 100).toFixed(2) : '';
+  const who = x ? `@${x.xHandle}` : normalizedWallet.slice(0, 6) + '…';
+  await insertNotification({
+    id: `split-bound-${tracked.poolAddress}-${entryIndex}-${normalizedWallet}`,
+    wallet: tracked.creator,
+    type: 'split_bound',
+    title: `${who} bound their wallet`,
+    body: `${sharePct}% of this pool's creator fees will now be paid to them on your next claim.`,
+    link: `/fees/${tracked.poolAddress}`,
+  });
   return res.status(200).json({
     ok: true,
     poolAddress: tracked.poolAddress,

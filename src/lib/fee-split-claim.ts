@@ -15,6 +15,7 @@ import { buildClaimCreatorFeesTx } from './claim-creator-fees';
 import { fetchPoolLiveState } from './pool-state';
 import type { TrackedPool } from './pool-registry';
 import { splitShareRaw } from './fee-split-terms';
+import { BPS_TOTAL } from './fee-split-terms';
 import type { EffectiveFeeSplitRecipient, FeeSplitBinding, FeeSplitRecipient } from './fee-split-terms';
 import { resolveEffectiveRecipients } from './fee-split-terms';
 
@@ -123,9 +124,28 @@ export async function buildClaimAndSplitTransactions(args: {
   const payable = payableRecipients(recipients, args.bindings);
   const distribution = planDistribution(live.creatorBaseFeeRaw, live.creatorQuoteFeeRaw, payable);
 
+  // Partial claim: pull only what is distributed now (bound recipients'
+  // shares plus the creator's remainder of total accrued). Unbound
+  // X-handle shares stay accrued in the pool until their owners bind;
+  // the pool is the vault, nobody holds their money meanwhile.
+  const totalRecipientBps = recipients.reduce((s, r) => s + r.bps, 0);
+  const creatorBps = BPS_TOTAL - totalRecipientBps;
+  const sumRaw = (key: 'baseRaw' | 'quoteRaw') =>
+    distribution.reduce((s, p) => s + BigInt(p[key]), BigInt(0));
+  const accruedBase = live.creatorBaseFeeRaw;
+  const accruedQuote = live.creatorQuoteFeeRaw;
+  const capBase =
+    sumRaw('baseRaw') + BigInt(splitShareRaw(accruedBase, creatorBps));
+  const capQuote =
+    sumRaw('quoteRaw') + BigInt(splitShareRaw(accruedQuote, creatorBps));
+
   const claimTx = await buildClaimCreatorFeesTx({
     poolAddress: tracked.poolAddress,
     creator: tracked.creator,
+    // No recipients at all: creatorBps is 10000 and the caps equal the
+    // full accrued amounts, identical to the old claim-everything path.
+    maxBaseAmount: capBase,
+    maxQuoteAmount: capQuote,
   });
 
   const { blockhash } = await connection.getLatestBlockhash('confirmed');

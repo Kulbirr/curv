@@ -1,7 +1,8 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { getTrackedPool } from '@/lib/pool-registry';
 import { getFeeSplitBindings, getFeeSplits } from '@/lib/db/fee-splits';
-import { creatorRemainderBps, resolveEffectiveRecipients } from '@/lib/fee-split-terms';
+import { creatorRemainderBps, resolveEffectiveRecipients, splitShareRaw } from '@/lib/fee-split-terms';
+import { fetchPoolLiveState } from '@/lib/pool-state';
 import { parseAddress } from '@/lib/api-validation';
 
 /**
@@ -12,8 +13,9 @@ import { parseAddress } from '@/lib/api-validation';
  * so anyone can check what was promised before they buy. Each
  * recipient also carries its effective payout wallet (the wallet bound
  * through its onboarding link when set, otherwise the registered
- * wallet) and whether it is bound. An empty list means the creator
- * keeps the whole creator fee.
+ * wallet), whether it is bound, and its pending share of the currently
+ * accrued (unclaimed) fees. An empty list means the creator keeps the
+ * whole creator fee.
  */
 export const config = {
   api: { bodyParser: { sizeLimit: '8kb' } },
@@ -32,6 +34,31 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const recipients = await getFeeSplits(tracked.poolAddress);
   const bindings = await getFeeSplitBindings(tracked.poolAddress);
   const effective = resolveEffectiveRecipients(recipients, bindings);
+  // Live accrued (unclaimed) creator fees, so the UI can show real
+  // pending amounts per recipient. A failed read degrades to nulls;
+  // the terms themselves are still served.
+  let accrued: {
+    baseRaw: string | null;
+    quoteRaw: string | null;
+    baseDecimals: number;
+    quoteDecimals: number;
+  } | null = null;
+  try {
+    const live = await fetchPoolLiveState(tracked);
+    accrued = {
+      baseRaw: live.creatorBaseFeeRaw,
+      quoteRaw: live.creatorQuoteFeeRaw,
+      baseDecimals: live.baseDecimals,
+      quoteDecimals: live.quoteDecimals,
+    };
+  } catch {
+    accrued = null;
+  }
+  const recipientsWithPending = effective.map((r) => ({
+    ...r,
+    pendingBaseRaw: accrued ? splitShareRaw(accrued.baseRaw, r.bps) : null,
+    pendingQuoteRaw: accrued ? splitShareRaw(accrued.quoteRaw, r.bps) : null,
+  }));
   res.setHeader('Cache-Control', 'public, s-maxage=30, stale-while-revalidate=120');
   return res.status(200).json({
     poolAddress: tracked.poolAddress,
@@ -39,8 +66,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     quoteMint: tracked.quoteMint,
     configAddress: tracked.configAddress,
     creator: tracked.creator,
-    recipients: effective,
+    recipients: recipientsWithPending,
     bindings,
     creatorRemainderBps: creatorRemainderBps(recipients),
+    accrued,
   });
 }

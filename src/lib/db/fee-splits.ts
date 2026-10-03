@@ -52,8 +52,14 @@ export async function getFeeSplits(poolAddress: string): Promise<FeeSplitRecipie
  * All wallet bindings recorded for a pool, ordered by entry index.
  */
 export async function getFeeSplitBindings(poolAddress: string): Promise<FeeSplitBinding[]> {
-  const rows = await query<{ entry_index: number; wallet: string; bound_at: number }>(
-    'SELECT entry_index, wallet, bound_at FROM fee_split_bindings WHERE pool_address = $1 ORDER BY entry_index',
+  const rows = await query<{
+    entry_index: number;
+    wallet: string;
+    bound_at: number;
+    x_user_id: string | null;
+    x_handle: string | null;
+  }>(
+    'SELECT entry_index, wallet, bound_at, x_user_id, x_handle FROM fee_split_bindings WHERE pool_address = $1 ORDER BY entry_index',
     [poolAddress],
   );
   return rows.map((r) => ({
@@ -61,6 +67,8 @@ export async function getFeeSplitBindings(poolAddress: string): Promise<FeeSplit
     entryIndex: r.entry_index,
     wallet: r.wallet,
     boundAt: r.bound_at,
+    ...(r.x_user_id ? { xUserId: r.x_user_id } : {}),
+    ...(r.x_handle ? { xHandle: r.x_handle } : {}),
   }));
 }
 
@@ -74,12 +82,13 @@ export async function insertFeeSplitBinding(
   poolAddress: string,
   entryIndex: number,
   wallet: string,
+  x?: { xUserId: string; xHandle: string },
 ): Promise<boolean> {
   const rowCount = await execute(
-    `INSERT INTO fee_split_bindings (pool_address, entry_index, wallet, bound_at)
-     VALUES ($1, $2, $3, $4)
+    `INSERT INTO fee_split_bindings (pool_address, entry_index, wallet, bound_at, x_user_id, x_handle)
+     VALUES ($1, $2, $3, $4, $5, $6)
      ON CONFLICT (pool_address, entry_index) DO NOTHING`,
-    [poolAddress, entryIndex, wallet, Date.now()],
+    [poolAddress, entryIndex, wallet, Date.now(), x?.xUserId ?? null, x?.xHandle ?? null],
   );
   return rowCount === 1;
 }

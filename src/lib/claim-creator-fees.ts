@@ -17,10 +17,22 @@ import { rawToUi } from './swap-math';
 
 const U64_MAX = new BN('18446744073709551615');
 
-/** Build the claim transaction for ALL accrued creator fees on a pool. */
+/**
+ * Build the claim transaction for creator fees on a pool.
+ *
+ * maxBaseAmount/maxQuoteAmount are caps, not exact amounts: the
+ * instruction pulls min(accrued, cap) per leg. Omitting them claims
+ * everything accrued. Passing exact caps performs a PARTIAL claim:
+ * Curv sets the caps to the bound recipients' shares plus the
+ * creator's remainder, so unbound X-handle shares stay accrued in the
+ * pool (the pool is the vault) until their owners bind. Using u64 max
+ * avoids a stale-indexer under-claim when fees accrued since sampling.
+ */
 export async function buildClaimCreatorFeesTx(args: {
   poolAddress: string;
   creator: string;
+  maxBaseAmount?: bigint;
+  maxQuoteAmount?: bigint;
 }): Promise<Transaction> {
   const client = getDbcClient();
   const creator = new PublicKey(args.creator);
@@ -28,10 +40,8 @@ export async function buildClaimCreatorFeesTx(args: {
     creator,
     payer: creator,
     pool: new PublicKey(args.poolAddress),
-    // Caps, not exact amounts: claiming everything accrued. Using u64 max
-    // avoids a stale-indexer under-claim when fees accrued since sampling.
-    maxBaseAmount: U64_MAX,
-    maxQuoteAmount: U64_MAX,
+    maxBaseAmount: args.maxBaseAmount ?? U64_MAX,
+    maxQuoteAmount: args.maxQuoteAmount ?? U64_MAX,
   });
 }
 

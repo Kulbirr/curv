@@ -218,4 +218,53 @@ describe('buildClaimAndSplitTransactions', () => {
     expect(build.distribution).toHaveLength(0);
     expect(build.transactions).toHaveLength(1);
   });
+
+  it('caps the claim so unbound shares stay in the pool', async () => {
+    const { buildClaimCreatorFeesTx } = await import('./claim-creator-fees');
+    const boundWallet = wallet();
+    const recips: FeeSplitRecipient[] = [
+      { wallet: boundWallet, bps: 2000 }, // bound, 20%
+      { handle: 'alice', bps: 1000 }, // unbound X handle, 10%
+    ];
+    await buildClaimAndSplitTransactions({
+      connection: makeConnection({ accountExists: true }),
+      tracked: makeTracked(),
+      recipients: recips,
+      bindings: [
+        {
+          poolAddress: 'pool',
+          entryIndex: 0,
+          wallet: boundWallet,
+          boundAt: 1,
+        },
+      ],
+    });
+    const calls = vi.mocked(buildClaimCreatorFeesTx).mock.calls;
+    const last = calls[calls.length - 1][0] as {
+      maxBaseAmount: bigint;
+      maxQuoteAmount: bigint;
+    };
+    // Accrued 1.0 base / 2.0 quote. Bound 20% = 0.2/0.4, creator
+    // remainder 70% = 0.7/1.4. Caps = 0.9 base + 1.8 quote; the unbound
+    // 10% (0.1/0.2) stays accrued in the pool.
+    expect(last.maxBaseAmount).toBe(BigInt(900_000_000));
+    expect(last.maxQuoteAmount).toBe(BigInt(1_800_000_000));
+  });
+
+  it('claims everything when there are no recipients', async () => {
+    const { buildClaimCreatorFeesTx } = await import('./claim-creator-fees');
+    await buildClaimAndSplitTransactions({
+      connection: makeConnection({ accountExists: true }),
+      tracked: makeTracked(),
+      recipients: [],
+    });
+    const calls = vi.mocked(buildClaimCreatorFeesTx).mock.calls;
+    const last = calls[calls.length - 1][0] as {
+      maxBaseAmount: bigint;
+      maxQuoteAmount: bigint;
+    };
+    // No recipients: creator keeps 100%, caps equal full accrued.
+    expect(last.maxBaseAmount).toBe(BigInt(1_000_000_000));
+    expect(last.maxQuoteAmount).toBe(BigInt(2_000_000_000));
+  });
 });

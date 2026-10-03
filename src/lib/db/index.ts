@@ -159,6 +159,26 @@ CREATE TABLE IF NOT EXISTS fee_split_bindings (
   bound_at BIGINT NOT NULL,
   PRIMARY KEY (pool_address, entry_index)
 );
+-- X identity behind a binding, when the recipient claimed through
+-- Login with X. The numeric user ID is the stable match key (handles
+-- can be renamed); the handle is stored for display.
+ALTER TABLE fee_split_bindings ADD COLUMN IF NOT EXISTS x_user_id TEXT;
+ALTER TABLE fee_split_bindings ADD COLUMN IF NOT EXISTS x_handle TEXT;
+
+-- In-app notification inbox, keyed to the connected wallet. Events:
+-- a split recipient bound their wallet, fees are claimable, a split
+-- payout landed. Rows are append-only; reading marks read_at.
+CREATE TABLE IF NOT EXISTS notifications (
+  id TEXT PRIMARY KEY,
+  wallet TEXT NOT NULL,
+  type TEXT NOT NULL,
+  title TEXT NOT NULL,
+  body TEXT,
+  link TEXT,
+  created_at BIGINT NOT NULL,
+  read_at BIGINT
+);
+CREATE INDEX IF NOT EXISTS idx_notifications_wallet ON notifications (wallet, created_at DESC);
 
 -- Trading strategy signals (mirror feed). Signals are published by the
 -- operator through the admin API and are identical for every subscriber:

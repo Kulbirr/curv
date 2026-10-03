@@ -5,6 +5,7 @@ import { useRouter } from 'next/router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { shortenAddress } from '@/lib/utils';
 import { parsePreviewAddress, previewAddress } from '@/lib/address-preview';
+import { NotificationBell } from '@/components/NotificationBell';
 
 /** The Living Curve mark, ported from the curv-ui spec. */
 export function CurveMark({ className = '' }: { className?: string }) {
@@ -217,7 +218,9 @@ export const Header = () => {
         )}
       </form>
       {address ? (
-        <div ref={menuRef} className="sc-wallet-wrap">
+        <div className="flex items-center gap-2">
+          <NotificationBell wallet={address} />
+          <div ref={menuRef} className="sc-wallet-wrap">
           <button
             type="button"
             className="sc-wallet connected"
@@ -249,6 +252,7 @@ export const Header = () => {
               </button>
             </div>
           )}
+          </div>
         </div>
       ) : (
         <button

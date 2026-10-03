@@ -133,6 +133,27 @@ export default function FeesWaitingPage() {
     window.setTimeout(() => setCopied(false), 2000);
   };
 
+  const [copiedInvite, setCopiedInvite] = useState<number | null>(null);
+  const copyInvite = async (invite: string, i: number) => {
+    try {
+      await navigator.clipboard.writeText(invite);
+    } catch {
+      const ta = document.createElement('textarea');
+      ta.value = invite;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    }
+    setCopiedInvite(i);
+    window.setTimeout(
+      () => setCopiedInvite((cur) => (cur === i ? null : cur)),
+      2000
+    );
+  };
+
   const tokenName = trust?.baseName || trust?.baseSymbol || 'this token';
   const baseSymbol = trust?.baseSymbol ?? 'tokens';
   const quoteSymbol = trust?.quoteSymbol ?? 'tokens';
@@ -293,18 +314,35 @@ export default function FeesWaitingPage() {
                     </div>
                   )}
                   {!bound && invite && (
-                    <a
-                      href={invite}
-                      style={{
-                        fontSize: 13,
-                        color: '#c4f0c8',
-                        textDecoration: 'underline',
-                        marginTop: 6,
-                        display: 'inline-block',
-                      }}
-                    >
-                      Bind a wallet to claim this share
-                    </a>
+                    <div style={{ marginTop: 6 }}>
+                      <a
+                        href={invite}
+                        style={{
+                          fontSize: 13,
+                          color: '#c4f0c8',
+                          textDecoration: 'underline',
+                          display: 'inline-block',
+                        }}
+                      >
+                        Bind a wallet to claim this share
+                      </a>
+                      <button
+                        type="button"
+                        onClick={() => copyInvite(invite, i)}
+                        style={{
+                          fontSize: 12,
+                          color: '#9db4a3',
+                          background: 'transparent',
+                          border: '1px solid #1f2937',
+                          borderRadius: 8,
+                          padding: '4px 10px',
+                          marginLeft: 10,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {copiedInvite === i ? 'Copied' : 'Copy invite link'}
+                      </button>
+                    </div>
                   )}
                 </div>
               );

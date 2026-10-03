@@ -150,6 +150,28 @@ export default function CreatorEarnings({
         setTxSig(signatures[0] ?? null);
         setStatus('confirmed');
         queryClient.invalidateQueries({ queryKey: ['pool-state', poolAddress] });
+        // Tell each paid recipient: their share landed. Best effort,
+        // idempotent per event id; the chain is the source of truth.
+        try {
+          await fetch('/api/notifications/emit', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              kind: 'split_paid',
+              poolAddress,
+              signature: signatures[0] ?? '',
+              payouts: splits
+                .filter((r) => r.effectiveWallet)
+                .map((r) => ({
+                  wallet: r.effectiveWallet,
+                  handle: r.handle ?? undefined,
+                  bps: r.bps,
+                })),
+            }),
+          });
+        } catch {
+          // Notification failure never fails the claim.
+        }
         return;
       }
       const sig = await claimCreatorFeesFlow({
@@ -276,6 +298,36 @@ export default function CreatorEarnings({
           })}
         </div>
       )}
+
+      {hasSplits &&
+        (() => {
+          const waiting = splits.filter((r) => r.handle && !r.wallet && !r.effectiveWallet);
+          if (waiting.length === 0) return null;
+          return (
+            <div
+              role="status"
+              style={{
+                border: '1px solid #d08a5f55',
+                background: '#d08a5f11',
+                borderRadius: 10,
+                padding: '10px 12px',
+                marginTop: 12,
+                fontSize: 12,
+                lineHeight: 1.5,
+                color: '#e8c9a8',
+              }}
+            >
+              <strong style={{ color: '#d08a5f' }}>
+                {waiting.length === 1
+                  ? `${waiting[0].handle ? `@${waiting[0].handle}` : 'A collaborator'} hasn't bound a wallet yet`
+                  : `${waiting.length} collaborators haven't bound wallets yet`}
+              </strong>
+              <br />
+              Their shares stay in the pool until they log in with X and bind. Share their invite
+              links below so they can claim.
+            </div>
+          );
+        })()}
 
       {hasSplits && (
         <div className="sc-split-plan" aria-label="Invite collaborators">

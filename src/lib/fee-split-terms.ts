@@ -112,13 +112,18 @@ export function splitShareRaw(rawAmount: string | null | undefined, bps: number)
  * A wallet bound to a fee split entry through a recipient onboarding
  * link. One row per (pool, entry), written once and never updated or
  * deleted: the first valid signature wins, and the bound wallet becomes
- * the entry's payout wallet at claim time.
+ * the entry's payout wallet at claim time. When the recipient claimed
+ * through Login with X, x_user_id records the verified numeric X user
+ * ID (stable across handle renames) and x_handle the handle at bind
+ * time for display.
  */
 export interface FeeSplitBinding {
   poolAddress: string;
   entryIndex: number;
   wallet: string;
   boundAt: number;
+  xUserId?: string;
+  xHandle?: string;
 }
 
 /** A split recipient annotated with its effective payout wallet. */
