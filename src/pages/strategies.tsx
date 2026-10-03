@@ -723,19 +723,19 @@ function TrackRecord() {
           </p>
         </div>
         <div className="flex gap-7 md:gap-9">
-          <div className="text-right">
+          <div className="text-center">
             <p className="text-2xl font-semibold text-[#32f27b]">{record.wins}</p>
             <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-neutral-500">
               won
             </p>
           </div>
-          <div className="text-right">
+          <div className="text-center">
             <p className="text-2xl font-semibold text-[#fa6d74]">{record.losses}</p>
             <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-neutral-500">
               lost
             </p>
           </div>
-          <div className="text-right">
+          <div className="text-center">
             <p className="text-2xl font-semibold text-neutral-300">{record.expired}</p>
             <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-neutral-500">
               expired
