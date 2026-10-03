@@ -202,6 +202,54 @@ export default function StrategiesAdmin() {
     }
   }, [api, form, universe, load]);
 
+  // One click pipeline: submit the idea, run the gates and the judge, and
+  // publish immediately when approved. Rejected ideas land in the rejected
+  // log; when the judge is unavailable the candidate stays pending for a
+  // human decision and nothing publishes.
+  const submitAndAutoPublish = useCallback(async () => {
+    setBusy('auto');
+    setError(null);
+    try {
+      const coin = universe.find((u) => u.baseMint === form.baseMint);
+      const targets = form.targets
+        .split(',')
+        .map((t) => Number(t.trim()))
+        .filter((t) => Number.isFinite(t) && t > 0);
+      const created = (await api('/api/strategies/candidates', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          baseMint: form.baseMint,
+          baseSymbol: coin?.symbol ?? 'UNKNOWN',
+          entryLow: Number(form.entryLow),
+          entryHigh: Number(form.entryHigh),
+          stopPrice: Number(form.stopPrice),
+          targets,
+          sizeText: form.sizeText.trim() || null,
+          thesis: form.thesis.trim(),
+          submittedBy: form.submittedBy.trim(),
+          noKnownUnlock: form.noKnownUnlock,
+        }),
+      })) as { candidate?: { id?: string } };
+      const id = created.candidate?.id;
+      if (!id) throw new Error('Submit did not return a candidate');
+      const evaluated = (await api(`/api/strategies/candidates/${id}/evaluate`, {
+        method: 'POST',
+      })) as { candidate?: CandidateView; judgeUnavailable?: boolean };
+      const status = evaluated.candidate?.status;
+      if (status === 'approved') {
+        await api(`/api/strategies/candidates/${id}/publish`, { method: 'POST' });
+      } else if (status === 'pending' || evaluated.judgeUnavailable) {
+        setError('Judge unavailable, the idea is pending your decision below');
+      }
+      setForm((f) => ({ ...f, entryLow: '', entryHigh: '', stopPrice: '', targets: '', thesis: '' }));
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Auto publish failed');
+    } finally {
+      setBusy(null);
+    }
+  }, [api, form, universe, load]);
   const evaluate = useCallback(
     async (id: string) => {
       setBusy(id);
@@ -407,14 +455,28 @@ export default function StrategiesAdmin() {
                   No large unlock known within the next 30 days
                 </label>
               </div>
-              <button
-                type="button"
-                onClick={submitCandidate}
-                disabled={busy === 'submit' || !form.baseMint}
-                className="mt-6 inline-flex h-11 items-center rounded-full bg-[#32f27b] px-7 text-sm font-bold text-[#04120a] transition hover:bg-[#4bf78f] disabled:opacity-60"
-              >
-                {busy === 'submit' ? 'Submitting…' : 'Submit candidate'}
-              </button>
+              <div className="mt-6 flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={submitCandidate}
+                  disabled={busy === 'submit' || busy === 'auto' || !form.baseMint}
+                  className="inline-flex h-11 items-center rounded-full bg-[#32f27b] px-7 text-sm font-bold text-[#04120a] transition hover:bg-[#4bf78f] disabled:opacity-60"
+                >
+                  {busy === 'submit' ? 'Submitting…' : 'Submit candidate'}
+                </button>
+                <button
+                  type="button"
+                  onClick={submitAndAutoPublish}
+                  disabled={busy === 'submit' || busy === 'auto' || !form.baseMint}
+                  className="inline-flex h-11 items-center rounded-full border border-[#32f27b]/40 px-7 text-sm font-bold text-[#32f27b] transition hover:bg-[#32f27b]/10 disabled:opacity-60"
+                >
+                  {busy === 'auto' ? 'Checking and publishing…' : 'Submit and auto publish'}
+                </button>
+              </div>
+              <p className="mt-2 text-xs text-neutral-500">
+                Auto publish runs the rule checks and the AI judge, then publishes at once when
+                approved. Rejected ideas go to the rejected log.
+              </p>
             </section>
 
             <section className="mt-8">
