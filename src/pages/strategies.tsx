@@ -84,8 +84,9 @@ function friendlyError(e: unknown): string {
  * for a while even though the SOL already arrived.
  */
 async function activatePass(wallet: string, signature: string): Promise<void> {
-  const ROUNDS = 18;
+  const ROUNDS = 22;
   for (let i = 0; i < ROUNDS; i++) {
+    if (i > 0) await new Promise((r) => setTimeout(r, 4000));
     const res = await fetch('/api/strategies/subscribe', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -94,10 +95,7 @@ async function activatePass(wallet: string, signature: string): Promise<void> {
     const json = (await res.json().catch(() => ({}))) as { error?: string };
     if (res.ok) return;
     const notFound = res.status === 422 && /not found on chain/i.test(json.error ?? '');
-    if (notFound && i < ROUNDS - 1) {
-      await new Promise((r) => setTimeout(r, 5000));
-      continue;
-    }
+    if (notFound && i < ROUNDS - 1) continue;
     throw new Error(json.error || 'Could not activate the pass');
   }
   throw new Error('Payment not found on chain yet, try again in a bit');
@@ -154,11 +152,20 @@ function useSubscription(wallet: string | null) {
       const json = await res.json();
       setSub(json.active ? { kind: 'active', expiresAt: json.expiresAt } : { kind: 'none' });
     } catch {
-      setSub({ kind: 'none' });
+      // A failed refresh must never flip a known state to the paywall:
+      // keep whatever was showing and let the next refresh correct it.
+      setSub((prev) => (prev.kind === 'unknown' ? { kind: 'none' } : prev));
     }
   }, [wallet]);
   useEffect(() => {
     refresh();
+  }, [refresh]);
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') refresh();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
   }, [refresh]);
   return { sub, refresh };
 }
@@ -593,7 +600,7 @@ function MirrorModal({ signal, onClose }: { signal: StrategySignal; onClose: () 
 }
 
 export default function StrategiesPage() {
-  const { publicKey, sendTransaction } = useWallet();
+  const { publicKey, sendTransaction, signTransaction } = useWallet();
   const { setShowModal } = useUnifiedWalletContext();
   const wallet = publicKey?.toBase58() ?? null;
   const [now, setNow] = useState(() => Date.now());
@@ -633,17 +640,21 @@ export default function StrategiesPage() {
           lamports: SUBSCRIPTION_PRICE_LAMPORTS,
         }),
       );
-      const sig = await sendTransaction(tx, connection);
-      setSubSig(sig);
-      // Approving in the wallet only broadcasts the transaction. The network
-      // can be slow to confirm, so a local confirmation timeout is not a
-      // failure: the server verifies the payment on chain below.
-      setSubPhase('confirming');
-      try {
-        await connection.confirmTransaction(sig, 'confirmed');
-      } catch {
-        // Fall through to server side verification.
+      // Sign and broadcast directly instead of the adapter's sendTransaction:
+      // the adapter can sit in its own confirmation wait for 30s, while the
+      // server below is the real verifier and polls the chain itself.
+      let sig: string;
+      if (signTransaction) {
+        const { blockhash } = await connection.getLatestBlockhash();
+        tx.feePayer = publicKey;
+        tx.recentBlockhash = blockhash;
+        const signed = await signTransaction(tx);
+        sig = await connection.sendRawTransaction(signed.serialize());
+      } else {
+        sig = await sendTransaction(tx, connection);
       }
+      setSubSig(sig);
+      setSubPhase('confirming');
       await activatePass(publicKey.toBase58(), sig);
       setSubPhase('idle');
       setSubSig(null);
@@ -652,7 +663,7 @@ export default function StrategiesPage() {
       setSubPhase('error');
       setSubError(friendlyError(e));
     }
-  }, [publicKey, sendTransaction, setShowModal, refresh]);
+  }, [publicKey, sendTransaction, signTransaction, setShowModal, refresh]);
 
   // Re-check a payment that was already approved in the wallet. This never
   // creates a new transaction, so the user cannot be charged twice.
@@ -707,7 +718,24 @@ export default function StrategiesPage() {
             </div>
           )}
 
-          {wallet && !active && (
+          {wallet && sub.kind === 'unknown' && (
+            <div
+              className="rounded-3xl border border-white/10 bg-[#0e1112] p-8 md:p-10"
+              aria-busy="true"
+              aria-label="Loading your pass status"
+            >
+              <div className="h-3 w-24 animate-pulse rounded-full bg-white/10" />
+              <div className="mt-4 h-8 w-56 animate-pulse rounded-xl bg-white/10" />
+              <div className="mt-6 space-y-3">
+                <div className="h-4 w-3/4 animate-pulse rounded-full bg-white/5" />
+                <div className="h-4 w-2/3 animate-pulse rounded-full bg-white/5" />
+                <div className="h-4 w-1/2 animate-pulse rounded-full bg-white/5" />
+              </div>
+              <div className="mt-8 h-12 w-44 animate-pulse rounded-full bg-white/10" />
+            </div>
+          )}
+
+          {wallet && sub.kind === 'none' && (
             <SubscribeCard
               onSubscribe={subscribe}
               onRecheck={recheckPayment}
