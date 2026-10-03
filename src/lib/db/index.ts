@@ -201,6 +201,46 @@ CREATE TABLE IF NOT EXISTS strategy_used_signatures (
   wallet TEXT NOT NULL,
   created_at BIGINT NOT NULL
 );
+
+-- Eligible coin universe for the signal feed. Only coins listed here as
+-- active can become signal candidates. tier is core (large caps) or
+-- satellite (mid caps with per signal depth checks). coingecko_id drives
+-- the liquidity gate; base_mint is the Solana mint used at mirror time.
+CREATE TABLE IF NOT EXISTS strategy_universe (
+  base_mint TEXT PRIMARY KEY,
+  symbol TEXT NOT NULL,
+  coingecko_id TEXT NOT NULL,
+  tier TEXT NOT NULL DEFAULT 'core',
+  active BIGINT NOT NULL DEFAULT 1,
+  created_at BIGINT NOT NULL
+);
+
+-- Signal candidates moving through the approval pipeline. A candidate is
+-- submitted by the operator, evaluated by deterministic gates and then by
+-- the AI judge, and only published when approved. Rejected rows stay as
+-- the audit trail and are never shown to subscribers.
+CREATE TABLE IF NOT EXISTS strategy_signal_candidates (
+  id TEXT PRIMARY KEY,
+  base_mint TEXT NOT NULL,
+  base_symbol TEXT NOT NULL,
+  quote_mint TEXT NOT NULL,
+  quote_symbol TEXT NOT NULL,
+  entry_low DOUBLE PRECISION NOT NULL,
+  entry_high DOUBLE PRECISION NOT NULL,
+  stop_price DOUBLE PRECISION NOT NULL,
+  targets TEXT NOT NULL,
+  size_text TEXT,
+  thesis TEXT NOT NULL,
+  submitted_by TEXT NOT NULL,
+  no_known_unlock BIGINT NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'pending',
+  rule_results TEXT,
+  ai_verdict TEXT,
+  ai_reasons TEXT,
+  decided_at BIGINT,
+  created_at BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_signal_candidates_status ON strategy_signal_candidates (status, created_at DESC);
 `;
 
 // pg returns BIGINT (int8) columns as strings by default. Unix-ms
@@ -560,6 +600,22 @@ export function ensureSchema(db?: DbClient): Promise<void> {
       // Column added after the pools table already existed in
       // production: backfill it idempotently on every schema check.
       await client.query('ALTER TABLE pools ADD COLUMN IF NOT EXISTS dev_buy_lamports BIGINT');
+      // AI approval columns added when the signal approval pipeline
+      // shipped: older strategy_signals rows predate the pipeline.
+      await client.query('ALTER TABLE strategy_signals ADD COLUMN IF NOT EXISTS ai_approved BIGINT NOT NULL DEFAULT 0');
+      await client.query('ALTER TABLE strategy_signals ADD COLUMN IF NOT EXISTS ai_reasons TEXT');
+      // Seed the signal universe once: BTC, ETH and SOL as core tier.
+      // Mint addresses verified via CoinGecko detail_platforms (solana).
+      const nowMs = Date.now();
+      await client.query(
+        `INSERT INTO strategy_universe (base_mint, symbol, coingecko_id, tier, active, created_at)
+         VALUES
+           ('cbbtcf3aa214zXHbiAZQwf4122FBYbraNdFqgw4iMij', 'BTC', 'bitcoin', 'core', 1, $1),
+           ('7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs', 'ETH', 'ethereum', 'core', 1, $1),
+           ('So11111111111111111111111111111111111111112', 'SOL', 'solana', 'core', 1, $1)
+         ON CONFLICT (base_mint) DO NOTHING`,
+        [nowMs],
+      );
       await runSeedImport();
     })();
     schemaReady.catch(() => { schemaReady = null; });

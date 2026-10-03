@@ -48,6 +48,10 @@ export interface StrategySignal {
   status: SignalStatus;
   expiresAt: number;
   createdAt: number;
+  /** True when the signal passed the AI judge in the approval pipeline. */
+  aiApproved: boolean;
+  /** The judge's reasons, shown on the signal card when approved. */
+  aiReasons: string[] | null;
 }
 
 export interface StrategySubscription {
@@ -191,7 +195,7 @@ function validOptionalText(value: unknown, maxLen: number): string | null {
   return t;
 }
 
-export type SignalInput = Omit<StrategySignal, 'id' | 'status' | 'createdAt'>;
+export type SignalInput = Omit<StrategySignal, 'id' | 'status' | 'createdAt' | 'aiApproved' | 'aiReasons'>;
 
 export function validateSignalInput(
   body: unknown,

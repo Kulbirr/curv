@@ -8,7 +8,9 @@ import type { SignalInput, StrategySignal, StrategySubscription } from '../strat
  * here moves funds.
  */
 
-export async function insertStrategySignal(input: SignalInput): Promise<StrategySignal> {
+export async function insertStrategySignal(
+  input: SignalInput & { aiApproved?: boolean; aiReasons?: string[] | null },
+): Promise<StrategySignal> {
   const { newSignalId } = await import('../strategies');
   const now = Date.now();
   const signal: StrategySignal = {
@@ -16,13 +18,16 @@ export async function insertStrategySignal(input: SignalInput): Promise<Strategy
     id: newSignalId(),
     status: 'active',
     createdAt: now,
+    aiApproved: input.aiApproved ?? false,
+    aiReasons: input.aiReasons ?? null,
   };
   await execute(
     `INSERT INTO strategy_signals
        (id, base_mint, quote_mint, base_symbol, quote_symbol,
         base_decimals, quote_decimals, entry_price, max_price,
-        size_text, note, status, expires_at, created_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+        size_text, note, status, expires_at, created_at,
+        ai_approved, ai_reasons)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
     [
       signal.id,
       signal.baseMint,
@@ -38,6 +43,8 @@ export async function insertStrategySignal(input: SignalInput): Promise<Strategy
       signal.status,
       signal.expiresAt,
       signal.createdAt,
+      signal.aiApproved ? 1 : 0,
+      signal.aiReasons ? JSON.stringify(signal.aiReasons) : null,
     ],
   );
   return signal;
@@ -58,14 +65,28 @@ interface SignalRow {
   status: string;
   expires_at: number;
   created_at: number;
+  ai_approved: number;
+  ai_reasons: string | null;
+}
+
+function parseAiReasons(value: string | null): string[] | null {
+  if (!value) return null;
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (!Array.isArray(parsed)) return null;
+    const reasons = parsed.filter((r): r is string => typeof r === 'string');
+    return reasons.length > 0 ? reasons : null;
+  } catch {
+    return null;
+  }
 }
 
 function rowToSignal(r: SignalRow): StrategySignal {
   return {
     id: r.id,
     baseMint: r.base_mint,
-    quoteMint: r.quote_mint,
     baseSymbol: r.base_symbol,
+    quoteMint: r.quote_mint,
     quoteSymbol: r.quote_symbol,
     baseDecimals: r.base_decimals,
     quoteDecimals: r.quote_decimals,
@@ -77,6 +98,8 @@ function rowToSignal(r: SignalRow): StrategySignal {
     status: r.status === 'cancelled' ? 'cancelled' : 'active',
     expiresAt: r.expires_at,
     createdAt: r.created_at,
+    aiApproved: r.ai_approved === 1,
+    aiReasons: parseAiReasons(r.ai_reasons),
   };
 }
 
@@ -85,7 +108,8 @@ export async function listLiveSignals(nowMs: number): Promise<StrategySignal[]> 
   const rows = await query<SignalRow>(
     `SELECT id, base_mint, quote_mint, base_symbol, quote_symbol,
             base_decimals, quote_decimals, entry_price, max_price,
-            size_text, note, status, expires_at, created_at
+            size_text, note, status, expires_at, created_at,
+            ai_approved, ai_reasons
      FROM strategy_signals
      WHERE status = 'active' AND expires_at > $1
      ORDER BY created_at DESC`,
@@ -98,7 +122,8 @@ export async function getSignal(id: string): Promise<StrategySignal | null> {
   const rows = await query<SignalRow>(
     `SELECT id, base_mint, quote_mint, base_symbol, quote_symbol,
             base_decimals, quote_decimals, entry_price, max_price,
-            size_text, note, status, expires_at, created_at
+            size_text, note, status, expires_at, created_at,
+            ai_approved, ai_reasons
      FROM strategy_signals WHERE id = $1`,
     [id],
   );

@@ -310,6 +310,7 @@ function SignalCard({
   onMirror: (s: StrategySignal) => void;
 }) {
   const live = isSignalLive(signal, now);
+  const [showReasons, setShowReasons] = useState(false);
   return (
     <article
       className={cn(
@@ -321,13 +322,23 @@ function SignalCard({
         <div className="flex items-center gap-4">
           <PairAvatar baseSymbol={signal.baseSymbol} quoteSymbol={signal.quoteSymbol} />
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <span className="rounded-md bg-[#32f27b]/12 px-2 py-0.5 text-[11px] font-bold text-[#32f27b]">
                 BUY
               </span>
               <span className="rounded-md bg-white/5 px-2 py-0.5 text-[11px] font-semibold text-neutral-400">
                 Spot
               </span>
+              {signal.aiApproved && (
+                <button
+                  type="button"
+                  onClick={() => setShowReasons((v) => !v)}
+                  className="inline-flex items-center gap-1 rounded-md bg-sky-400/12 px-2 py-0.5 text-[11px] font-bold text-sky-300 transition hover:bg-sky-400/20"
+                  aria-expanded={showReasons}
+                >
+                  <span aria-hidden="true">✓</span> Approved by AI
+                </button>
+              )}
             </div>
             <h3 className="mt-1.5 text-lg font-bold text-neutral-50">
               {signal.baseSymbol}
@@ -337,6 +348,17 @@ function SignalCard({
         </div>
         <LivePill signal={signal} now={now} />
       </div>
+
+      {signal.aiApproved && showReasons && signal.aiReasons && signal.aiReasons.length > 0 && (
+        <div className="mt-3 rounded-2xl border border-sky-400/20 bg-sky-400/8 px-4 py-3">
+          <p className="text-[11px] font-bold tracking-wide text-sky-300">WHY THE AI APPROVED IT</p>
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-xs leading-relaxed text-neutral-300">
+            {signal.aiReasons.map((r, i) => (
+              <li key={i}>{r}</li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {signal.note && <p className="mt-4 text-sm text-neutral-400 italic">{signal.note}</p>}
 
