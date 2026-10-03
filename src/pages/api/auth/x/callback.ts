@@ -33,10 +33,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(502).json({ error: 'Could not complete X login, please try again' });
   }
   const me = await fetchXMe(tokens.access_token);
-  if (!me) {
-    return res.status(502).json({ error: 'Could not read your X profile, please try again' });
+  if (me.ok === false) {
+    // Include a safe diagnostic code so we can tell 401 (bad token) from
+    // 403 (app permissions) from 429/5xx (X flakiness) without server logs.
+    return res.status(502).json({ error: 'Could not read your X profile, please try again', code: me.reason });
   }
-  const session = signXSession({ xUserId: me.id, xUsername: me.username, issuedAt: Date.now() });
+  const session = signXSession({ xUserId: me.user.id, xUsername: me.user.username, issuedAt: Date.now() });
   const next =
     cookies.x_oauth_next && cookies.x_oauth_next.startsWith('/')
       ? decodeURIComponent(cookies.x_oauth_next)

@@ -99,7 +99,11 @@ export async function exchangeCode(code: string, verifier: string): Promise<XTok
   }
 }
 
-export async function fetchXMe(accessToken: string): Promise<XUser | null> {
+export type FetchXMeResult =
+  | { ok: true; user: XUser }
+  | { ok: false; reason: 'network' | 'http-401' | 'http-403' | 'http-429' | 'http-5xx' | 'http-other' | 'bad-shape' };
+
+export async function fetchXMe(accessToken: string): Promise<FetchXMeResult> {
   // X API is flaky; retry once on network errors or 5xx before giving up.
   for (let attempt = 0; attempt < 2; attempt++) {
     let res: Response;
@@ -114,7 +118,7 @@ export async function fetchXMe(accessToken: string): Promise<XUser | null> {
         await new Promise((r) => setTimeout(r, 1000));
         continue;
       }
-      return null;
+      return { ok: false, reason: 'network' };
     }
     if (!res.ok) {
       console.error(`[x-oauth] fetchXMe HTTP ${res.status} (attempt ${attempt + 1})`);
@@ -123,7 +127,13 @@ export async function fetchXMe(accessToken: string): Promise<XUser | null> {
         await new Promise((r) => setTimeout(r, 1000));
         continue;
       }
-      return null;
+      const reason =
+        res.status === 401 ? 'http-401'
+        : res.status === 403 ? 'http-403'
+        : res.status === 429 ? 'http-429'
+        : res.status >= 500 ? 'http-5xx'
+        : 'http-other';
+      return { ok: false, reason };
     }
     try {
       const j = (await res.json()) as { data?: { id?: unknown; username?: unknown } };
@@ -131,15 +141,15 @@ export async function fetchXMe(accessToken: string): Promise<XUser | null> {
       const username = j.data?.username;
       if (typeof id !== 'string' || typeof username !== 'string') {
         console.error('[x-oauth] fetchXMe malformed response:', JSON.stringify(j).slice(0, 200));
-        return null;
+        return { ok: false, reason: 'bad-shape' };
       }
-      return { id, username };
+      return { ok: true, user: { id, username } };
     } catch (e) {
       console.error('[x-oauth] fetchXMe JSON parse error:', e instanceof Error ? e.message : e);
-      return null;
+      return { ok: false, reason: 'bad-shape' };
     }
   }
-  return null;
+  return { ok: false, reason: 'network' };
 }
 
 export interface XSession {
