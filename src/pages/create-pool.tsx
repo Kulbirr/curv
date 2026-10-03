@@ -180,9 +180,25 @@ export default function CreatePool() {
   // ---- Token type ----
   const [tokenType, setTokenType] = useState<TokenType>('Token')
   const [underlying, setUnderlying] = useState('')
-  // Field errors only render after the user has interacted with the form,
-  // so a fresh load (or a restored draft) never opens with red errors.
-  const [formInteracted, setFormInteracted] = useState(false)
+  // Field errors only render after the user has blurred (touched) that
+  // specific field, so a fresh load (or a restored draft) never opens
+  // with red errors on untouched fields. On launch attempt all fields
+  // are marked touched so every problem is visible at once.
+  const [touched, setTouched] = useState<Record<string, boolean>>({})
+  const markTouched = (key: string) =>
+    setTouched((t) => (t[key] ? t : { ...t, [key]: true }))
+  const touchAll = () =>
+    setTouched({
+      name: true,
+      symbol: true,
+      description: true,
+      twitter: true,
+      underlying: true,
+      quoteMint: true,
+      quoteDecimals: true,
+      devBuy: true,
+    })
+  const anyTouched = (keys: string[]) => keys.some((k) => touched[k])
 
   // ---- Curve ----
   const [preset, setPreset] = useState<PresetSel>('exponential')
@@ -878,6 +894,19 @@ export default function CreatePool() {
   }
 
   async function handleLaunch() {
+    // Launch is the only gate: mark every field touched so all errors
+    // become visible, then block if anything is invalid.
+    touchAll()
+    const errs = [...tokenErrors, ...quoteErrors, ...econErrors]
+    if (metadataConfigured === false && !manualUri.trim()) {
+      errs.push('Metadata URI is required')
+    }
+    if (errs.length > 0) {
+      setLaunchError(
+        `Fix ${errs.length} ${errs.length === 1 ? 'issue' : 'issues'} before launching: ${errs[0]}`
+      )
+      return
+    }
     if (!publicKey) {
       setWalletModalVisible(true)
       return
@@ -1243,10 +1272,6 @@ export default function CreatePool() {
       ? `Quick ${quickTier.headline} ${quickTier.name}`
       : presetName
   /** Per-step validation for the wizard. */
-  const step1Errors = tokenErrors
-  const step2Errors =
-    mode === 'quick' ? [...quoteErrors] : [...quoteErrors, ...curveErrors]
-  const stepErrors = step === 1 ? step1Errors : step === 2 ? step2Errors : activeErrors
 
   function fmtUsd(v: number): string {
     return v.toLocaleString('en-US', {
@@ -1523,17 +1548,13 @@ export default function CreatePool() {
               type="button"
               role="tab"
               aria-selected={step === s.n}
-              disabled={s.n > step}
-              onClick={() => {
-                if (s.n < step) setStep(s.n)
-              }}
+              onClick={() => setStep(s.n)}
               className={cn(
                 'sc-wizard-step',
-                step === s.n && 'sc-wizard-step-active',
-                s.n < step && 'sc-wizard-step-done'
+                step === s.n && 'sc-wizard-step-active'
               )}
             >
-              <span className="sc-wizard-step-num">{s.n < step ? '✓' : s.n}</span>
+              <span className="sc-wizard-step-num">{s.n}</span>
               <span className="sc-wizard-step-text">
                 <strong>{s.label}</strong>
                 <small>{s.sub}</small>
@@ -1548,7 +1569,7 @@ export default function CreatePool() {
             onSubmit={(e) => e.preventDefault()}
           >
             {step === 1 && (
-              <div onInput={() => setFormInteracted(true)}>
+              <div>
             {/* ---- Token Identity ---- */}
             <section className="sc-builder-section">
               <div className="sc-builder-section-head">
@@ -1592,15 +1613,16 @@ export default function CreatePool() {
                     </button>
                   )}
                 </div>
-                <Field label="Token Name" error={formInteracted ? nameErr : undefined}>
+                <Field label="Token Name" error={touched.name ? nameErr : undefined}>
                   <input
                     value={name}
                     maxLength={32}
                     onChange={(e) => setName(e.target.value)}
+                    onBlur={() => markTouched('name')}
                     placeholder="e.g. Curve Coin"
                   />
                 </Field>
-                <Field label="Ticker / Symbol" error={formInteracted ? tokenSymbolErr : undefined}>
+                <Field label="Ticker / Symbol" error={touched.symbol ? tokenSymbolErr : undefined}>
                   <div className="sc-builder-input-prefix">
                     <b>$</b>
                     <input
@@ -1611,6 +1633,7 @@ export default function CreatePool() {
                           e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '')
                         )
                       }
+                      onBlur={() => markTouched('symbol')}
                       placeholder="CURV"
                     />
                   </div>
@@ -1618,12 +1641,13 @@ export default function CreatePool() {
               </div>
               <Field
                 label="Description"
-                error={formInteracted ? descriptionErr : undefined}
+                error={touched.description ? descriptionErr : undefined}
                 className="sc-builder-description"
               >
                 <textarea
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
+                  onBlur={() => markTouched('description')}
                   maxLength={500}
                   placeholder="Tell traders what this token is about…"
                   rows={3}
@@ -1632,11 +1656,12 @@ export default function CreatePool() {
               <Field
                 label="X (Twitter)"
                 hint="Optional. Shown as an X icon next to the coin address."
-                error={twitter.trim() && !normalizeTwitterUrl(twitter) ? 'X handle must look like @handle or x.com/handle' : undefined}
+                error={touched.twitter && twitter.trim() && !normalizeTwitterUrl(twitter) ? 'X handle must look like @handle or x.com/handle' : undefined}
               >
                 <input
                   value={twitter}
                   onChange={(e) => setTwitter(e.target.value)}
+                  onBlur={() => markTouched('twitter')}
                   maxLength={60}
                   placeholder="@handle or x.com/handle"
                   autoComplete="off"
@@ -1648,7 +1673,7 @@ export default function CreatePool() {
                 only when you launch.
               </p>
               {imageError && <p className="sc-form-error">{imageError}</p>}
-              <ErrorList errors={tokenErrors} />
+              <ErrorList errors={anyTouched(['name', 'symbol', 'description', 'twitter', 'underlying']) ? tokenErrors : []} />
             </section>
 
             {/* ---- Type ---- */}
@@ -1669,7 +1694,7 @@ export default function CreatePool() {
                     className={tokenType === type ? 'selected' : ''}
                     onClick={() => {
                       setTokenType(type)
-                      setFormInteracted(true)
+                      markTouched('underlying')
                     }}
                   >
                     <span className="sc-type-icon">
@@ -1688,7 +1713,7 @@ export default function CreatePool() {
                 <Field
                   label="Underlying Ticker"
                   hint="Shown as a reference on your token page. It does not move your curve."
-                  error={formInteracted ? underlyingErr : undefined}
+                  error={touched.underlying ? underlyingErr : undefined}
                   className="sc-underlying-field"
                 >
                   <input
@@ -1699,6 +1724,7 @@ export default function CreatePool() {
                         e.target.value.toUpperCase().replace(/[^A-Z]/g, '')
                       )
                     }
+                    onBlur={() => markTouched('underlying')}
                     placeholder="E.G. AAPL, TSLA, NVDA"
                   />
                 </Field>
@@ -2803,11 +2829,7 @@ export default function CreatePool() {
                   className="sc-button sc-button-primary"
                   type="button"
                   onClick={handleLaunch}
-                  disabled={
-                    busy ||
-                    activeErrors.length > 0 ||
-                    (metadataConfigured === false && !manualUri.trim())
-                  }
+                  disabled={busy}
                 >
                   ↗ Launch Token
                 </button>
@@ -2837,16 +2859,10 @@ export default function CreatePool() {
                   <button
                     type="button"
                     className="sc-button sc-button-primary"
-                    disabled={stepErrors.length > 0}
                     onClick={() => setStep(((step + 1) as 1 | 2 | 3))}
                   >
                     Continue →
                   </button>
-                  {stepErrors.length > 0 && (
-                    <small className="sc-wizard-continue-hint">
-                      Fix the errors above to continue
-                    </small>
-                  )}
                 </div>
               ) : (
                 <span />
@@ -2898,6 +2914,24 @@ export default function CreatePool() {
               </article>
             </section>
 
+            <section className="sc-builder-chart-card">
+              <div className="sc-builder-chart-title">
+                <h2>Curve Preview</h2>
+                <span>{reviewCurveName}</span>
+              </div>
+              <div className="mt-3">
+                <CurveChart prices={reviewCurvePrices} quoteSymbol={quoteSymbol} />
+              </div>
+            </section>
+
+            <div className="sc-curve-explainer">
+              <span>ⓘ</span>
+              <p>
+                Your curve determines the price trajectory as buyers purchase
+                supply. Steeper curves reward early buyers more.
+              </p>
+            </div>
+
             <section
               className="sc-fees-disclosure"
               aria-labelledby="sc-fees-heading"
@@ -2932,24 +2966,6 @@ export default function CreatePool() {
                 </ul>
               </div>
             </section>
-
-            <section className="sc-builder-chart-card">
-              <div className="sc-builder-chart-title">
-                <h2>Curve Preview</h2>
-                <span>{reviewCurveName}</span>
-              </div>
-              <div className="mt-3">
-                <CurveChart prices={reviewCurvePrices} quoteSymbol={quoteSymbol} />
-              </div>
-            </section>
-
-            <div className="sc-curve-explainer">
-              <span>ⓘ</span>
-              <p>
-                Your curve determines the price trajectory as buyers purchase
-                supply. Steeper curves reward early buyers more.
-              </p>
-            </div>
           </aside>
         </div>
       </main>
