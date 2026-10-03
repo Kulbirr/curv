@@ -122,16 +122,21 @@ export async function evaluateCandidate(id: string): Promise<EvaluateResult> {
   try {
     // The mirror guard and the feed quote prices in the signal quote
     // currency, so the judge gets the live price in the same unit for
-    // its no chase check.
+    // its no chase check. Dollar stables track the dollar one to one.
     let marketPriceInQuote: number | null = null;
     if (evaluation.market) {
-      const quoteEntry = toGateUniverse(universe).find(
-        (u) => u.baseMint === gateInput.quoteMint && u.active,
-      );
-      if (quoteEntry) {
-        const quoteMarket = await fetchMarketSnapshot(quoteEntry.coingeckoId);
-        if (quoteMarket && quoteMarket.price > 0) {
-          marketPriceInQuote = evaluation.market.price / quoteMarket.price;
+      const quoteSymbol = gateInput.quoteSymbol.toUpperCase();
+      if (quoteSymbol === 'USDC' || quoteSymbol === 'USDT' || quoteSymbol === 'USD') {
+        marketPriceInQuote = evaluation.market.price;
+      } else {
+        const quoteEntry = toGateUniverse(universe).find(
+          (u) => u.baseMint === gateInput.quoteMint && u.active,
+        );
+        if (quoteEntry) {
+          const quoteMarket = await fetchMarketSnapshot(quoteEntry.coingeckoId);
+          if (quoteMarket && quoteMarket.price > 0) {
+            marketPriceInQuote = evaluation.market.price / quoteMarket.price;
+          }
         }
       }
     }

@@ -49,6 +49,9 @@ function validText(value: unknown, minLen: number, maxLen: number): string | nul
 }
 
 export const SOL_MINT = 'So11111111111111111111111111111111111111112';
+/** Signals are dollar denominated: USDC tracks the dollar and keeps
+ *  levels readable for large coins like BTC. */
+export const USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 
 export function validateCandidateBody(
   body: unknown,
@@ -63,9 +66,9 @@ export function validateCandidateBody(
   const baseSymbol = validSymbol(b.baseSymbol);
   if (!baseSymbol) return { ok: false, error: 'baseSymbol must be 1 to 12 letters or digits' };
 
-  const quoteMint = b.quoteMint === undefined ? SOL_MINT : validMint(b.quoteMint);
+  const quoteMint = b.quoteMint === undefined ? USDC_MINT : validMint(b.quoteMint);
   if (!quoteMint) return { ok: false, error: 'quoteMint must be a valid Solana address' };
-  const quoteSymbol = b.quoteSymbol === undefined ? 'SOL' : validSymbol(b.quoteSymbol);
+  const quoteSymbol = b.quoteSymbol === undefined ? 'USDC' : validSymbol(b.quoteSymbol);
   if (!quoteSymbol) return { ok: false, error: 'quoteSymbol must be 1 to 12 letters or digits' };
   if (baseMint === quoteMint) return { ok: false, error: 'baseMint and quoteMint must differ' };
 

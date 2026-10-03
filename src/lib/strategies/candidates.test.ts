@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SOL_MINT, validateCandidateBody } from './candidates';
+import { USDC_MINT, validateCandidateBody } from './candidates';
 
 const USDC = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 const CBBTC = 'cbbtcf3aa214zXHbiAZQwf4122FBYbraNdFqgw4iMij';
@@ -26,15 +26,15 @@ describe('validateCandidateBody', () => {
     const r = validateCandidateBody(body());
     expect(r.ok).toBe(true);
   });
-  it('defaults quote to SOL when omitted', () => {
+  it('defaults quote to USDC when omitted', () => {
     const b = body();
     delete (b as Record<string, unknown>).quoteMint;
     delete (b as Record<string, unknown>).quoteSymbol;
     const r = validateCandidateBody(b);
     expect(r.ok).toBe(true);
     if (r.ok) {
-      expect(r.input.quoteMint).toBe(SOL_MINT);
-      expect(r.input.quoteSymbol).toBe('SOL');
+      expect(r.input.quoteMint).toBe(USDC_MINT);
+      expect(r.input.quoteSymbol).toBe('USDC');
     }
   });
   it('rejects a bad mint', () => {

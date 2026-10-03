@@ -505,7 +505,7 @@ export default function StrategiesAdmin() {
                   />
                 </div>
                 <div>
-                  <label className={labelCls}>Entry low (in SOL)</label>
+                  <label className={labelCls}>Entry low (in USDC)</label>
                   <input
                     value={form.entryLow}
                     onChange={(e) => setForm({ ...form, entryLow: e.target.value })}
@@ -515,7 +515,7 @@ export default function StrategiesAdmin() {
                   />
                 </div>
                 <div>
-                  <label className={labelCls}>Entry high (in SOL)</label>
+                  <label className={labelCls}>Entry high (in USDC)</label>
                   <input
                     value={form.entryHigh}
                     onChange={(e) => setForm({ ...form, entryHigh: e.target.value })}
@@ -525,7 +525,7 @@ export default function StrategiesAdmin() {
                   />
                 </div>
                 <div>
-                  <label className={labelCls}>Stop (in SOL)</label>
+                  <label className={labelCls}>Stop (in USDC)</label>
                   <input
                     value={form.stopPrice}
                     onChange={(e) => setForm({ ...form, stopPrice: e.target.value })}

@@ -80,7 +80,7 @@ describe('buildIdea', () => {
     expect(idea.input.targets[1]).toBeCloseTo(244, 6);
     expect(idea.input.stopPrice).toBeLessThan(idea.input.entryLow);
     expect(idea.input.targets[0]).toBeGreaterThan(idea.input.entryHigh);
-    expect(idea.input.quoteSymbol).toBe('SOL');
+    expect(idea.input.quoteSymbol).toBe('USDC');
     expect(idea.input.thesis).toContain('rank 1 of 3');
     expect(idea.input.thesis).toContain('SOL');
     expect(idea.rank).toBe(1);
