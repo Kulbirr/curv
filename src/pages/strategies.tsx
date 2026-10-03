@@ -69,8 +69,38 @@ function fmtAgo(ts: number, now: number): string {
 
 function friendlyError(e: unknown): string {
   if (e instanceof JupiterError) return e.friendly;
-  if (e instanceof Error && e.message) return e.message;
+  if (e instanceof Error && e.message) {
+    if (/was not confirmed in/i.test(e.message))
+      return 'The network was slow to confirm your payment. It may still have gone through, so check below before paying again.';
+    return e.message;
+  }
   return 'Something went wrong, please try again';
+}
+
+/**
+ * Ask the server to verify a pass payment on chain and activate the pass.
+ * Retries while the payment is not found yet: approving in the wallet only
+ * broadcasts the transaction, and a slow network can leave it unconfirmed
+ * for a while even though the SOL already arrived.
+ */
+async function activatePass(wallet: string, signature: string): Promise<void> {
+  const ROUNDS = 18;
+  for (let i = 0; i < ROUNDS; i++) {
+    const res = await fetch('/api/strategies/subscribe', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ wallet, signature }),
+    });
+    const json = (await res.json().catch(() => ({}))) as { error?: string };
+    if (res.ok) return;
+    const notFound = res.status === 422 && /not found on chain/i.test(json.error ?? '');
+    if (notFound && i < ROUNDS - 1) {
+      await new Promise((r) => setTimeout(r, 5000));
+      continue;
+    }
+    throw new Error(json.error || 'Could not activate the pass');
+  }
+  throw new Error('Payment not found on chain yet, try again in a bit');
 }
 
 function PairAvatar({ baseSymbol, quoteSymbol }: { baseSymbol: string; quoteSymbol: string }) {
@@ -167,12 +197,16 @@ function useSignals(active: boolean, wallet: string | null) {
 
 function SubscribeCard({
   onSubscribe,
+  onRecheck,
   phase,
   error,
+  signature,
 }: {
   onSubscribe: () => void;
-  phase: 'idle' | 'sending' | 'error';
+  onRecheck: () => void;
+  phase: 'idle' | 'sending' | 'confirming' | 'error';
   error: string | null;
+  signature: string | null;
 }) {
   const bullets = [
     'Every live signal the moment it publishes',
@@ -180,6 +214,10 @@ function SubscribeCard({
     'You sign every trade yourself',
     'Flat fee. No cut of your profits, ever.',
   ];
+  const busy = phase === 'sending' || phase === 'confirming';
+  const explorerUrl = signature
+    ? `https://solscan.io/tx/${signature}${isDevnet() ? '?cluster=devnet' : ''}`
+    : null;
   return (
     <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-[#0e1112] p-8 md:p-10">
       <div
@@ -208,12 +246,45 @@ function SubscribeCard({
         <button
           type="button"
           onClick={onSubscribe}
-          disabled={phase === 'sending'}
+          disabled={busy}
           className="mt-8 inline-flex h-12 items-center justify-center rounded-full bg-[#32f27b] px-8 text-sm font-bold text-[#04120a] transition hover:bg-[#4bf78f] disabled:opacity-60"
         >
-          {phase === 'sending' ? 'Confirm in your wallet…' : 'Get the pass'}
+          {phase === 'sending'
+            ? 'Confirm in your wallet…'
+            : phase === 'confirming'
+              ? 'Confirming your payment…'
+              : 'Get the pass'}
         </button>
-        {error && <p className="mt-3 text-sm text-[#fa6d74]">{error}</p>}
+        {phase === 'error' && error && (
+          <div className="mt-4 rounded-2xl border border-[#fa6d74]/30 bg-[#fa6d74]/10 px-4 py-3">
+            <p className="text-sm font-semibold text-[#fa6d74]">{error}</p>
+            {explorerUrl && (
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <a
+                  href={explorerUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex h-9 items-center rounded-full border border-white/15 px-4 text-xs font-bold text-neutral-200 transition hover:border-white/30"
+                >
+                  View payment on Solscan
+                </a>
+                <button
+                  type="button"
+                  onClick={onRecheck}
+                  className="inline-flex h-9 items-center rounded-full bg-[#32f27b] px-4 text-xs font-bold text-[#04120a] transition hover:bg-[#4bf78f]"
+                >
+                  Check again
+                </button>
+              </div>
+            )}
+            {signature && (
+              <p className="mt-2 text-xs leading-relaxed text-neutral-500">
+                Your wallet already approved this payment, so checking again costs
+                nothing and never charges you twice.
+              </p>
+            )}
+          </div>
+        )}
         <p className="mt-4 text-xs text-neutral-500">
           You send a plain SOL transfer from your own wallet. Curv cannot move your money.
         </p>
@@ -527,8 +598,9 @@ export default function StrategiesPage() {
   const wallet = publicKey?.toBase58() ?? null;
   const [now, setNow] = useState(() => Date.now());
   const [mirrorSignal, setMirrorSignal] = useState<StrategySignal | null>(null);
-  const [subPhase, setSubPhase] = useState<'idle' | 'sending' | 'error'>('idle');
+  const [subPhase, setSubPhase] = useState<'idle' | 'sending' | 'confirming' | 'error'>('idle');
   const [subError, setSubError] = useState<string | null>(null);
+  const [subSig, setSubSig] = useState<string | null>(null);
 
   const { sub, refresh } = useSubscription(wallet);
   const active = sub.kind === 'active';
@@ -562,21 +634,42 @@ export default function StrategiesPage() {
         }),
       );
       const sig = await sendTransaction(tx, connection);
-      await connection.confirmTransaction(sig, 'confirmed');
-      const res = await fetch('/api/strategies/subscribe', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ wallet: publicKey.toBase58(), signature: sig }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'Could not activate the pass');
+      setSubSig(sig);
+      // Approving in the wallet only broadcasts the transaction. The network
+      // can be slow to confirm, so a local confirmation timeout is not a
+      // failure: the server verifies the payment on chain below.
+      setSubPhase('confirming');
+      try {
+        await connection.confirmTransaction(sig, 'confirmed');
+      } catch {
+        // Fall through to server side verification.
+      }
+      await activatePass(publicKey.toBase58(), sig);
       setSubPhase('idle');
+      setSubSig(null);
       await refresh();
     } catch (e) {
       setSubPhase('error');
       setSubError(friendlyError(e));
     }
   }, [publicKey, sendTransaction, setShowModal, refresh]);
+
+  // Re-check a payment that was already approved in the wallet. This never
+  // creates a new transaction, so the user cannot be charged twice.
+  const recheckPayment = useCallback(async () => {
+    if (!publicKey || !subSig) return;
+    setSubPhase('confirming');
+    setSubError(null);
+    try {
+      await activatePass(publicKey.toBase58(), subSig);
+      setSubPhase('idle');
+      setSubSig(null);
+      await refresh();
+    } catch (e) {
+      setSubPhase('error');
+      setSubError(friendlyError(e));
+    }
+  }, [publicKey, subSig, refresh]);
 
   const daysLeft =
     sub.kind === 'active' ? Math.max(0, Math.ceil((sub.expiresAt - now) / 86_400_000)) : 0;
@@ -615,7 +708,13 @@ export default function StrategiesPage() {
           )}
 
           {wallet && !active && (
-            <SubscribeCard onSubscribe={subscribe} phase={subPhase} error={subError} />
+            <SubscribeCard
+              onSubscribe={subscribe}
+              onRecheck={recheckPayment}
+              phase={subPhase}
+              error={subError}
+              signature={subSig}
+            />
           )}
 
           {wallet && active && (
