@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { validateCandidateBody } from './candidates';
+import { SOL_MINT, validateCandidateBody } from './candidates';
 
-const SOL = 'So11111111111111111111111111111111111111112';
 const USDC = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
+const CBBTC = 'cbbtcf3aa214zXHbiAZQwf4122FBYbraNdFqgw4iMij';
 
 function body(over: Record<string, unknown> = {}) {
   return {
-    baseMint: SOL,
-    baseSymbol: 'SOL',
+    baseMint: CBBTC,
+    baseSymbol: 'BTC',
     quoteMint: USDC,
     quoteSymbol: 'USDC',
     entryLow: 100,
@@ -27,21 +27,22 @@ describe('validateCandidateBody', () => {
     expect(r.ok).toBe(true);
   });
   it('defaults quote to SOL when omitted', () => {
-    const b = body({
-      baseMint: 'cbbtcf3aa214zXHbiAZQwf4122FBYbraNdFqgw4iMij',
-      baseSymbol: 'BTC',
-    });
+    const b = body();
     delete (b as Record<string, unknown>).quoteMint;
     delete (b as Record<string, unknown>).quoteSymbol;
     const r = validateCandidateBody(b);
     expect(r.ok).toBe(true);
     if (r.ok) {
-      expect(r.input.quoteMint).toBe(SOL);
+      expect(r.input.quoteMint).toBe(SOL_MINT);
       expect(r.input.quoteSymbol).toBe('SOL');
     }
   });
   it('rejects a bad mint', () => {
     const r = validateCandidateBody(body({ baseMint: 'nope' }));
+    expect(r.ok).toBe(false);
+  });
+  it('rejects identical base and quote mints', () => {
+    const r = validateCandidateBody(body({ baseMint: USDC }));
     expect(r.ok).toBe(false);
   });
   it('rejects empty targets', () => {
