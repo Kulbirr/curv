@@ -264,11 +264,11 @@ export default function RecipientOnboardingPage() {
                   <div className="mt-6">
                     <p className="text-xs leading-relaxed text-neutral-500">
                       This share is reserved for the X account {entryName}. Log in with X to prove
-                      it's you, then connect the wallet you want payouts sent to.
+                      it&apos;s you, then connect the wallet you want payouts sent to.
                     </p>
                     {xSession && !xSession.configured ? (
                       <p className="mt-3 text-xs text-neutral-500">
-                        X login isn't enabled on this site yet. Ask the pool creator for the direct
+                        X login isn&apos;t enabled on this site yet. Ask the pool creator for the direct
                         invite flow instead.
                       </p>
                     ) : (
@@ -287,7 +287,7 @@ export default function RecipientOnboardingPage() {
                 {xMismatch && (
                   <div className="mt-6 rounded-2xl border border-[#fa6d74]/30 bg-[#fa6d74]/5 px-4 py-3">
                     <p className="text-sm text-neutral-300">
-                      You're logged in as <span className="font-semibold">@{xUser!.username}</span>,
+                      You&apos;re logged in as <span className="font-semibold">@{xUser!.username}</span>,
                       but this share is reserved for{' '}
                       <span className="font-semibold">{entryName}</span>. Switch X accounts to
                       continue.
@@ -335,7 +335,7 @@ export default function RecipientOnboardingPage() {
                 <p className="mt-6 text-[11px] leading-relaxed text-neutral-600">
                   Nothing moves until the pool creator claims fees. When they do, your share is
                   paid to your bound wallet automatically in the same transaction. The first
-                  binding is permanent, so use a wallet you'll keep.
+                  binding is permanent, so use a wallet you&apos;ll keep.
                 </p>
               </div>
             )}
