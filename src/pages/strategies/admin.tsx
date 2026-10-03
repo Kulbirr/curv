@@ -655,7 +655,7 @@ export default function StrategiesAdmin() {
                         >
                           {c.aiVerdict === 'approved' ? 'Approved by AI' : 'Rejected by AI'}
                         </p>
-                        {c.aiReasons && (
+                        {Array.isArray(c.aiReasons) && c.aiReasons.length > 0 && (
                           <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-neutral-300">
                             {c.aiReasons.map((r, i) => (
                               <li key={i}>{r}</li>

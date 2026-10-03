@@ -80,7 +80,34 @@ interface CandidateRow {
 }
 
 function rowToCandidate(r: CandidateRow): SignalCandidate {
-  const checks = parseJsonArray<{ checks?: JudgeCheck[] }>(r.ai_reasons);
+  // ai_reasons is stored as {"reasons": [...], "checks": [...]}; older rows
+  // may hold a bare array. Never let a shape mismatch reach the UI.
+  let aiReasons: string[] | null = null;
+  let aiChecks: JudgeCheck[] | null = null;
+  if (r.ai_reasons) {
+    try {
+      const parsed: unknown = JSON.parse(r.ai_reasons);
+      if (Array.isArray(parsed)) {
+        const reasons = parsed.filter((x): x is string => typeof x === 'string');
+        aiReasons = reasons.length > 0 ? reasons : null;
+      } else if (parsed && typeof parsed === 'object') {
+        const obj = parsed as { reasons?: unknown; checks?: unknown };
+        if (Array.isArray(obj.reasons)) {
+          const reasons = obj.reasons.filter((x): x is string => typeof x === 'string');
+          aiReasons = reasons.length > 0 ? reasons : null;
+        }
+        if (Array.isArray(obj.checks)) {
+          const checks = obj.checks.filter(
+            (x): x is JudgeCheck => typeof x === 'object' && x !== null,
+          );
+          aiChecks = checks.length > 0 ? checks : null;
+        }
+      }
+    } catch {
+      aiReasons = null;
+      aiChecks = null;
+    }
+  }
   return {
     id: r.id,
     baseMint: r.base_mint,
@@ -100,8 +127,8 @@ function rowToCandidate(r: CandidateRow): SignalCandidate {
       : 'pending') as CandidateStatus,
     ruleResults: parseJsonArray<GateResult[]>(r.rule_results),
     aiVerdict: r.ai_verdict === 'approved' || r.ai_verdict === 'rejected' ? r.ai_verdict : null,
-    aiReasons: parseJsonArray<string[]>(r.ai_reasons),
-    aiChecks: checks?.checks ?? null,
+    aiReasons,
+    aiChecks,
     decidedAt: r.decided_at,
     createdAt: r.created_at,
   };
