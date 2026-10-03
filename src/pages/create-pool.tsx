@@ -2368,12 +2368,17 @@ export default function CreatePool() {
                   <p>
                     Share your 0.3% creator trading fees with collaborators.
                     Fixed at launch and public forever, so everyone can see
-                    the deal before they buy. Entries without a bound wallet
-                    are skipped at claim time and their share stays with you:
-                    send each collaborator their invite link from your pool
-                    page so they can bind their wallet.
+                    the deal before they buy.
                   </p>
                 </div>
+              </div>
+              <div className="sc-x-claim-callout">
+                <span className="sc-x-claim-badge">X</span>
+                <p>
+                  <strong>No wallet needed to add someone.</strong> Just enter
+                  their X handle — they claim their share later by logging in
+                  with X and binding a wallet. Unclaimed shares stay with you.
+                </p>
               </div>
               {splitRows.map((row, i) => (
                 <div key={i} className="sc-split-form-row">

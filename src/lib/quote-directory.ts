@@ -85,12 +85,17 @@ export function mapXstocksAssets(json: unknown): QuoteAsset[] {
     const sol = deployments.find((d) => d.network === 'Solana')
     const mint = sol ? asString(sol.address) : null
     if (!symbol || !mint) continue
+    // xStocks logos 403 on direct hotlinking; route through our proxy.
+    const rawLogo = asString(node.logo)
+    const logoUrl = rawLogo
+      ? `/api/quote-logo?url=${encodeURIComponent(rawLogo)}`
+      : null
     out.push({
       mint,
       symbol,
       name: name ?? symbol,
       decimals: null, // the xStocks API does not publish decimals; enriched later
-      logoUrl: asString(node.logo),
+      logoUrl,
       source: 'xstocks',
       network: 'mainnet-beta',
       tokenProgram: 'Token-2022',
@@ -109,6 +114,9 @@ interface JupPriceEntry {
   usdPrice?: unknown
   decimals?: unknown
   liquidity?: unknown
+  stockData?: {
+    price?: unknown
+  } | null
 }
 
 function asFiniteNumber(v: unknown): number | null {
@@ -145,7 +153,10 @@ export async function enrichWithPrices(
           if (!entry) continue
           const asset = byMint.get(mint)
           if (!asset) continue
-          const price = asFiniteNumber(entry.usdPrice)
+          // Jupiter returns usdPrice for regular tokens, stockData.price for xStocks
+          const price =
+            asFiniteNumber(entry.usdPrice) ??
+            asFiniteNumber(entry.stockData?.price)
           if (price !== null && price > 0) asset.usdPrice = price
           const liq = asFiniteNumber(entry.liquidity)
           if (liq !== null && liq >= 0) asset.liquidityUsd = liq
@@ -192,13 +203,16 @@ export function searchQuoteAssets(
  * Every mint here is verified (SOL/USDC are canonical; TSLAx matches
  * Jupiter's verified xStocks entry).
  */
+const TOKEN_LIST_LOGO = (mint: string) =>
+  `https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/${mint}/logo.png`
+
 export const FALLBACK_ASSETS: QuoteAsset[] = [
   {
     mint: 'So11111111111111111111111111111111111111112',
     symbol: 'SOL',
     name: 'Solana',
     decimals: 9,
-    logoUrl: null,
+    logoUrl: TOKEN_LIST_LOGO('So11111111111111111111111111111111111111112'),
     source: 'preset',
     network: 'mainnet-beta',
     tokenProgram: 'SPL',
@@ -211,7 +225,7 @@ export const FALLBACK_ASSETS: QuoteAsset[] = [
     symbol: 'USDC',
     name: 'USD Coin',
     decimals: 6,
-    logoUrl: null,
+    logoUrl: TOKEN_LIST_LOGO('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'),
     source: 'preset',
     network: 'mainnet-beta',
     tokenProgram: 'SPL',
@@ -239,3 +253,116 @@ export function mergeWithFallback(live: QuoteAsset[]): QuoteAsset[] {
   const seen = new Set(live.map((a) => a.mint))
   return [...live, ...FALLBACK_ASSETS.filter((a) => !seen.has(a.mint))]
 }
+
+/**
+ * Curated popular Solana tokens beyond xStocks: majors, memes, DeFi.
+ * Mints are canonical mainnet addresses. Logos come from the Solana
+ * token-list repo (allows hotlinking). Jupiter price enrichment validates
+ * each mint and fills USD prices; unknown mints simply get no price.
+ */
+export const POPULAR_TOKENS: QuoteAsset[] = [
+  {
+    mint: 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB',
+    symbol: 'USDT',
+    name: 'Tether USD',
+    decimals: 6,
+    logoUrl: TOKEN_LIST_LOGO('Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB'),
+    source: 'preset',
+    network: 'mainnet-beta',
+    tokenProgram: 'SPL',
+    usdPrice: null,
+    liquidityUsd: null,
+    tags: ['stablecoin'],
+  },
+  {
+    mint: 'EKpQGSJtjMFqKZ9KQanSqYXRcpeKQ9Au6zpdd2Mq7xgy',
+    symbol: 'WIF',
+    name: 'dogwifhat',
+    decimals: 6,
+    logoUrl: TOKEN_LIST_LOGO('EKpQGSJtjMFqKZ9KQanSqYXRcpeKQ9Au6zpdd2Mq7xgy'),
+    source: 'preset',
+    network: 'mainnet-beta',
+    tokenProgram: 'SPL',
+    usdPrice: null,
+    liquidityUsd: null,
+    tags: ['meme'],
+  },
+  {
+    mint: 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB4UM',
+    symbol: 'BONK',
+    name: 'Bonk',
+    decimals: 5,
+    logoUrl: TOKEN_LIST_LOGO('DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB4UM'),
+    source: 'preset',
+    network: 'mainnet-beta',
+    tokenProgram: 'SPL',
+    usdPrice: null,
+    liquidityUsd: null,
+    tags: ['meme'],
+  },
+  {
+    mint: 'JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN',
+    symbol: 'JUP',
+    name: 'Jupiter',
+    decimals: 6,
+    logoUrl: TOKEN_LIST_LOGO('JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN'),
+    source: 'preset',
+    network: 'mainnet-beta',
+    tokenProgram: 'SPL',
+    usdPrice: null,
+    liquidityUsd: null,
+    tags: ['defi'],
+  },
+  {
+    mint: 'HZ1JovNiVvGrGN4H2KXq58m9M4gEopQ38oaxnTOz3Be5',
+    symbol: 'PYTH',
+    name: 'Pyth Network',
+    decimals: 6,
+    logoUrl: TOKEN_LIST_LOGO('HZ1JovNiVvGrGN4H2KXq58m9M4gEopQ38oaxnTOz3Be5'),
+    source: 'preset',
+    network: 'mainnet-beta',
+    tokenProgram: 'SPL',
+    usdPrice: null,
+    liquidityUsd: null,
+    tags: ['defi', 'oracle'],
+  },
+  {
+    mint: '4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R',
+    symbol: 'RAY',
+    name: 'Raydium',
+    decimals: 6,
+    logoUrl: TOKEN_LIST_LOGO('4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R'),
+    source: 'preset',
+    network: 'mainnet-beta',
+    tokenProgram: 'SPL',
+    usdPrice: null,
+    liquidityUsd: null,
+    tags: ['defi', 'dex'],
+  },
+  {
+    mint: 'orcaEKTdK7LKz57vaAYr9QeNsVEPfiu6QeMU1kektZE',
+    symbol: 'ORCA',
+    name: 'Orca',
+    decimals: 6,
+    logoUrl: TOKEN_LIST_LOGO('orcaEKTdK7LKz57vaAYr9QeNsVEPfiu6QeMU1kektZE'),
+    source: 'preset',
+    network: 'mainnet-beta',
+    tokenProgram: 'SPL',
+    usdPrice: null,
+    liquidityUsd: null,
+    tags: ['defi', 'dex'],
+  },
+  {
+    mint: 'mSoLzYCxHdYgdzU16g5QSh3i5ZDLaBMED3b8vV91vLVT',
+    symbol: 'mSOL',
+    name: 'Marinade Staked SOL',
+    decimals: 9,
+    logoUrl: TOKEN_LIST_LOGO('mSoLzYCxHdYgdzU16g5QSh3i5ZDLaBMED3b8vV91vLVT'),
+    source: 'preset',
+    network: 'mainnet-beta',
+    tokenProgram: 'SPL',
+    usdPrice: null,
+    liquidityUsd: null,
+    tags: ['liquid-staking'],
+  },
+]

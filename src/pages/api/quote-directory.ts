@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import {
   FALLBACK_ASSETS,
+  POPULAR_TOKENS,
   XSTOCKS_MAX_PAGES,
   XSTOCKS_PAGE_SIZE,
   enrichWithPrices,
@@ -56,6 +57,15 @@ async function loadLiveDirectory(): Promise<QuoteAsset[]> {
     if (mapped.length < XSTOCKS_PAGE_SIZE) break
   }
   if (assets.length === 0) throw new Error('empty xStocks directory')
+  // Add curated popular tokens (memes, majors, DeFi) alongside xStocks.
+  // Deduped by mint; xStocks take precedence if a mint appears in both.
+  const seen = new Set(assets.map((a) => a.mint))
+  for (const t of POPULAR_TOKENS) {
+    if (!seen.has(t.mint)) {
+      assets.push({ ...t })
+      seen.add(t.mint)
+    }
+  }
   // Best-effort: enrichWithPrices never throws, so a Jupiter outage
   // degrades to missing prices rather than a failed directory.
   await enrichWithPrices(assets)
@@ -74,7 +84,13 @@ async function getDirectory(): Promise<{
     cache = { assets, at: now }
     return { assets, source: 'live' }
   } catch {
-    return { assets: FALLBACK_ASSETS, source: 'fallback' }
+    // Fallback includes popular tokens so the picker stays useful offline.
+    const seen = new Set(FALLBACK_ASSETS.map((a) => a.mint))
+    const fallback = [
+      ...FALLBACK_ASSETS,
+      ...POPULAR_TOKENS.filter((a) => !seen.has(a.mint)),
+    ]
+    return { assets: fallback, source: 'fallback' }
   }
 }
 
