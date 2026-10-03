@@ -211,14 +211,18 @@ export default function RecipientOnboardingPage() {
       <div className="mx-auto w-full max-w-xl px-4 py-10">
         <section
           aria-label="Claim fee share"
-          className="rounded-2xl border border-white/10 bg-[#141110] px-6 py-7 md:px-8"
+          className="relative overflow-hidden rounded-2xl border border-white/10 bg-[#0d1110] px-6 py-7 md:px-8"
         >
-          <div className="flex items-center justify-between gap-4">
-            <p className="text-[11px] font-bold tracking-[0.25em] text-[#d08a5f]">
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-[radial-gradient(ellipse_at_top,#32f27b14,transparent_70%)]"
+          />
+          <div className="relative flex items-center justify-between gap-4">
+            <p className="text-[11px] font-bold tracking-[0.25em] text-[#32f27b]">
               CLAIM FEE SHARE
             </p>
             {entry && (
-              <span className="rounded-full border border-[#d08a5f]/40 px-3 py-1 text-[10px] font-semibold tracking-[0.18em] text-[#d08a5f]">
+              <span className="rounded-full border border-[#32f27b]/40 bg-[#32f27b]/5 px-3 py-1 text-[10px] font-semibold tracking-[0.18em] text-[#32f27b]">
                 {sharePct}% OF CREATOR FEES
               </span>
             )}
@@ -239,10 +243,10 @@ export default function RecipientOnboardingPage() {
 
           {(view.kind === 'ready' || view.kind === 'binding' || view.kind === 'error') &&
             entry && (
-              <div className="mt-6">
-                <p className="text-3xl font-light tracking-tight text-neutral-50">
+              <div className="relative mt-6">
+                <p className="text-5xl font-semibold tracking-tight text-neutral-50">
                   {sharePct}
-                  <span className="text-xl text-neutral-400">%</span>
+                  <span className="text-2xl font-light text-neutral-400">%</span>
                 </p>
                 <p className="mt-3 text-sm leading-relaxed text-neutral-400">
                   This pool set aside <span className="font-semibold text-neutral-100">{sharePct}%</span> of
@@ -251,7 +255,7 @@ export default function RecipientOnboardingPage() {
                   {(pendingQuote || pendingBase) && (
                     <>
                       {' '}Unclaimed right now:{' '}
-                      <span className="font-semibold text-[#d08a5f]">
+                      <span className="font-semibold text-[#32f27b]">
                         ≈ {pendingQuote ? `${pendingQuote} ${quoteSymbol}` : ''}
                         {pendingQuote && pendingBase ? ' + ' : ''}
                         {pendingBase ? `${pendingBase} ${trust?.baseSymbol ?? ''}` : ''}
@@ -341,7 +345,7 @@ export default function RecipientOnboardingPage() {
             )}
 
           {view.kind === 'done' && (
-            <div className="mt-6">
+            <div className="relative mt-6">
               <p className="inline-flex items-center gap-2 rounded-full border border-[#32f27b]/30 bg-[#32f27b]/5 px-3 py-1 text-xs font-semibold text-[#32f27b]">
                 Wallet bound
               </p>
@@ -353,7 +357,7 @@ export default function RecipientOnboardingPage() {
               {pool && (
                 <a
                   href={`/token/${pool}`}
-                  className={cn('mt-4 inline-block text-sm text-[#d08a5f] underline')}
+                  className={cn('mt-4 inline-block text-sm text-[#32f27b] underline')}
                 >
                   View the pool
                 </a>
