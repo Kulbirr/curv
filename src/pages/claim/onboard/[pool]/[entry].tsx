@@ -217,15 +217,10 @@ export default function RecipientOnboardingPage() {
             aria-hidden="true"
             className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-[radial-gradient(ellipse_at_top,#32f27b14,transparent_70%)]"
           />
-          <div className="relative flex items-center justify-between gap-4">
+          <div className="relative">
             <p className="text-[11px] font-bold tracking-[0.25em] text-[#32f27b]">
               CLAIM FEE SHARE
             </p>
-            {entry && (
-              <span className="rounded-full border border-[#32f27b]/40 bg-[#32f27b]/5 px-3 py-1 text-[10px] font-semibold tracking-[0.18em] text-[#32f27b]">
-                {sharePct}% OF CREATOR FEES
-              </span>
-            )}
           </div>
 
           {view.kind === 'loading' && (
