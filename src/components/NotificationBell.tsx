@@ -23,6 +23,11 @@ export function NotificationBell({ wallet }: { wallet: string }) {
   const [unread, setUnread] = useState(0);
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement | null>(null);
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
+  // Panel coordinates computed from the bell's real position, so the
+  // dropdown always lands below the bell and inside the viewport on
+  // every screen size. Pure CSS anchoring proved fragile here.
+  const [panelStyle, setPanelStyle] = useState<React.CSSProperties | undefined>(undefined);
 
   const load = useCallback(async () => {
     try {
@@ -60,6 +65,18 @@ export function NotificationBell({ wallet }: { wallet: string }) {
 
   const toggle = useCallback(async () => {
     const next = !open;
+    if (next && buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      const width = Math.min(320, window.innerWidth - 24);
+      const left = Math.max(12, Math.min(rect.right - width, window.innerWidth - width - 12));
+      setPanelStyle({
+        position: 'fixed',
+        top: rect.bottom + 8,
+        left,
+        width,
+        zIndex: 50,
+      });
+    }
     setOpen(next);
     if (next && unread > 0) {
       setUnread(0);
@@ -88,6 +105,7 @@ export function NotificationBell({ wallet }: { wallet: string }) {
   return (
     <div ref={wrapRef} className="relative">
       <button
+        ref={buttonRef}
         type="button"
         onClick={toggle}
         aria-label={unread > 0 ? `${unread} unread notifications` : 'Notifications'}
@@ -106,7 +124,8 @@ export function NotificationBell({ wallet }: { wallet: string }) {
       {open && (
         <div
           role="menu"
-          className="fixed left-3 right-3 top-[70px] z-50 overflow-hidden rounded-2xl border border-white/10 bg-[#0e1213] shadow-2xl md:absolute md:left-auto md:right-0 md:top-12 md:w-80"
+          style={panelStyle}
+          className="overflow-hidden rounded-2xl border border-white/10 bg-[#0e1213] shadow-2xl"
         >
           <p className="border-b border-white/5 px-4 py-3 text-[11px] font-bold tracking-[0.2em] text-[#32f27b]">
             NOTIFICATIONS
