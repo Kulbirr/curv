@@ -1,12 +1,16 @@
 /**
  * AI judge for signal candidates. After the deterministic gates clear, a
- * Hermes model scores the candidate against the published ruleset rubric
- * and returns a strict JSON verdict. The verdict and its reasons are
- * stored and shown on the signal card; a rejection is logged and never
- * shown to subscribers.
+ * strong instruction following model scores the candidate against the
+ * published ruleset rubric and returns a strict JSON verdict. The verdict
+ * and its reasons are stored and shown on the signal card; a rejection is
+ * logged and never shown to subscribers.
  *
- * When OPENROUTER_API_KEY is not configured the judge reports
- * unavailable and the candidate stays pending for a human decision.
+ * Provider is chosen by JUDGE_PROVIDER: "nvidia" uses NVIDIA_API_KEY
+ * against the NVIDIA NIM chat completions endpoint, anything else uses
+ * OPENROUTER_API_KEY against OpenRouter. JUDGE_MODEL overrides the
+ * default model for the chosen provider. When no key is configured the
+ * judge reports unavailable and the candidate stays pending for a human
+ * decision.
  *
  * All user facing strings avoid dash characters, per the strategies
  * feature convention. AI generated text is sanitized for dashes before
@@ -43,10 +47,53 @@ export interface JudgeError {
 
 export type JudgeResult = JudgeOk | JudgeUnavailable | JudgeError;
 
-/** Hermes via OpenRouter, OpenAI compatible chat completions. */
-export const JUDGE_MODEL = 'nousresearch/hermes-4-70b';
+/** Default model per provider, OpenAI compatible chat completions. */
+export const JUDGE_MODEL_OPENROUTER = 'nousresearch/hermes-4-70b';
+export const JUDGE_MODEL_NVIDIA = 'nvidia/nemotron-3-super-120b-a12b';
+/** Backwards compatible default: Hermes via OpenRouter. */
+export const JUDGE_MODEL = JUDGE_MODEL_OPENROUTER;
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
+const NVIDIA_URL = 'https://integrate.api.nvidia.com/v1/chat/completions';
 const JUDGE_TIMEOUT_MS = 20_000;
+
+interface JudgeEndpoint {
+  url: string;
+  apiKey: string;
+  model: string;
+  headers: Record<string, string>;
+}
+
+/** Resolve the judge endpoint from the environment. Null when no key. */
+export function judgeEndpoint(): JudgeEndpoint | null {
+  if (process.env.JUDGE_PROVIDER === 'nvidia') {
+    const apiKey = process.env.NVIDIA_API_KEY;
+    if (!apiKey) return null;
+    return {
+      url: NVIDIA_URL,
+      apiKey,
+      model: process.env.JUDGE_MODEL || JUDGE_MODEL_NVIDIA,
+      headers: {},
+    };
+  }
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) return null;
+  return {
+    url: OPENROUTER_URL,
+    apiKey,
+    model: process.env.JUDGE_MODEL || JUDGE_MODEL_OPENROUTER,
+    headers: {
+      'http-referer': 'https://curvpad.fun',
+      'x-title': 'Curv strategies signal judge',
+    },
+  };
+}
+
+/** Name the missing key for the selected provider. */
+function missingKeyReason(): string {
+  return process.env.JUDGE_PROVIDER === 'nvidia'
+    ? 'NVIDIA_API_KEY is not configured'
+    : 'OPENROUTER_API_KEY is not configured';
+}
 
 /** Strip dash characters from AI generated text, per repo convention. */
 export function sanitizeAiText(text: string): string {
@@ -156,30 +203,30 @@ export function parseJudgeReply(text: string): { verdict: JudgeVerdict; reasons:
 }
 
 /**
- * Run the AI judge. Needs OPENROUTER_API_KEY in the environment.
+ * Run the AI judge. Needs a provider key in the environment
+ * (OPENROUTER_API_KEY, or NVIDIA_API_KEY with JUDGE_PROVIDER=nvidia).
  * Returns unavailable when no key is configured so the caller can keep
  * the candidate pending for a human instead of failing the evaluation.
  */
 export async function runJudge(input: JudgePromptInput): Promise<JudgeResult> {
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey) {
-    return { status: 'unavailable', reason: 'OPENROUTER_API_KEY is not configured' };
+  const endpoint = judgeEndpoint();
+  if (!endpoint) {
+    return { status: 'unavailable', reason: missingKeyReason() };
   }
   const { system, user } = buildJudgePrompt(input);
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), JUDGE_TIMEOUT_MS);
   try {
-    const res = await fetch(OPENROUTER_URL, {
+    const res = await fetch(endpoint.url, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        authorization: `Bearer ${apiKey}`,
-        'http-referer': 'https://curvpad.fun',
-        'x-title': 'Curv strategies signal judge',
+        authorization: `Bearer ${endpoint.apiKey}`,
+        ...endpoint.headers,
       },
       signal: ctrl.signal,
       body: JSON.stringify({
-        model: JUDGE_MODEL,
+        model: endpoint.model,
         messages: [
           { role: 'system', content: system },
           { role: 'user', content: user },
@@ -202,7 +249,7 @@ export async function runJudge(input: JudgePromptInput): Promise<JudgeResult> {
     if (!parsed) {
       return { status: 'error', reason: 'Judge reply was not valid verdict JSON' };
     }
-    return { status: 'ok', ...parsed, model: JUDGE_MODEL };
+    return { status: 'ok', ...parsed, model: endpoint.model };
   } catch (e) {
     if (e instanceof Error && e.name === 'AbortError') {
       return { status: 'error', reason: 'Judge request timed out' };

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, afterEach } from 'vitest';
 import {
   buildJudgePrompt,
+  judgeEndpoint,
   parseJudgeReply,
   runJudge,
   sanitizeAiText,
@@ -10,6 +11,9 @@ import type { CandidateInput, GateResult, MarketSnapshot } from './gates';
 afterEach(() => {
   vi.unstubAllGlobals();
   delete process.env.OPENROUTER_API_KEY;
+  delete process.env.NVIDIA_API_KEY;
+  delete process.env.JUDGE_PROVIDER;
+  delete process.env.JUDGE_MODEL;
 });
 
 function input(): { candidate: CandidateInput; market: MarketSnapshot | null; gateResults: GateResult[] } {
@@ -147,5 +151,47 @@ describe('runJudge', () => {
     );
     const r = await runJudge(input());
     expect(r.status).toBe('error');
+  });
+});
+
+describe('judgeEndpoint', () => {
+  it('returns null with no key configured', () => {
+    expect(judgeEndpoint()).toBeNull();
+  });
+
+  it('uses OpenRouter by default with its key', () => {
+    process.env.OPENROUTER_API_KEY = 'x';
+    const e = judgeEndpoint();
+    expect(e?.url).toContain('openrouter.ai');
+    expect(e?.model).toBe('nousresearch/hermes-4-70b');
+    expect(e?.headers['http-referer']).toBe('https://curvpad.fun');
+  });
+
+  it('uses NVIDIA when JUDGE_PROVIDER=nvidia', () => {
+    process.env.JUDGE_PROVIDER = 'nvidia';
+    process.env.NVIDIA_API_KEY = 'y';
+    const e = judgeEndpoint();
+    expect(e?.url).toContain('integrate.api.nvidia.com');
+    expect(e?.model).toBe('nvidia/nemotron-3-super-120b-a12b');
+  });
+
+  it('returns null for nvidia provider without its key', () => {
+    process.env.JUDGE_PROVIDER = 'nvidia';
+    process.env.OPENROUTER_API_KEY = 'x';
+    expect(judgeEndpoint()).toBeNull();
+  });
+
+  it('JUDGE_MODEL overrides the provider default', () => {
+    process.env.JUDGE_PROVIDER = 'nvidia';
+    process.env.NVIDIA_API_KEY = 'y';
+    process.env.JUDGE_MODEL = 'custom/model';
+    expect(judgeEndpoint()?.model).toBe('custom/model');
+  });
+
+  it('reports the nvidia key missing for that provider', async () => {
+    process.env.JUDGE_PROVIDER = 'nvidia';
+    const r = await runJudge(input());
+    expect(r.status).toBe('unavailable');
+    if (r.status === 'unavailable') expect(r.reason).toContain('NVIDIA_API_KEY');
   });
 });
