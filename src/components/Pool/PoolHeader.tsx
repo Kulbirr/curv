@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import type { CSSProperties } from 'react';
 import {
   formatMoneyValue,
   formatPriceValue,
@@ -54,15 +53,6 @@ function QuoteBadge({ quoteSymbol }: { quoteSymbol: string }) {
     </span>
   );
 }
-
-const STALE_BADGE_STYLE: CSSProperties = {
-  padding: '4px 7px',
-  border: '1px solid #4a3a20',
-  borderRadius: 999,
-  background: '#221a10',
-  color: '#e8b64c',
-  fontSize: 10,
-};
 
 interface Props {
   state: PoolStateResponse;
@@ -122,14 +112,6 @@ export default function PoolHeader({ state, points, volume24h, baseMint }: Props
               {state.baseName || state.baseSymbol}
             </h1>
             <QuoteBadge quoteSymbol={state.quoteSymbol} />
-            {state.stale && (
-              <span
-                style={STALE_BADGE_STYLE}
-                title="On-chain data is unreachable right now; showing last recorded values"
-              >
-                stale
-              </span>
-            )}
             {state.graduated && (
               <span className="sc-pool-graduation-badge">Graduated</span>
             )}
