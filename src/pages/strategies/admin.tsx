@@ -144,6 +144,8 @@ export default function StrategiesAdmin() {
     noKnownUnlock: false,
   });
   const [overrideReason, setOverrideReason] = useState('');
+  const [genCount, setGenCount] = useState(2);
+  const [genNote, setGenNote] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!secret) return;
@@ -202,10 +204,54 @@ export default function StrategiesAdmin() {
     }
   }, [api, form, universe, load]);
 
-  // One click pipeline: submit the idea, run the gates and the judge, and
-  // publish immediately when approved. Rejected ideas land in the rejected
-  // log; when the judge is unavailable the candidate stays pending for a
-  // human decision and nothing publishes.
+  // The idea engine: scan the universe for momentum, build the ideas,
+  // run them through the gates and the judge, publish the approved ones.
+  const generateIdeas = useCallback(async () => {
+    setBusy('generate');
+    setError(null);
+    setGenNote(null);
+    try {
+      const res = (await api('/api/strategies/candidates/generate', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ count: genCount, autoPublish: true }),
+      })) as {
+        ideas?: Array<{
+          id: string;
+          baseSymbol: string;
+          status: string;
+          publishedSignalId: string | null;
+          note: string | null;
+        }>;
+        note?: string;
+      };
+      const ideas = res.ideas ?? [];
+      if (ideas.length === 0) {
+        setGenNote(res.note ?? 'No eligible momentum setups right now');
+      } else {
+        setGenNote(
+          ideas
+            .map((i) => {
+              const outcome =
+                i.status === 'published'
+                  ? 'published to the feed'
+                  : i.status === 'approved'
+                    ? 'approved, awaiting your publish'
+                    : i.status === 'rejected'
+                      ? 'rejected by the checks'
+                      : 'pending your decision';
+              return `${i.baseSymbol}: ${outcome}${i.note ? ` (${i.note})` : ''}`;
+            })
+            .join(' · '),
+        );
+      }
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Idea generation failed');
+    } finally {
+      setBusy(null);
+    }
+  }, [api, genCount, load]);
   const submitAndAutoPublish = useCallback(async () => {
     setBusy('auto');
     setError(null);
@@ -365,6 +411,44 @@ export default function StrategiesAdmin() {
                   </div>
                 ))}
               </div>
+            </section>
+
+            <section className="mt-8 rounded-3xl border border-[#32f27b]/20 bg-[#0c1410] p-6 md:p-8">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-bold text-neutral-50">Idea engine</h2>
+                  <p className="mt-1 max-w-xl text-sm text-neutral-400">
+                    Scans the universe for the strongest 1 to 4 week momentum, builds the ideas,
+                    runs the rule checks and the AI judge, and publishes the approved ones.
+                    Rejected ideas stay in the log.
+                  </p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <label className="text-xs text-neutral-400">
+                    Ideas
+                    <select
+                      value={genCount}
+                      onChange={(e) => setGenCount(Number(e.target.value))}
+                      className="ml-2 rounded-xl border border-white/10 bg-[#0e1112] px-3 py-2 text-sm text-neutral-100"
+                    >
+                      {[1, 2, 3].map((n) => (
+                        <option key={n} value={n}>
+                          {n}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={generateIdeas}
+                    disabled={busy === 'generate'}
+                    className="inline-flex h-11 items-center rounded-full bg-[#32f27b] px-7 text-sm font-bold text-[#04120a] transition hover:bg-[#4bf78f] disabled:opacity-60"
+                  >
+                    {busy === 'generate' ? 'Scanning the market…' : 'Generate ideas'}
+                  </button>
+                </div>
+              </div>
+              {genNote && <p className="mt-4 text-sm text-neutral-300">{genNote}</p>}
             </section>
 
             <section className="mt-8 rounded-3xl border border-white/10 bg-[#0e1112] p-6 md:p-8">
