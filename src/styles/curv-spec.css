@@ -1180,6 +1180,47 @@ select {
   cursor: pointer;
 }
 
+/* Portfolio empty states: dashed card reads as intentional, not broken. */
+.sc-empty-portfolio {
+  display: flex;
+  min-height: 190px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border: 1px dashed #2b3232;
+  border-radius: 12px;
+  background: #101414;
+  padding: 32px 20px;
+  text-align: center;
+}
+.sc-empty-portfolio svg {
+  width: 30px;
+  height: 30px;
+  color: #4a5250;
+}
+.sc-empty-portfolio .sc-empty-title {
+  margin: 0;
+  color: #d4ddd4;
+  font-size: 13px;
+  font-weight: 550;
+}
+.sc-empty-portfolio .sc-empty-sub {
+  margin: 0;
+  color: #929995;
+  font-size: 12px;
+}
+.sc-empty-portfolio .sc-empty-retry {
+  border: 0;
+  background: transparent;
+  color: var(--sc-lime);
+  font-size: 12px;
+  cursor: pointer;
+}
+.sc-empty-portfolio .sc-button {
+  margin-top: 6px;
+}
+
 
 .sc-page-foot {
   display: flex;

@@ -59,9 +59,15 @@ async function fetchHoldings(owner: string): Promise<Holding[]> {
 }
 
 async function fetchPools(): Promise<PoolsResponse> {
-  const res = await fetch('/api/pools', { cache: 'no-store' });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return (await res.json()) as PoolsResponse;
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), 20000);
+  try {
+    const res = await fetch('/api/pools', { cache: 'no-store', signal: ctl.signal });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return (await res.json()) as PoolsResponse;
+  } finally {
+    clearTimeout(t);
+  }
 }
 
 async function fetchPoolState(poolAddress: string): Promise<PoolStateResponse> {
@@ -264,14 +270,36 @@ export default function Portfolio() {
 
             <section className="sc-holdings-section">
               <h2>Your holdings</h2>
-              <div className="sc-holdings-table-wrap">
-                {holdingsQuery.isLoading ? (
-                  <p>Loading…</p>
-                ) : holdingsQuery.isError ? (
-                  <p>Couldn&apos;t load holdings.</p>
-                ) : holdings.length === 0 ? (
-                  <p>No token balances in this wallet.</p>
-                ) : (
+              {holdingsQuery.isLoading ? (
+                <div className="sc-empty-portfolio">
+                  <p className="sc-empty-title">Loading…</p>
+                </div>
+              ) : holdingsQuery.isError ? (
+                <div className="sc-empty-portfolio">
+                  <p className="sc-empty-title">Couldn&apos;t load holdings.</p>
+                  <button
+                    type="button"
+                    className="sc-empty-retry"
+                    onClick={() => holdingsQuery.refetch()}
+                  >
+                    Try again
+                  </button>
+                </div>
+              ) : holdings.length === 0 ? (
+                <div className="sc-empty-portfolio">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M20 7H5a2 2 0 01-2-2 2 2 0 012-2h13v4" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 5v13a2 2 0 002 2h15a1 1 0 001-1v-8a1 1 0 00-1-1H5" />
+                    <circle cx="16.5" cy="14.5" r="1.1" fill="currentColor" stroke="none" />
+                  </svg>
+                  <p className="sc-empty-title">No token balances in this wallet.</p>
+                  <p className="sc-empty-sub">Tokens you pick up on Curv will land here.</p>
+                  <Link href="/" className="sc-button sc-button-secondary">
+                    Discover tokens
+                  </Link>
+                </div>
+              ) : (
+                <div className="sc-holdings-table-wrap">
                   <table className="sc-holdings-table">
                     <thead>
                       <tr>
@@ -378,8 +406,8 @@ export default function Portfolio() {
                       })}
                     </tbody>
                   </table>
-                )}
-              </div>
+                </div>
+              )}
             </section>
 
             {connected && owner && <WaitingFees owner={owner} />}
@@ -387,12 +415,27 @@ export default function Portfolio() {
             <section className="sc-launched-section">
               <h2>Tokens you launched</h2>
               {poolsQuery.isLoading ? (
-                <p>Loading…</p>
+                <div className="sc-empty-portfolio">
+                  <p className="sc-empty-title">Loading…</p>
+                </div>
+              ) : poolsQuery.isError ? (
+                <div className="sc-empty-portfolio">
+                  <p className="sc-empty-title">Couldn&apos;t load your launched pools.</p>
+                  <button
+                    type="button"
+                    className="sc-empty-retry"
+                    onClick={() => poolsQuery.refetch()}
+                  >
+                    Try again
+                  </button>
+                </div>
               ) : created.length === 0 ? (
-                <div>
-                  <p className="mb-3 text-sm text-neutral-500">
-                    You haven&apos;t launched a pool from this wallet yet.
-                  </p>
+                <div className="sc-empty-portfolio">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 5v14M5 12h14" />
+                  </svg>
+                  <p className="sc-empty-title">You haven&apos;t launched a pool from this wallet yet.</p>
+                  <p className="sc-empty-sub">Launch in under a minute and start earning 0.3% of every trade.</p>
                   <Link href="/create-pool" className="sc-button sc-button-primary">
                     Launch a token
                   </Link>
