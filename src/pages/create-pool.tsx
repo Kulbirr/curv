@@ -180,6 +180,9 @@ export default function CreatePool() {
   // ---- Token type ----
   const [tokenType, setTokenType] = useState<TokenType>('Token')
   const [underlying, setUnderlying] = useState('')
+  // Field errors only render after the user has interacted with the form,
+  // so a fresh load (or a restored draft) never opens with red errors.
+  const [formInteracted, setFormInteracted] = useState(false)
 
   // ---- Curve ----
   const [preset, setPreset] = useState<PresetSel>('exponential')
@@ -1545,7 +1548,7 @@ export default function CreatePool() {
             onSubmit={(e) => e.preventDefault()}
           >
             {step === 1 && (
-              <>
+              <div onInput={() => setFormInteracted(true)}>
             {/* ---- Token Identity ---- */}
             <section className="sc-builder-section">
               <div className="sc-builder-section-head">
@@ -1589,7 +1592,7 @@ export default function CreatePool() {
                     </button>
                   )}
                 </div>
-                <Field label="Token Name" error={nameErr}>
+                <Field label="Token Name" error={formInteracted ? nameErr : undefined}>
                   <input
                     value={name}
                     maxLength={32}
@@ -1597,7 +1600,7 @@ export default function CreatePool() {
                     placeholder="e.g. Curve Coin"
                   />
                 </Field>
-                <Field label="Ticker / Symbol" error={tokenSymbolErr}>
+                <Field label="Ticker / Symbol" error={formInteracted ? tokenSymbolErr : undefined}>
                   <div className="sc-builder-input-prefix">
                     <b>$</b>
                     <input
@@ -1615,7 +1618,7 @@ export default function CreatePool() {
               </div>
               <Field
                 label="Description"
-                error={descriptionErr}
+                error={formInteracted ? descriptionErr : undefined}
                 className="sc-builder-description"
               >
                 <textarea
@@ -1664,7 +1667,10 @@ export default function CreatePool() {
                     key={type}
                     aria-pressed={tokenType === type}
                     className={tokenType === type ? 'selected' : ''}
-                    onClick={() => setTokenType(type)}
+                    onClick={() => {
+                      setTokenType(type)
+                      setFormInteracted(true)
+                    }}
                   >
                     <span className="sc-type-icon">
                       {type === 'Token' ? '◈' : '⌁'}
@@ -1682,7 +1688,7 @@ export default function CreatePool() {
                 <Field
                   label="Underlying Ticker"
                   hint="Shown as a reference on your token page. It does not move your curve."
-                  error={underlyingErr}
+                  error={formInteracted ? underlyingErr : undefined}
                   className="sc-underlying-field"
                 >
                   <input
@@ -1698,7 +1704,7 @@ export default function CreatePool() {
                 </Field>
               )}
             </section>
-              </>
+              </div>
             )}
             {step === 2 && (
               <>
@@ -1874,7 +1880,8 @@ export default function CreatePool() {
                 </ul>
               </section>
             )}
-            {/* ---- Pair (pro): any quote token ---- */}
+            {/* ---- Pair (pro mode only): any quote token ---- */}
+            {mode === 'pro' && (
             <section className="sc-builder-section">
               <div className="sc-builder-section-head">
                 <span className="sc-section-glyph">◈</span>
@@ -1890,6 +1897,7 @@ export default function CreatePool() {
                   {renderQuotePicker()}
                 </div>
             </section>
+            )}
             {/* ---- Bonding Curve Settings (pro mode only) ---- */}
             {mode === 'pro' && (
               <section className="sc-builder-section sc-curve-settings">
@@ -2551,7 +2559,9 @@ export default function CreatePool() {
                     Curve
                   </p>
                   <p className="text-neutral-200">
-                    {reviewCurveName} · {reviewCurvePrices.length} points
+                    {mode === 'quick'
+                      ? `${reviewCurveName} · graduates at ${quoteUsdPriced !== null ? fmtUsd(quickTier.capUsd) : `${quickTier.endMultiple}× start`}`
+                      : `${reviewCurveName} · ${reviewCurvePrices.length} points`}
                   </p>
                   <p className="mt-1 text-neutral-400">
                     {Number.isFinite(reviewCurvePrices[0]) ? fmtNum(reviewCurvePrices[0]) : ','}{' '}
