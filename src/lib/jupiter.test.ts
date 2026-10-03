@@ -60,7 +60,13 @@ describe('fetchJupiterQuote', () => {
 });
 
 describe('fetchJupiterSwapTransaction', () => {
-  const quote = { inputMint: 'a', outputMint: 'b', inAmount: '1', outAmount: '2' };
+  const quote = {
+    inputMint: 'a',
+    outputMint: 'b',
+    inAmount: '1',
+    outAmount: '2',
+    raw: { inputMint: 'a', outputMint: 'b', inAmount: '1', outAmount: '2', otherAmountThreshold: '1' },
+  };
   it('returns the base64 transaction', async () => {
     const tx = await fetchJupiterSwapTransaction(
       quote,
@@ -68,6 +74,16 @@ describe('fetchJupiterSwapTransaction', () => {
       okJson({ swapTransaction: 'aGVsbG8=' }),
     );
     expect(tx).toBe('aGVsbG8=');
+  });
+  it('sends the full quote response back to the swap endpoint', async () => {
+    let seenBody: unknown = null;
+    const f = (async (_url: unknown, init: unknown) => {
+      seenBody = JSON.parse((init as { body: string }).body);
+      return { ok: true, status: 200, json: async () => ({ swapTransaction: 'aGVsbG8=' }) };
+    }) as typeof fetch;
+    await fetchJupiterSwapTransaction(quote, 'Wallet1111111111111111111111111111111111111', f);
+    const body = seenBody as { quoteResponse: Record<string, unknown> };
+    expect(body.quoteResponse.otherAmountThreshold).toBe('1');
   });
   it('fails closed on bad payloads', async () => {
     await expect(fetchJupiterSwapTransaction(quote, 'w', okJson({}))).rejects.toBeInstanceOf(JupiterError);

@@ -26,6 +26,12 @@ export interface JupiterQuote {
   outputMint: string;
   inAmount: string;
   outAmount: string;
+  /**
+   * The untouched quote response. Jupiter's swap endpoint requires the
+   * full quote object back (otherAmountThreshold, route plan and all),
+   * so the stripped fields above are only a convenience view.
+   */
+  raw: Record<string, unknown>;
 }
 
 export class JupiterError extends Error {
@@ -55,7 +61,7 @@ function parseQuote(json: unknown): JupiterQuote {
   ) {
     throw new JupiterError('Live quote came back unreadable');
   }
-  return { inputMint, outputMint, inAmount, outAmount };
+  return { inputMint, outputMint, inAmount, outAmount, raw: json };
 }
 
 /**
@@ -111,7 +117,7 @@ export async function fetchJupiterSwapTransaction(
       method: 'POST',
       headers: { 'content-type': 'application/json', accept: 'application/json' },
       body: JSON.stringify({
-        quoteResponse: quote,
+        quoteResponse: quote.raw,
         userPublicKey,
         wrapAndUnwrapSol: true,
         dynamicComputeUnitLimit: true,

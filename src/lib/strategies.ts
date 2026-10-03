@@ -75,6 +75,14 @@ export const KNOWN_MINT_DECIMALS: Record<string, number> = {
   EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v: 6,
 };
 
+/** Local logo assets for well known mints, used by the signal cards. */
+export const KNOWN_TOKEN_LOGOS: Record<string, string> = {
+  So11111111111111111111111111111111111111112: '/tokens/sol.png',
+  EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v: '/tokens/usdc.png',
+  '7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs': '/tokens/eth.png',
+  cbbtcf3aa214zXHbiAZQwf4122FBYbraNdFqgw4iMij: '/tokens/btc.png',
+};
+
 export function newSignalId(): string {
   return `sig_${Date.now().toString(36)}_${randomBytes(8).toString('hex')}`;
 }

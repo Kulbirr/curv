@@ -13,6 +13,7 @@ import { getConnection, isDevnet } from '@/lib/solana';
 import { platformFeeWallet } from '@/lib/launch';
 import { cn } from '@/lib/utils';
 import {
+  KNOWN_TOKEN_LOGOS,
   MIRROR_SLIPPAGE_BPS,
   SUBSCRIPTION_DURATION_MS,
   SUBSCRIPTION_PRICE_LAMPORTS,
@@ -101,18 +102,39 @@ async function activatePass(wallet: string, signature: string): Promise<void> {
   throw new Error('Payment not found on chain yet, try again in a bit');
 }
 
-function PairAvatar({ baseSymbol, quoteSymbol }: { baseSymbol: string; quoteSymbol: string }) {
+function PairAvatar({
+  baseMint,
+  baseSymbol,
+  quoteSymbol,
+}: {
+  baseMint: string;
+  baseSymbol: string;
+  quoteSymbol: string;
+}) {
   const hue = hueFromString(baseSymbol);
+  const logo = KNOWN_TOKEN_LOGOS[baseMint];
+  const [logoOk, setLogoOk] = useState(true);
   return (
     <span className="relative inline-flex shrink-0" aria-hidden="true">
-      <span
-        className="flex h-12 w-12 items-center justify-center rounded-2xl text-lg font-bold text-white"
-        style={{
-          background: `linear-gradient(135deg, hsl(${hue} 65% 42%), hsl(${(hue + 50) % 360} 65% 58%))`,
-        }}
-      >
-        {baseSymbol.charAt(0)}
-      </span>
+      {logo && logoOk ? (
+        <img
+          src={logo}
+          alt=""
+          width={48}
+          height={48}
+          className="h-12 w-12 rounded-2xl object-cover"
+          onError={() => setLogoOk(false)}
+        />
+      ) : (
+        <span
+          className="flex h-12 w-12 items-center justify-center rounded-2xl text-lg font-bold text-white"
+          style={{
+            background: `linear-gradient(135deg, hsl(${hue} 65% 42%), hsl(${(hue + 50) % 360} 65% 58%))`,
+          }}
+        >
+          {baseSymbol.charAt(0)}
+        </span>
+      )}
       <span className="absolute -right-1 -bottom-1 flex h-6 w-6 items-center justify-center rounded-full border-2 border-[#0e1112] bg-[#1a2022] text-[10px] font-bold text-neutral-300">
         {quoteSymbol.charAt(0)}
       </span>
@@ -125,7 +147,7 @@ function LivePill({ signal, now }: { signal: StrategySignal; now: number }) {
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold',
+        'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-semibold whitespace-nowrap shrink-0',
         live ? 'bg-[#32f27b]/10 text-[#32f27b]' : 'bg-neutral-800 text-neutral-400',
       )}
     >
@@ -320,7 +342,11 @@ function SignalCard({
     >
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-center gap-4">
-          <PairAvatar baseSymbol={signal.baseSymbol} quoteSymbol={signal.quoteSymbol} />
+          <PairAvatar
+            baseMint={signal.baseMint}
+            baseSymbol={signal.baseSymbol}
+            quoteSymbol={signal.quoteSymbol}
+          />
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <span className="rounded-md bg-[#32f27b]/12 px-2 py-0.5 text-[11px] font-bold text-[#32f27b]">
@@ -336,7 +362,7 @@ function SignalCard({
                   className="inline-flex items-center gap-1 rounded-md bg-sky-400/12 px-2 py-0.5 text-[11px] font-bold text-sky-300 transition hover:bg-sky-400/20"
                   aria-expanded={showReasons}
                 >
-                  <span aria-hidden="true">✓</span> Approved by AI
+                  <span aria-hidden="true">✓</span> Vetted signal
                 </button>
               )}
             </div>
