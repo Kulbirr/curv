@@ -7,8 +7,8 @@
  *
  * Every unit was verified against the Meteora DBC SDK and docs:
  * - poolCreationFeeSol: the SDK runs convertToLamports(poolCreationFee),
- *   so the config value is denominated in SOL. 0.02 matches pump.fun.
- *   Meteora requires 0.001-100 SOL and splits it 10% protocol / 90%
+ *   so the config value is denominated in SOL. 0.01 undercuts pump.fun's
+ *   0.02. Meteora requires 0.001-100 SOL and splits it 10% protocol / 90%
  *   to the fee claimer (Curv). This is a per-config setting chosen by
  *   Curv, not a Meteora protocol mandate.
  * - Trading fees: every swap pays Base Fee + Dynamic Fee (capped at 99%).
@@ -25,9 +25,9 @@
  * - migratedPoolFeeBps: basis points.
  */
 export const LAUNCH_FEE_CONFIG = {
-  /** Pool creation fee baked into Curv's DBC config (SOL), matching
+  /** Pool creation fee baked into Curv's DBC config (SOL), half of
    *  pump.fun's 0.02 SOL. 90% goes to Curv as fee claimer. */
-  poolCreationFeeSol: 0.02,
+  poolCreationFeeSol: 0.01,
   /** Estimated SOL locked as rent exempt deposits for the accounts a
    *  createConfigAndPool launch creates (config, pool, base and quote
    *  vaults, mint, metadata). Measured on devnet Oct 2026: the pool
@@ -216,7 +216,7 @@ export function buildFeeDisclosureRows(input: FeeDisclosureInput): FeeDisclosure
       label: 'Pool creation fee',
       value: `${c.poolCreationFeeSol} SOL`,
       hint:
-        `A ${c.poolCreationFeeSol} SOL creation fee set in Curv's own pool config, matching pump.fun, not a Meteora protocol charge. ` +
+        `A ${c.poolCreationFeeSol} SOL creation fee set in Curv's own pool config, half of pump.fun's 0.02, not a Meteora protocol charge. ` +
         `Meteora takes 10% of it and Curv receives 90%. On top of the fee, Solana locks about ${c.estimatedLaunchRentSol} SOL ` +
         `as refundable deposits for the new pool accounts, so the launch transaction moves about ${two(c.poolCreationFeeSol + c.estimatedLaunchRentSol)} SOL ` +
         `in total, plus a few cents of network fees.`,

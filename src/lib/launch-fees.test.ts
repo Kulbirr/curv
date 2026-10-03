@@ -12,9 +12,9 @@ describe('LAUNCH_FEE_CONFIG', () => {
     // which is exactly 0.30% of volume at the 1.19% flat trading fee
     // Flat 0.30%; pump.fun's creator rate is dynamic 0.95% to 0.05% by
     // market cap, so no fixed multiple is asserted. Curv keeps ~0.652%.
-    // poolCreationFeeSol is 0.02: pump.fun parity, and the fee is a
+    // poolCreationFeeSol is 0.01: half of pump.fun's 0.02, and the fee is a
     // per-config Curv setting, not a Meteora protocol mandate.
-    expect(LAUNCH_FEE_CONFIG.poolCreationFeeSol).toBe(0.02);
+    expect(LAUNCH_FEE_CONFIG.poolCreationFeeSol).toBe(0.01);
     expect(LAUNCH_FEE_CONFIG.migrationFeePercent).toBe(4);
     expect(LAUNCH_FEE_CONFIG.creatorMigrationFeePercent).toBe(50);
     expect(LAUNCH_FEE_CONFIG.migratedPoolFeeBps).toBe(120);
@@ -33,8 +33,8 @@ describe('buildFeeDisclosureRows', () => {
   const rows = buildFeeDisclosureRows({ startingFeeBps: 119, endingFeeBps: 119, quoteSymbol: 'SOL' });
   const byLabel = (label: string) => rows.find((r) => r.label === label)!;
 
-  it('discloses the 0.02 SOL pool creation fee', async () => {
-    expect(byLabel('Pool creation fee').value).toBe('0.02 SOL');
+  it('discloses the 0.01 SOL pool creation fee', async () => {
+    expect(byLabel('Pool creation fee').value).toBe('0.01 SOL');
     expect(byLabel('Pool creation fee').hint).toContain('Curv receives 90%');
   });
 
