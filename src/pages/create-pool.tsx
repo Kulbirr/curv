@@ -2134,11 +2134,11 @@ export default function CreatePool() {
                   <p className="mt-1 text-xs text-neutral-500">
                     Computed from your curve with the DBC SDK, not an estimate.
                   </p>
-                  <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-[1fr_auto] md:items-end">
-                    <Field
-                      label={`Graduation target (${quoteSymbol})`}
-                      hint="Optional. Rescales the curve so it graduates at this level."
-                    >
+                  <div className="mt-3">
+                    <p className="mb-2 text-sm font-medium text-neutral-300">
+                      Graduation target ({quoteSymbol})
+                    </p>
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                       <input
                         inputMode="decimal"
                         placeholder="e.g. 85"
@@ -2146,15 +2146,19 @@ export default function CreatePool() {
                         onChange={(e) =>
                           setGradTarget(e.target.value.replace(/[^0-9.]/g, ''))
                         }
+                        className="h-12 flex-1 rounded-2xl border border-neutral-800 bg-neutral-900/70 px-4 text-[15px] text-neutral-100 placeholder:text-neutral-600 focus:border-neutral-600 focus:outline-none"
                       />
-                    </Field>
-                    <button
-                      type="button"
-                      onClick={applyGraduationTarget}
-                      className="sc-button sc-button-secondary"
-                    >
-                      Match curve to target
-                    </button>
+                      <button
+                        type="button"
+                        onClick={applyGraduationTarget}
+                        className="sc-button sc-button-secondary shrink-0"
+                      >
+                        Match curve to target
+                      </button>
+                    </div>
+                    <p className="mt-2 text-xs text-neutral-500">
+                      Optional. Rescales the curve so it graduates at this level.
+                    </p>
                   </div>
                 </div>
               </section>
