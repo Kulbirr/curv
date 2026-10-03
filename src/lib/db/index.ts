@@ -604,6 +604,13 @@ export function ensureSchema(db?: DbClient): Promise<void> {
       // shipped: older strategy_signals rows predate the pipeline.
       await client.query('ALTER TABLE strategy_signals ADD COLUMN IF NOT EXISTS ai_approved BIGINT NOT NULL DEFAULT 0');
       await client.query('ALTER TABLE strategy_signals ADD COLUMN IF NOT EXISTS ai_reasons TEXT');
+      // Track-record columns: stop/targets carried from the approved idea,
+      // outcome resolved by the 30-minute resolver (pending/win/loss/expired).
+      await client.query('ALTER TABLE strategy_signals ADD COLUMN IF NOT EXISTS stop_price DOUBLE PRECISION');
+      await client.query('ALTER TABLE strategy_signals ADD COLUMN IF NOT EXISTS targets TEXT');
+      await client.query("ALTER TABLE strategy_signals ADD COLUMN IF NOT EXISTS outcome TEXT NOT NULL DEFAULT 'pending'");
+      await client.query('ALTER TABLE strategy_signals ADD COLUMN IF NOT EXISTS resolved_at BIGINT');
+      await client.query('ALTER TABLE strategy_signals ADD COLUMN IF NOT EXISTS resolved_price DOUBLE PRECISION');
       // Seed the signal universe once: BTC, ETH and SOL as core tier.
       // Mint addresses verified via CoinGecko detail_platforms (solana).
       const nowMs = Date.now();

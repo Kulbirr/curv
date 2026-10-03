@@ -662,6 +662,98 @@ function MirrorModal({ signal, onClose }: { signal: StrategySignal; onClose: () 
   );
 }
 
+interface TrackRecordData {
+  record: { wins: number; losses: number; expired: number; pending: number; winRate: number | null };
+  history: {
+    id: string;
+    baseSymbol: string;
+    quoteSymbol: string;
+    entryPrice: number;
+    stopPrice: number | null;
+    targets: number[] | null;
+    outcome: string;
+    resolvedAt: number | null;
+    resolvedPrice: number | null;
+    createdAt: number;
+  }[];
+}
+
+/**
+ * Public proof, visible to everyone: the running win rate plus the
+ * resolved signal history it is computed from. No wallet, no pass.
+ */
+function TrackRecord() {
+  const [data, setData] = useState<TrackRecordData | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/strategies/track-record')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (!cancelled && j) setData(j);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  if (!data) return null;
+  const { record, history } = data;
+  const decided = record.wins + record.losses;
+  return (
+    <section aria-label="Track record" className="mt-8 overflow-hidden rounded-3xl border border-white/10 bg-[#0e1112]">
+      <div className="px-6 pt-5 md:px-8">
+        <p className="text-[11px] font-bold tracking-[0.2em] text-[#32f27b]">TRACK RECORD</p>
+        <div className="mt-3 flex flex-wrap items-end gap-x-6 gap-y-2">
+          <p className="sc-number text-4xl font-bold text-neutral-50">
+            {record.winRate === null ? '—' : `${Math.round(record.winRate * 100)}%`}
+          </p>
+          <p className="pb-1.5 text-sm text-neutral-400">
+            win rate · {record.wins} won · {record.losses} lost
+            {record.expired > 0 && ` · ${record.expired} expired untouched`}
+          </p>
+        </div>
+        <p className="mt-2 text-xs leading-relaxed text-neutral-500">
+          {decided === 0
+            ? 'No signal has resolved yet. Every published signal is scored below once it closes.'
+            : 'Scored on 1-minute candles: first touch of the target wins, first touch of the stop loses. Expired-untouched signals stay neutral and never flatter the rate.'}
+        </p>
+      </div>
+      {history.length > 0 && (
+        <ul className="mt-4 divide-y divide-white/5 border-t border-white/5">
+          {history.map((h) => (
+            <li key={h.id} className="flex items-center justify-between gap-4 px-6 py-3.5 md:px-8">
+              <div className="flex items-center gap-3">
+                <span
+                  className={cn(
+                    'rounded-md px-2 py-0.5 text-[11px] font-bold',
+                    h.outcome === 'win' && 'bg-[#32f27b]/12 text-[#32f27b]',
+                    h.outcome === 'loss' && 'bg-[#fa6d74]/12 text-[#fa6d74]',
+                    h.outcome === 'expired' && 'bg-white/8 text-neutral-400',
+                  )}
+                >
+                  {h.outcome === 'win' ? 'WON' : h.outcome === 'loss' ? 'LOST' : 'EXPIRED'}
+                </span>
+                <div>
+                  <p className="text-sm font-bold text-neutral-100">
+                    {h.baseSymbol}/{h.quoteSymbol}
+                  </p>
+                  <p className="sc-number text-xs text-neutral-500">
+                    {fmtPrice(h.entryPrice)} → {h.resolvedPrice !== null ? fmtPrice(h.resolvedPrice) : '—'}{' '}
+                    {h.quoteSymbol}
+                  </p>
+                </div>
+              </div>
+              <p className="shrink-0 text-xs text-neutral-500">
+                {h.resolvedAt ? new Date(h.resolvedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : ''}
+              </p>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 export default function StrategiesPage() {
   const { publicKey, sendTransaction, signTransaction } = useWallet();
   const { setShowModal } = useUnifiedWalletContext();
@@ -763,6 +855,8 @@ export default function StrategiesPage() {
           Signals are market commentary, not financial advice. Past signals say nothing about
           future results.
         </p>
+
+        <TrackRecord />
 
         <div className="mt-8">
           {!wallet && (

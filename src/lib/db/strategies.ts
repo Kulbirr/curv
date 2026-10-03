@@ -1,5 +1,5 @@
 import { execute, query } from './index';
-import type { SignalInput, StrategySignal, StrategySubscription } from '../strategies';
+import type { SignalInput, SignalOutcome, StrategySignal, StrategySubscription } from '../strategies';
 
 /**
  * Storage half of the strategy mirror feed. Signals are written by the
@@ -20,14 +20,18 @@ export async function insertStrategySignal(
     createdAt: now,
     aiApproved: input.aiApproved ?? false,
     aiReasons: input.aiReasons ?? null,
+    outcome: 'pending',
+    resolvedAt: null,
+    resolvedPrice: null,
   };
   await execute(
     `INSERT INTO strategy_signals
        (id, base_mint, quote_mint, base_symbol, quote_symbol,
         base_decimals, quote_decimals, entry_price, max_price,
         size_text, note, status, expires_at, created_at,
-        ai_approved, ai_reasons)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+        ai_approved, ai_reasons, stop_price, targets,
+        outcome, resolved_at, resolved_price)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,'pending',NULL,NULL)`,
     [
       signal.id,
       signal.baseMint,
@@ -45,6 +49,8 @@ export async function insertStrategySignal(
       signal.createdAt,
       signal.aiApproved ? 1 : 0,
       signal.aiReasons ? JSON.stringify(signal.aiReasons) : null,
+      input.stopPrice,
+      input.targets ? JSON.stringify(input.targets) : null,
     ],
   );
   return signal;
@@ -67,6 +73,27 @@ interface SignalRow {
   created_at: number;
   ai_approved: number;
   ai_reasons: string | null;
+  stop_price: number | null;
+  targets: string | null;
+  outcome: string;
+  resolved_at: number | null;
+  resolved_price: number | null;
+}
+
+function parseTargets(value: string | null): number[] | null {
+  if (!value) return null;
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (!Array.isArray(parsed)) return null;
+    const nums = parsed.filter((n): n is number => typeof n === 'number' && Number.isFinite(n));
+    return nums.length > 0 ? nums : null;
+  } catch {
+    return null;
+  }
+}
+
+function parseOutcome(value: string): SignalOutcome {
+  return value === 'win' || value === 'loss' || value === 'expired' ? value : 'pending';
 }
 
 function parseAiReasons(value: string | null): string[] | null {
@@ -100,7 +127,91 @@ function rowToSignal(r: SignalRow): StrategySignal {
     createdAt: r.created_at,
     aiApproved: r.ai_approved === 1,
     aiReasons: parseAiReasons(r.ai_reasons),
+    stopPrice: r.stop_price,
+    targets: parseTargets(r.targets),
+    outcome: parseOutcome(r.outcome),
+    resolvedAt: r.resolved_at,
+    resolvedPrice: r.resolved_price,
   };
+}
+
+/** Signals still awaiting a verdict: live or recently expired, outcome pending. */
+export async function listSignalsAwaitingResolution(nowMs: number): Promise<StrategySignal[]> {
+  const rows = await query<SignalRow>(
+    `SELECT id, base_mint, quote_mint, base_symbol, quote_symbol,
+            base_decimals, quote_decimals, entry_price, max_price,
+            size_text, note, status, expires_at, created_at,
+            ai_approved, ai_reasons, stop_price, targets,
+            outcome, resolved_at, resolved_price
+     FROM strategy_signals
+     WHERE outcome = 'pending' AND status = 'active'
+     ORDER BY created_at ASC`,
+    [],
+  );
+  return rows.map(rowToSignal);
+}
+
+/** Resolve a signal once: win/loss/expired with the resolving price. */
+export async function resolveSignal(
+  id: string,
+  outcome: 'win' | 'loss' | 'expired',
+  resolvedAt: number,
+  resolvedPrice: number | null,
+): Promise<boolean> {
+  const n = await execute(
+    `UPDATE strategy_signals
+     SET outcome = $2, resolved_at = $3, resolved_price = $4
+     WHERE id = $1 AND outcome = 'pending'`,
+    [id, outcome, resolvedAt, resolvedPrice],
+  );
+  return n === 1;
+}
+
+export interface TrackRecord {
+  wins: number;
+  losses: number;
+  expired: number;
+  pending: number;
+  /** wins / (wins + losses), null until at least one signal resolves. */
+  winRate: number | null;
+}
+
+/** Public track record: expired-untouched signals stay neutral, excluded from the rate. */
+export async function getTrackRecord(): Promise<TrackRecord> {
+  const rows = await query<{ outcome: string; c: number }>(
+    `SELECT outcome, COUNT(*) AS c FROM strategy_signals GROUP BY outcome`,
+    [],
+  );
+  let wins = 0;
+  let losses = 0;
+  let expired = 0;
+  let pending = 0;
+  for (const r of rows) {
+    const c = Number(r.c);
+    if (r.outcome === 'win') wins = c;
+    else if (r.outcome === 'loss') losses = c;
+    else if (r.outcome === 'expired') expired = c;
+    else pending = c;
+  }
+  const decided = wins + losses;
+  return { wins, losses, expired, pending, winRate: decided > 0 ? wins / decided : null };
+}
+
+/** Resolved signals, newest first, for the public history list. */
+export async function listResolvedSignals(limit: number): Promise<StrategySignal[]> {
+  const rows = await query<SignalRow>(
+    `SELECT id, base_mint, quote_mint, base_symbol, quote_symbol,
+            base_decimals, quote_decimals, entry_price, max_price,
+            size_text, note, status, expires_at, created_at,
+            ai_approved, ai_reasons, stop_price, targets,
+            outcome, resolved_at, resolved_price
+     FROM strategy_signals
+     WHERE outcome IN ('win', 'loss', 'expired')
+     ORDER BY resolved_at DESC NULLS LAST, created_at DESC
+     LIMIT $1`,
+    [Math.max(1, Math.min(50, Math.floor(limit)))],
+  );
+  return rows.map(rowToSignal);
 }
 
 /** Only live signals: active and not yet expired, newest first. */
@@ -109,7 +220,8 @@ export async function listLiveSignals(nowMs: number): Promise<StrategySignal[]> 
     `SELECT id, base_mint, quote_mint, base_symbol, quote_symbol,
             base_decimals, quote_decimals, entry_price, max_price,
             size_text, note, status, expires_at, created_at,
-            ai_approved, ai_reasons
+            ai_approved, ai_reasons, stop_price, targets,
+            outcome, resolved_at, resolved_price
      FROM strategy_signals
      WHERE status = 'active' AND expires_at > $1
      ORDER BY created_at DESC`,
@@ -123,7 +235,8 @@ export async function getSignal(id: string): Promise<StrategySignal | null> {
     `SELECT id, base_mint, quote_mint, base_symbol, quote_symbol,
             base_decimals, quote_decimals, entry_price, max_price,
             size_text, note, status, expires_at, created_at,
-            ai_approved, ai_reasons
+            ai_approved, ai_reasons, stop_price, targets,
+            outcome, resolved_at, resolved_price
      FROM strategy_signals WHERE id = $1`,
     [id],
   );

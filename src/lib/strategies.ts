@@ -30,6 +30,9 @@ export const MAX_SIGNAL_TTL_MS = 7 * 24 * 3600 * 1000;
 export type SignalSide = 'buy';
 export type SignalStatus = 'active' | 'cancelled';
 
+/** How a published signal ended: win/loss on first touch, expired untouched. */
+export type SignalOutcome = 'pending' | 'win' | 'loss' | 'expired';
+
 export interface StrategySignal {
   id: string;
   baseMint: string;
@@ -48,6 +51,15 @@ export interface StrategySignal {
   status: SignalStatus;
   expiresAt: number;
   createdAt: number;
+  /** Stop level from the approved idea; first touch resolves a loss. */
+  stopPrice: number | null;
+  /** Target levels from the approved idea; first touch of targets[0] resolves a win. */
+  targets: number[] | null;
+  /** Resolution state, maintained by the 30-minute resolver. */
+  outcome: SignalOutcome;
+  resolvedAt: number | null;
+  /** Price of the resolving sample, or the last sample at expiry. */
+  resolvedPrice: number | null;
   /** True when the signal passed the AI judge in the approval pipeline. */
   aiApproved: boolean;
   /** The judge's reasons, shown on the signal card when approved. */
@@ -203,7 +215,10 @@ function validOptionalText(value: unknown, maxLen: number): string | null {
   return t;
 }
 
-export type SignalInput = Omit<StrategySignal, 'id' | 'status' | 'createdAt' | 'aiApproved' | 'aiReasons'>;
+export type SignalInput = Omit<
+  StrategySignal,
+  'id' | 'status' | 'createdAt' | 'aiApproved' | 'aiReasons' | 'outcome' | 'resolvedAt' | 'resolvedPrice'
+>;
 
 export function validateSignalInput(
   body: unknown,
@@ -250,6 +265,32 @@ export function validateSignalInput(
   const sizeText = validOptionalText(b.sizeText, 40);
   const note = validOptionalText(b.note, 140);
 
+  // Stop/targets come from the approved idea; they power the public
+  // track record. A buy signal's stop sits below entry, targets above.
+  let stopPrice: number | null = null;
+  if (b.stopPrice !== undefined && b.stopPrice !== null) {
+    stopPrice = validPrice(b.stopPrice);
+    if (stopPrice === null) return { ok: false, error: 'stopPrice must be a positive number' };
+    if (stopPrice >= entryPrice) {
+      return { ok: false, error: 'stopPrice must be below the entryPrice for a buy signal' };
+    }
+  }
+  let targets: number[] | null = null;
+  if (b.targets !== undefined && b.targets !== null) {
+    if (!Array.isArray(b.targets) || b.targets.length === 0 || b.targets.length > 5) {
+      return { ok: false, error: 'targets must be an array of 1 to 5 prices' };
+    }
+    const parsed: number[] = [];
+    for (const t of b.targets) {
+      const p = validPrice(t);
+      if (p === null || p <= entryPrice) {
+        return { ok: false, error: 'every target must be above the entryPrice for a buy signal' };
+      }
+      parsed.push(p);
+    }
+    targets = parsed;
+  }
+
   return {
     ok: true,
     input: {
@@ -265,6 +306,8 @@ export function validateSignalInput(
       sizeText,
       note,
       expiresAt,
+      stopPrice,
+      targets,
     },
   };
 }

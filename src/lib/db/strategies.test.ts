@@ -28,6 +28,8 @@ function input(expiresAt: number = NOW + 3_600_000) {
     maxPrice: 0.55,
     side: 'buy' as const,
     sizeText: '1 SOL',
+    stopPrice: 0.46,
+    targets: [0.56, 0.61],
     note: 'test signal',
     expiresAt,
   };

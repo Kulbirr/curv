@@ -259,6 +259,8 @@ export async function publishCandidate(id: string, opts: PublishOptions = {}) {
     sizeText: candidate.sizeText,
     note: candidate.thesis.slice(0, 140),
     expiresAt,
+    stopPrice: candidate.stopPrice,
+    targets: candidate.targets,
   };
   const validated = validateSignalInput(signalBody, now);
   if (validated.ok === false) {
