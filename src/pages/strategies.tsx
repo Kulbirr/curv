@@ -551,6 +551,27 @@ function MirrorModal({ signal, onClose }: { signal: StrategySignal; onClose: () 
                 </a>
               )}
             </div>
+          ) : isDevnet() ? (
+            <div className="py-2">
+              <div className="rounded-2xl border border-amber-300/20 bg-amber-300/[6%] px-5 py-5">
+                <p className="text-sm font-bold text-amber-200">Mirroring needs mainnet</p>
+                <p className="mt-2 text-sm leading-relaxed text-neutral-400">
+                  Jupiter only routes real liquidity on mainnet, so this signal cannot be mirrored
+                  while the app is on devnet. The live quote and one tap signing switch on
+                  automatically with the mainnet deployment. Nothing on this screen can place a
+                  trade today.
+                </p>
+              </div>
+              <div className="mt-4 flex gap-2">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="flex h-12 flex-1 items-center justify-center rounded-full bg-white/10 text-sm font-bold text-neutral-100 hover:bg-white/15"
+                >
+                  Got it
+                </button>
+              </div>
+            </div>
           ) : (
             <>
               <label className="text-xs font-semibold text-neutral-400" htmlFor="mirror-amount">
@@ -608,12 +629,6 @@ function MirrorModal({ signal, onClose }: { signal: StrategySignal; onClose: () 
 
               {phase === 'error' && error && (
                 <p className="mt-4 rounded-2xl bg-[#fa6d74]/10 px-4 py-3 text-sm text-[#fa6d74]">{error}</p>
-              )}
-
-              {isDevnet() && (
-                <p className="mt-4 text-xs text-neutral-500">
-                  You are on devnet. Live routing settles on mainnet.
-                </p>
               )}
 
               <div className="mt-5 flex gap-2">
