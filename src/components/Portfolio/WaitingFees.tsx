@@ -81,6 +81,11 @@ export default function WaitingFees({ owner }: { owner: string }) {
         Your share of creator fees on pools where you are a split recipient. They pay out
         automatically when the pool&apos;s creator claims.
       </p>
+      {entries.some((e) => e.sampledAt && Date.now() - e.sampledAt > 5 * 60 * 1000) && (
+        <p className="sc-waiting-stale">
+          Amounts may be stale. They refresh automatically after the next on-chain update.
+        </p>
+      )}
       <div className="sc-waiting-grid">
         {entries.map((entry) => {
           const base = formatFeeRaw(entry.shareBaseRaw, entry.baseDecimals);
@@ -99,6 +104,7 @@ export default function WaitingFees({ owner }: { owner: string }) {
                   <div className="sc-waiting-sub">
                     ${(entry.bps / 100).toFixed(2)}% of creator fees · from{' '}
                     {shortAddress(entry.creator)}
+                    {entry.graduated && ' · graduated'}
                   </div>
                 </div>
               </div>

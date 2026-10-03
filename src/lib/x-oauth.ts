@@ -100,25 +100,46 @@ export async function exchangeCode(code: string, verifier: string): Promise<XTok
 }
 
 export async function fetchXMe(accessToken: string): Promise<XUser | null> {
-  let res: Response;
-  try {
-    res = await fetch(X_ME_URL, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-      signal: AbortSignal.timeout(20_000),
-    });
-  } catch {
-    return null;
+  // X API is flaky; retry once on network errors or 5xx before giving up.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    let res: Response;
+    try {
+      res = await fetch(X_ME_URL, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+        signal: AbortSignal.timeout(20_000),
+      });
+    } catch (e) {
+      console.error(`[x-oauth] fetchXMe network error (attempt ${attempt + 1}):`, e instanceof Error ? e.message : e);
+      if (attempt === 0) {
+        await new Promise((r) => setTimeout(r, 1000));
+        continue;
+      }
+      return null;
+    }
+    if (!res.ok) {
+      console.error(`[x-oauth] fetchXMe HTTP ${res.status} (attempt ${attempt + 1})`);
+      // Retry on 5xx or 429, not on 4xx (bad token, bad scope).
+      if (attempt === 0 && (res.status >= 500 || res.status === 429)) {
+        await new Promise((r) => setTimeout(r, 1000));
+        continue;
+      }
+      return null;
+    }
+    try {
+      const j = (await res.json()) as { data?: { id?: unknown; username?: unknown } };
+      const id = j.data?.id;
+      const username = j.data?.username;
+      if (typeof id !== 'string' || typeof username !== 'string') {
+        console.error('[x-oauth] fetchXMe malformed response:', JSON.stringify(j).slice(0, 200));
+        return null;
+      }
+      return { id, username };
+    } catch (e) {
+      console.error('[x-oauth] fetchXMe JSON parse error:', e instanceof Error ? e.message : e);
+      return null;
+    }
   }
-  if (!res.ok) return null;
-  try {
-    const j = (await res.json()) as { data?: { id?: unknown; username?: unknown } };
-    const id = j.data?.id;
-    const username = j.data?.username;
-    if (typeof id !== 'string' || typeof username !== 'string') return null;
-    return { id, username };
-  } catch {
-    return null;
-  }
+  return null;
 }
 
 export interface XSession {

@@ -211,8 +211,29 @@ export default function TradePanel({ poolAddress, state }: Props) {
     const raw = parseUiAmountToRaw(amountStr, balance?.decimals ?? 9);
     if (!raw) return 'Enter a valid amount greater than zero';
     if (balance && raw.gt(balance.raw)) return `Insufficient ${inputSymbol} balance`;
+    // Near-cap guard: a buy that would overshoot the remaining headroom
+    // before graduation fails on-chain with 6033. Warn before the wallet
+    // ever signs.
+    if (side === 'buy' && state?.quoteReserve != null && state?.migrationQuoteThreshold != null) {
+      const headroom = state.migrationQuoteThreshold - state.quoteReserve;
+      if (headroom > 0) {
+        const amountUi = parseFloat(amountStr);
+        if (!isNaN(amountUi) && amountUi > 0) {
+          // Conservative: the executable amount is slightly less than raw
+          // headroom due to fees and price impact. Cap at 90%.
+          const safeMax = headroom * 0.9;
+          if (amountUi > safeMax) {
+            return `Too large for the room left before graduation. Max about ${safeMax.toFixed(2)} ${inputSymbol}`;
+          }
+          // Warn when close to the cap even if under it.
+          if (state.progress != null && state.progress > 95) {
+            return null; // Let it through, but the 6033 handler covers failures.
+          }
+        }
+      }
+    }
     return null;
-  }, [amountStr, balance, inputSymbol, onChain, graduated]);
+  }, [amountStr, balance, inputSymbol, onChain, graduated, side, state]);
 
   const setMax = () => {
     if (!balance) return;
@@ -307,11 +328,14 @@ export default function TradePanel({ poolAddress, state }: Props) {
       queryClient.invalidateQueries({ queryKey: ['pool-state', poolAddress] });
       queryClient.invalidateQueries({ queryKey: ['pool-history', poolAddress] });
     } catch (e) {
-      const msg = isSignTimeout(e)
-        ? signingTimeoutMessage()
-        : e instanceof Error
-          ? e.message
-          : 'Transaction failed';
+      const rawMsg = e instanceof Error ? e.message : 'Transaction failed';
+      // Friendly message for the near-cap 6033: the buy was too large for
+      // the remaining room before graduation. Never show raw program errors.
+      const msg = /6033|0x1791|InsufficientLiquidity/i.test(rawMsg)
+        ? 'This buy is too large for the room left before graduation. Try a smaller amount.'
+        : isSignTimeout(e)
+          ? signingTimeoutMessage()
+          : rawMsg;
       // User rejecting in the wallet is not an app error worth alarming about.
       setError(msg);
       setStatus('failed');
