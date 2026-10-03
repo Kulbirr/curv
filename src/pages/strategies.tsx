@@ -708,19 +708,55 @@ interface TrackRecordData {
  */
 function TrackRecord() {
   const [data, setData] = useState<TrackRecordData | null>(null);
+  const [failed, setFailed] = useState(false);
   useEffect(() => {
     let cancelled = false;
     fetch('/api/strategies/track-record')
       .then((r) => (r.ok ? r.json() : null))
       .then((j) => {
-        if (!cancelled && j) setData(j);
+        if (cancelled) return;
+        if (j) setData(j);
+        else setFailed(true);
       })
-      .catch(() => {});
+      .catch(() => {
+        if (!cancelled) setFailed(true);
+      });
     return () => {
       cancelled = true;
     };
   }, []);
-  if (!data) return null;
+  if (failed) return null;
+  if (!data) {
+    return (
+      <section
+        aria-label="Track record"
+        aria-busy="true"
+        className="mt-8 rounded-2xl border border-white/10 bg-[#141110]"
+      >
+        <div className="flex items-center justify-between px-6 pt-5 md:px-8">
+          <div className="h-3 w-32 animate-pulse rounded-full bg-white/10" />
+          <div className="h-6 w-44 animate-pulse rounded-full bg-white/10" />
+        </div>
+        <div className="mt-6 flex items-end justify-between px-6 md:px-8">
+          <div>
+            <div className="h-12 w-24 animate-pulse rounded-xl bg-white/10" />
+            <div className="mt-2 h-3 w-16 animate-pulse rounded-full bg-white/5" />
+          </div>
+          <div className="flex gap-7 md:gap-9">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="flex flex-col items-center">
+                <div className="h-7 w-8 animate-pulse rounded-lg bg-white/10" />
+                <div className="mt-2 h-3 w-12 animate-pulse rounded-full bg-white/5" />
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="mt-6 border-t border-white/5 px-6 py-5 md:px-8">
+          <div className="h-4 w-2/3 animate-pulse rounded-full bg-white/5" />
+        </div>
+      </section>
+    );
+  }
   const { record, history } = data;
   const decided = record.wins + record.losses;
   return (
