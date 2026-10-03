@@ -18,6 +18,12 @@ import {
 import { getConnection, getDbcClient } from './solana';
 import { parseUiAmountToRaw } from './swap-math';
 import { LAUNCH_FEE_CONFIG, defaultEcon, type ResolvedEcon } from './launch-fees';
+import {
+  calibrateTierThreshold,
+  quickTierById,
+  type QuickTierId,
+  type TierCurveParams,
+} from './launch-tiers';
 
 /**
  * Designer-friendly launch spec → Meteora DBC SDK params.
@@ -57,6 +63,10 @@ export interface LaunchSpec {
    *  own cuts (0.3% trading fee, 25% of the migration fee) are locked
    *  and intentionally not overridable here. */
   econ?: LaunchEconOverrides;
+  /** Quick-launch graduation tier. When set, buildCurveParams calibrates
+   *  migrationQuoteThreshold so the pool graduates at exactly the tier's
+   *  end price, while the on-chain curve keeps headroom past it. */
+  quickTierId?: QuickTierId;
 }
 
 /**
@@ -119,13 +129,22 @@ export function presetCurve(preset: CurvePresetId, startPrice: number): CurveDes
 export const QUICK_TARGET_START_FDV_USD = 5000;
 
 /** Quick-launch curve shape, kept separate from the Pro "exponential"
- *  preset so Pro keeps its original [1, 1.6, 3.2, 10] ladder. The 14x
- *  end multiple is what takes a $5k start to ~$70k graduation. */
+ *  preset so Pro keeps its original [1, 1.6, 3.2, 10] ladder. The legacy
+ *  14x end multiple took a $5k start to ~$70k graduation; tiered Quick
+ *  launches now use the $25k/$35k/$40k tiers in launch-tiers.ts instead. */
 export const QUICK_CURVE_MULTIPLIERS = [1, 1.8, 4, 14];
 
-/** Build the Quick-launch CurveDesign from a starting price (quote UI units). */
-export function quickCurveDesign(startPrice: number): CurveDesign {
-  const prices = QUICK_CURVE_MULTIPLIERS.map((m) => startPrice * m);
+/**
+ * Build a Quick-launch display curve from a starting price (quote UI
+ * units). The optional end multiple and mid ladder let the graduation
+ * tiers reuse this shape; the default keeps the legacy 14x curve.
+ */
+export function quickCurveDesign(
+  startPrice: number,
+  endMultiple = 14,
+  mids: [number, number] = [1.8, 4],
+): CurveDesign {
+  const prices = [1, mids[0], mids[1], endMultiple].map((m) => startPrice * m);
   const liquidityWeights = new Array(prices.length - 1).fill(1);
   return { prices, liquidityWeights };
 }
@@ -243,7 +262,7 @@ export function buildCurveParams(
   // buildCurveWithCustomSqrtPrices and pool creation fails.
   const flatFee = spec.startingFeeBps === spec.endingFeeBps;
 
-  return buildCurveWithCustomSqrtPrices({
+  const params = buildCurveWithCustomSqrtPrices({
     token: {
       tokenType: TokenType.SPLToken,
       tokenBaseDecimal: baseDecimalEnum,
@@ -308,6 +327,30 @@ export function buildCurveParams(
     sqrtPrices,
     liquidityWeights: spec.curve.liquidityWeights,
   });
+
+  // Quick graduation tiers: the on-chain curve runs 1.5x past the
+  // advertised graduation price, and the migration threshold is
+  // calibrated to sit exactly at the tier's end price. Migration then
+  // happens at the exact displayed cap with headroom left over, so buys
+  // near graduation can never hit the old dust zone where the final buy
+  // reverted with 6033 InsufficientLiquidity.
+  if (spec.quickTierId) {
+    const tier = quickTierById(spec.quickTierId);
+    const targetEndPrice = spec.curve.prices[0] * tier.endMultiple;
+    const built = params as unknown as TierCurveParams;
+    params.migrationQuoteThreshold = calibrateTierThreshold(
+      {
+        migrationQuoteThreshold: built.migrationQuoteThreshold,
+        sqrtStartPrice: built.sqrtStartPrice,
+        curve: built.curve,
+      },
+      targetEndPrice,
+      spec.baseDecimals,
+      spec.quoteDecimals,
+    );
+  }
+
+  return params;
 }
 
 /**

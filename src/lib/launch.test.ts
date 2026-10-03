@@ -277,7 +277,7 @@ describe('creator economics overrides', () => {
     const e = resolveEcon(validSpec({ econ: {} }));
     expect(e.creatorTradingFeePercent).toBe(31.51);
     expect(e.creatorMigrationFeePercent).toBe(50);
-    expect(e.poolCreationFeeSol).toBe(0.02);
+    expect(e.poolCreationFeeSol).toBe(0.01);
   });
 
   it('rejects a zero or negative fee-decay period count', async () => {

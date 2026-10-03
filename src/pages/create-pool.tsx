@@ -23,8 +23,6 @@ import {
   buildLaunchTransaction,
   formatPriceInput,
   graduationThresholdQuote,
-  quickCurveDesign,
-  QUICK_CURVE_MULTIPLIERS,
   QUICK_TARGET_START_FDV_USD,
   quickDefaultStartPrice,
   resolveEcon,
@@ -34,6 +32,14 @@ import {
   type LaunchEconOverrides,
   type LaunchSpec,
 } from '@/lib/launch'
+import {
+  DEFAULT_QUICK_TIER_ID,
+  QUICK_TIERS,
+  quickTierById,
+  quickTierCurveDesign,
+  quickTierDisplayPrices,
+  type QuickTierId,
+} from '@/lib/launch-tiers'
 import { buildDevBuyTransaction } from '@/lib/dev-buy'
 import { BN } from '@coral-xyz/anchor'
 import { getConnection, isDevnet, SOLANA_NETWORK } from '@/lib/solana'
@@ -124,6 +130,8 @@ const DRAFT_KEY = 'curv.launch-draft.v1'
 
 interface LaunchDraft {
   mode?: 'quick' | 'pro'
+  step?: 1 | 2 | 3
+  quickTierId?: QuickTierId
   name: string
   symbol: string
   description: string
@@ -233,16 +241,28 @@ export default function CreatePool() {
       cancelled = true
     }
   }, [])
+  /** Wizard step: 1 = coin, 2 = pair and raise, 3 = economics and launch. */
+  const [step, setStep] = useState<1 | 2 | 3>(1)
+  /** Quick-launch graduation tier. $35K balanced is the default. Declared
+   *  before quickCurve because the curve is built from the tier. */
+  const [quickTierId, setQuickTierId] =
+    useState<QuickTierId>(DEFAULT_QUICK_TIER_ID)
   /** USD price of the selected quote asset, for scaling Quick defaults. */
   const quoteUsdForDefault =
     quoteSel === 'SOL' ? (solUsd ?? 200) : quoteSel === 'USDC' ? 1 : (pickedAsset?.usdPrice ?? 1)
-  /** Quick-launch curve, scaled so every pair starts near $5k valuation. */
+  /** Quick-launch curve, scaled so every pair starts near $5k valuation.
+   *  The on-chain curve runs 1.5x past the tier's graduation price; the
+   *  migration threshold is calibrated to the exact advertised cap. */
   const quickCurve = useMemo(
-    () => quickCurveDesign(quickDefaultStartPrice(quoteUsdForDefault)),
-    [quoteUsdForDefault]
+    () =>
+      quickTierCurveDesign(
+        quickDefaultStartPrice(quoteUsdForDefault),
+        quickTierById(quickTierId)
+      ),
+    [quoteUsdForDefault, quickTierId]
   )
   /** Manual mint entry, kept for devnet test mints and unlisted assets. */
-  const [manualQuote, setManualQuote] = useState(false)
+  const [manualQuote, setManualQuote] = useState(true)
   const [baseDecimals, setBaseDecimals] = useState<6 | 9>(6)
   const [totalSupply, setTotalSupply] = useState('1000000000')
   const [startFeeBps, setStartFeeBps] = useState('119')
@@ -548,6 +568,9 @@ export default function CreatePool() {
           },
       startingFeeBps: quick ? 119 : parseInt(startFeeBps, 10),
       endingFeeBps: quick ? 119 : parseInt(endFeeBps, 10),
+      // The tier calibrates migrationQuoteThreshold to the exact
+      // advertised cap while the curve keeps headroom past it.
+      quickTierId: quick ? quickTierId : undefined,
       econ: quick
         ? {
             feeSchedulerPeriods: 60,
@@ -584,6 +607,7 @@ export default function CreatePool() {
   }, [
     mode,
     quickCurve,
+    quickTierId,
     name,
     symbol,
     quoteMint,
@@ -724,6 +748,8 @@ export default function CreatePool() {
   function saveDraft() {
     const draft: LaunchDraft = {
       mode,
+      step,
+      quickTierId,
       name,
       symbol,
       description,
@@ -773,6 +799,9 @@ export default function CreatePool() {
       if (!raw) return
       const d = JSON.parse(raw) as Partial<LaunchDraft>
       if (d.mode === 'quick' || d.mode === 'pro') setMode(d.mode)
+      if (d.step === 1 || d.step === 2 || d.step === 3) setStep(d.step)
+      if (d.quickTierId === 'fast' || d.quickTierId === 'balanced' || d.quickTierId === 'deep')
+        setQuickTierId(d.quickTierId)
       if (typeof d.name === 'string') setName(d.name)
       if (typeof d.symbol === 'string') setSymbol(d.symbol)
       if (typeof d.description === 'string') setDescription(d.description)
@@ -1187,6 +1216,48 @@ export default function CreatePool() {
     LAUNCH_FEE_CONFIG.estimatedLaunchRentSol
   const deployTotalLabel = `≈${deployTotalSol.toFixed(2)} SOL`
 
+  /** The selected Quick graduation tier. */
+  const quickTier = quickTierById(quickTierId)
+  /** Known USD price of the quote asset, or null when it has none. Quotes
+   *  without a price never get a fabricated USD valuation: the UI shows
+   *  the quote-denominated threshold instead. */
+  const quoteUsdPriced: number | null =
+    quoteSel === 'SOL'
+      ? solUsd
+      : quoteSel === 'USDC'
+        ? 1
+        : (pickedAsset?.usdPrice ?? null)
+  /** Curve prices and label for the review card and the chart preview. */
+  const reviewCurvePrices =
+    mode === 'quick'
+      ? quickTierDisplayPrices(
+          quickDefaultStartPrice(quoteUsdForDefault),
+          quickTier
+        )
+      : priceNums
+  const reviewCurveName =
+    mode === 'quick'
+      ? `Quick ${quickTier.headline} ${quickTier.name}`
+      : presetName
+  /** Per-step validation for the wizard. */
+  const step1Errors = tokenErrors
+  const step2Errors =
+    mode === 'quick' ? [...quoteErrors] : [...quoteErrors, ...curveErrors]
+  const stepErrors = step === 1 ? step1Errors : step === 2 ? step2Errors : activeErrors
+
+  function fmtUsd(v: number): string {
+    return v.toLocaleString('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      maximumFractionDigits: 0,
+    })
+  }
+
+  // Keep the wizard's scroll position at the top when the step changes.
+  useEffect(() => {
+    window.scrollTo(0, 0)
+  }, [step])
+
   // ---- per-field errors (drive red invalid-field highlighting) ----
   const findErr = (errs: string[], pred: (e: string) => boolean) =>
     errs.find(pred)
@@ -1435,38 +1506,37 @@ export default function CreatePool() {
             </>
           )}
         </div>
-
-        <div
-          className="sc-launch-mode-toggle"
-          role="tablist"
-          aria-label="Launch mode"
-        >
-          <button
-            type="button"
-            role="tab"
-            aria-selected={mode === 'quick'}
-            className={cn(
-              'sc-launch-mode-tab',
-              mode === 'quick' && 'sc-launch-mode-tab-active'
-            )}
-            onClick={() => setMode('quick')}
-          >
-            <strong>Quick launch</strong>
-            <span>Name, ticker, image. Done.</span>
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={mode === 'pro'}
-            className={cn(
-              'sc-launch-mode-tab',
-              mode === 'pro' && 'sc-launch-mode-tab-active'
-            )}
-            onClick={() => setMode('pro')}
-          >
-            <strong>Pro designer</strong>
-            <span>Full control of curve, fees, graduation.</span>
-          </button>
+        {/* ---- Wizard steps ---- */}
+        <div className="sc-wizard-steps" role="tablist" aria-label="Launch steps">
+          {(
+            [
+              { n: 1, label: 'Coin', sub: 'Name, ticker, image' },
+              { n: 2, label: 'Pair and raise', sub: 'Quote pair, graduation' },
+              { n: 3, label: 'Economics and launch', sub: 'Fees, review, sign' },
+            ] as const
+          ).map((s) => (
+            <button
+              key={s.n}
+              type="button"
+              role="tab"
+              aria-selected={step === s.n}
+              disabled={s.n > step}
+              onClick={() => {
+                if (s.n < step) setStep(s.n)
+              }}
+              className={cn(
+                'sc-wizard-step',
+                step === s.n && 'sc-wizard-step-active',
+                s.n < step && 'sc-wizard-step-done'
+              )}
+            >
+              <span className="sc-wizard-step-num">{s.n < step ? '✓' : s.n}</span>
+              <span className="sc-wizard-step-text">
+                <strong>{s.label}</strong>
+                <small>{s.sub}</small>
+              </span>
+            </button>
+          ))}
         </div>
 
         <div className="sc-launch-builder-grid">
@@ -1474,6 +1544,8 @@ export default function CreatePool() {
             className="sc-launch-builder-form"
             onSubmit={(e) => e.preventDefault()}
           >
+            {step === 1 && (
+              <>
             {/* ---- Token Identity ---- */}
             <section className="sc-builder-section">
               <div className="sc-builder-section-head">
@@ -1626,18 +1698,133 @@ export default function CreatePool() {
                 </Field>
               )}
             </section>
+              </>
+            )}
+            {step === 2 && (
+              <>
+        <div
+          className="sc-launch-mode-toggle"
+          role="tablist"
+          aria-label="Launch mode"
+        >
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mode === 'quick'}
+            className={cn(
+              'sc-launch-mode-tab',
+              mode === 'quick' && 'sc-launch-mode-tab-active'
+            )}
+            onClick={() => setMode('quick')}
+          >
+            <strong>Quick launch</strong>
+            <span>Name, ticker, image. Done.</span>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mode === 'pro'}
+            className={cn(
+              'sc-launch-mode-tab',
+              mode === 'pro' && 'sc-launch-mode-tab-active'
+            )}
+            onClick={() => setMode('pro')}
+          >
+            <strong>Pro designer</strong>
+            <span>Full control of curve, fees, graduation.</span>
+          </button>
+        </div>
 
-            {/* ---- Quick mode: what you get with the proven defaults ---- */}
+            {/* ---- Quick: pick your raise ---- */}
             {mode === 'quick' && (
-              <section
-                className="sc-builder-section"
-                aria-labelledby="sc-quick-defaults-heading"
-              >
+              <section className="sc-builder-section" aria-labelledby="sc-tier-heading">
                 <div className="sc-builder-section-head">
                   <span className="sc-section-glyph">✦</span>
                   <div>
-                    <h2 id="sc-quick-defaults-heading">What you get</h2>
-                    <p>Proven defaults. You just pick what to pair with.</p>
+                    <h2 id="sc-tier-heading">Pick your raise</h2>
+                    <p>
+                      Every coin starts near a $5k market cap. You choose
+                      where it graduates.
+                    </p>
+                  </div>
+                </div>
+                <div
+                  className="sc-tier-cards"
+                  role="radiogroup"
+                  aria-label="Graduation tier"
+                >
+                  {QUICK_TIERS.map((t) => {
+                    const selected = quickTierId === t.id
+                    return (
+                      <button
+                        key={t.id}
+                        type="button"
+                        role="radio"
+                        aria-checked={selected}
+                        onClick={() => setQuickTierId(t.id)}
+                        className={cn(
+                          'sc-tier-card',
+                          selected && 'sc-tier-card-selected'
+                        )}
+                      >
+                        <strong>{t.headline}</strong>
+                        <span className="sc-tier-name">{t.name}</span>
+                        <small>{t.blurb}</small>
+                        <small className="sc-tier-cap">
+                          {quoteUsdPriced !== null
+                            ? `Graduates at ${fmtUsd(t.capUsd)} market cap`
+                            : `Graduates at ${t.endMultiple}× the starting price`}
+                        </small>
+                      </button>
+                    )
+                  })}
+                </div>
+                <div className="sc-tier-graduation">
+                  {graduationPreview !== null ? (
+                    <p className="text-neutral-100">
+                      <strong className="text-primary">
+                        {quickTier.headline} {quickTier.name}
+                      </strong>{' '}
+                      graduates to <strong>DAMM v2</strong> at{' '}
+                      <strong>
+                        ~
+                        {graduationPreview.toLocaleString('en-US', {
+                          maximumFractionDigits: 4,
+                        })}{' '}
+                        {quoteSymbol}
+                      </strong>{' '}
+                      in quote reserves
+                      {quoteUsdPriced !== null && (
+                        <>
+                          {' '}· exactly{' '}
+                          <strong>{fmtUsd(quickTier.capUsd)}</strong> market
+                          cap
+                        </>
+                      )}
+                      .
+                    </p>
+                  ) : (
+                    <p className="text-neutral-500">
+                      Fix the errors above to preview graduation.
+                    </p>
+                  )}
+                  <p className="mt-1 text-xs text-neutral-500">
+                    The curve keeps running past graduation, so buys near the
+                    cap always have room. No dust zone.
+                  </p>
+                </div>
+              </section>
+            )}
+            {/* ---- Quick: pair ---- */}
+            {mode === 'quick' && (
+              <section className="sc-builder-section">
+                <div className="sc-builder-section-head">
+                  <span className="sc-section-glyph">◈</span>
+                  <div>
+                    <h2>Pair</h2>
+                    <p>
+                      What your token trades against. Any SPL token works.
+                    </p>
                   </div>
                 </div>
                 <div className="mb-5">
@@ -1652,20 +1839,17 @@ export default function CreatePool() {
                     <strong>{quoteSymbol}</strong>
                   </li>
                   <li>
-                    <strong>Exponential</strong> bonding curve · starts near{' '}
-                    <strong>$5k</strong> market cap, graduates near{' '}
+                    <strong>Exponential</strong> bonding curve · starts
+                    near{' '}
                     <strong>
-                      ~
-                      {Math.round(
-                        (QUICK_TARGET_START_FDV_USD *
-                          QUICK_CURVE_MULTIPLIERS[
-                            QUICK_CURVE_MULTIPLIERS.length - 1
-                          ]) /
-                          1000
-                      )}
-                      k
+                      {quoteUsdPriced !== null ? '$5k' : `a fixed ${quoteSymbol} price`}
                     </strong>{' '}
-                    market cap
+                    market cap, graduates at exactly{' '}
+                    <strong>
+                      {quoteUsdPriced !== null
+                        ? fmtUsd(quickTier.capUsd)
+                        : `${quickTier.endMultiple}× the starting price`}
+                    </strong>
                   </li>
                   <li>
                     Trading fee <strong>1.19%</strong> flat while bonding
@@ -1681,172 +1865,31 @@ export default function CreatePool() {
                     forever
                   </li>
                   <li>
-                    <strong>0.02 SOL</strong> pool creation fee, like pump.fun.
-                    Solana also locks about <strong>0.03 SOL</strong> as
-                    refundable deposits for the new onchain accounts, so
-                    launching costs about <strong>0.05 SOL</strong> in total,
-                    plus tiny network fees.
+                    <strong>0.01 SOL</strong> pool creation fee. Solana also
+                    locks about <strong>0.03 SOL</strong> as refundable
+                    deposits for the new onchain accounts, so launching costs
+                    about <strong>0.04 SOL</strong> in total, plus tiny
+                    network fees.
                   </li>
                 </ul>
               </section>
             )}
-
-            {/* ---- Fee splits: share creator fees with collaborators ---- */}
-            <section
-              className="sc-builder-section"
-              aria-labelledby="sc-fee-splits-heading"
-            >
+            {/* ---- Pair (pro): any quote token ---- */}
+            <section className="sc-builder-section">
               <div className="sc-builder-section-head">
                 <span className="sc-section-glyph">◈</span>
                 <div>
-                  <h2 id="sc-fee-splits-heading">Fee splits</h2>
-                  <p>
-                    Share your 0.3% creator trading fees with collaborators.
-                    Fixed at launch and public forever, so everyone can see
-                    the deal before they buy. Entries without a bound wallet
-                    are skipped at claim time and their share stays with you:
-                    send each collaborator their invite link from your pool
-                    page so they can bind their wallet.
-                  </p>
+                  <h2>Pair</h2>
+                  <p>What your token trades against. Any SPL token works.</p>
                 </div>
               </div>
-              {splitRows.map((row, i) => (
-                <div key={i} className="sc-split-form-row">
-                  <Field label="Recipient wallet" className="sc-split-wallet-field">
-                    <input
-                      value={row.wallet}
-                      onChange={(e) =>
-                        setSplitRows((rs) =>
-                          rs.map((r, j) => (j === i ? { ...r, wallet: e.target.value } : r))
-                        )
-                      }
-                      placeholder="Solana address, or leave empty with an X handle"
-                      spellCheck={false}
-                      autoComplete="off"
-                    />
-                  </Field>
-                  <Field label="Share %">
-                    <input
-                      inputMode="decimal"
-                      value={row.percent}
-                      onChange={(e) =>
-                        setSplitRows((rs) =>
-                          rs.map((r, j) =>
-                            j === i
-                              ? { ...r, percent: e.target.value.replace(/[^0-9.]/g, '') }
-                              : r
-                          )
-                        )
-                      }
-                      placeholder="10"
-                      autoComplete="off"
-                    />
-                  </Field>
-                  <Field label="X handle (optional)">
-                    <input
-                      value={row.handle}
-                      onChange={(e) =>
-                        setSplitRows((rs) =>
-                          rs.map((r, j) => (j === i ? { ...r, handle: e.target.value } : r))
-                        )
-                      }
-                      placeholder="name"
-                      spellCheck={false}
-                      autoComplete="off"
-                    />
-                  </Field>
-                  <button
-                    type="button"
-                    className="sc-split-remove"
-                    aria-label="Remove recipient"
-                    onClick={() => setSplitRows((rs) => rs.filter((_, j) => j !== i))}
-                  >
-                    ×
-                  </button>
-                </div>
-              ))}
-              {splitRows.length < 10 && (
-                <button
-                  type="button"
-                  className="sc-button sc-button-secondary"
-                  onClick={() =>
-                    setSplitRows((rs) => [...rs, { wallet: '', percent: '', handle: '' }])
-                  }
-                >
-                  Add recipient
-                </button>
-              )}
-              <p className="sc-split-summary">
-                {splitPreview.error ? (
-                  <span className="sc-form-error">{splitPreview.error}</span>
-                ) : splitRows.length === 0 ? (
-                  'No splits set. You keep the full creator fee.'
-                ) : (
-                  <>
-                    You assign{' '}
-                    <strong>{(splitPreview.totalBps / 100).toFixed(2)}%</strong> to
-                    collaborators and keep{' '}
-                    <strong>{((10000 - splitPreview.totalBps) / 100).toFixed(2)}%</strong>.
-                    Recipients can share at most 90% in total.
-                  </>
-                )}
-              </p>
-            </section>
-
-            {/* ---- Dev buy: the creator's own opening buy, public from block one ---- */}
-            <section className="sc-builder-section">
-              <div className="sc-builder-section-head">
-                <span className="sc-section-glyph">✦</span>
                 <div>
-                  <h2>Dev buy</h2>
-                  <p>
-                    Buy your own token the moment the pool opens. It is
-                    executed in the launch flow and shown publicly from
-                    block one.
+                  <p className="mb-2 text-sm font-medium text-neutral-300">
+                    Quote token
                   </p>
+                  {renderQuotePicker()}
                 </div>
-              </div>
-              <div className="rounded-lg border border-primary/40 bg-primary/5 p-4">
-                <Field
-                  label={`Dev buy (${quoteSymbol})`}
-                  hint="Optional. Runs as a buy right after your pool is created, in the same signing session. A dev buy you can see is trust."
-                  error={devBuyPreview.error ?? undefined}
-                >
-                  <div className="flex items-center gap-3">
-                    <input
-                      inputMode="decimal"
-                      value={devBuy}
-                      onChange={(e) =>
-                        setDevBuy(e.target.value.replace(/[^0-9.]/g, ''))
-                      }
-                      placeholder="0.5"
-                      autoComplete="off"
-                      className="text-lg font-semibold"
-                    />
-                    <span className="shrink-0 text-sm font-medium text-neutral-400">
-                      {quoteSymbol}
-                    </span>
-                  </div>
-                </Field>
-                {devBuyPreview.lamports !== null && !devBuyPreview.error && (
-                  <p className="mt-3 text-sm text-neutral-300">
-                    You will buy{' '}
-                    <strong className="text-primary">
-                      {devBuy.trim()} {quoteSymbol}
-                    </strong>{' '}
-                    worth of your token at launch, visible to everyone on
-                    the trust panel.
-                  </p>
-                )}
-                {devBuy.trim() === '' && (
-                  <p className="mt-3 text-xs text-neutral-500">
-                    Leave empty for no dev buy. You can always buy from the
-                    public curve after launch.
-                  </p>
-                )}
-              </div>
             </section>
-
             {/* ---- Bonding Curve Settings (pro mode only) ---- */}
             {mode === 'pro' && (
               <section className="sc-builder-section sc-curve-settings">
@@ -2020,6 +2063,72 @@ export default function CreatePool() {
               </section>
             )}
 
+            {/* ---- Graduation preview (pro mode only, step 2) ---- */}
+            {mode === 'pro' && (
+              <section className="sc-builder-section">
+                <div className="sc-builder-section-head">
+                  <span className="sc-section-glyph">▲</span>
+                  <div>
+                    <h2>Graduation preview</h2>
+                    <p>
+                      Where your curve hands off to DAMM v2
+                    </p>
+                  </div>
+                </div>
+                <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-4">
+                  <p className="mb-2 text-xs uppercase tracking-wide text-neutral-500">
+                    Graduation threshold
+                  </p>
+                  {graduationPreview !== null ? (
+                    <p className="text-neutral-100">
+                      Graduates to{' '}
+                      <strong className="text-primary">DAMM v2</strong> at{' '}
+                      <strong>
+                        ~
+                        {graduationPreview.toLocaleString('en-US', {
+                          maximumFractionDigits: 4,
+                        })}{' '}
+                        {quoteSymbol}
+                      </strong>{' '}
+                      in quote reserves.
+                    </p>
+                  ) : (
+                    <p className="text-neutral-500">
+                      Fix the errors above to compute the graduation threshold.
+                    </p>
+                  )}
+                  <p className="mt-1 text-xs text-neutral-500">
+                    Computed from your curve with the DBC SDK, not an estimate.
+                  </p>
+                  <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-[1fr_auto] md:items-end">
+                    <Field
+                      label={`Graduation target (${quoteSymbol})`}
+                      hint="Optional. Rescales the curve so it graduates at this level."
+                    >
+                      <input
+                        inputMode="decimal"
+                        placeholder="e.g. 85"
+                        value={gradTarget}
+                        onChange={(e) =>
+                          setGradTarget(e.target.value.replace(/[^0-9.]/g, ''))
+                        }
+                      />
+                    </Field>
+                    <button
+                      type="button"
+                      onClick={applyGraduationTarget}
+                      className="sc-button sc-button-secondary"
+                    >
+                      Match curve to target
+                    </button>
+                  </div>
+                </div>
+              </section>
+            )}
+              </>
+            )}
+            {step === 3 && (
+              <>
             {/* ---- Economics (pro mode only) ---- */}
             {mode === 'pro' && (
               <section className="sc-builder-section">
@@ -2027,15 +2136,10 @@ export default function CreatePool() {
                   <span className="sc-section-glyph">◎</span>
                   <div>
                     <h2>Economics</h2>
-                    <p>Quote pair, supply and the fee schedule</p>
+                    <p>Supply and the fee schedule</p>
                   </div>
                 </div>
-                <div>
-                  <p className="mb-2 text-sm font-medium text-neutral-300">
-                    Quote token
-                  </p>
-                  {renderQuotePicker()}
-                </div>
+
 
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div>
@@ -2188,64 +2292,14 @@ export default function CreatePool() {
               </section>
             )}
 
-            {/* ---- Graduation & migration (pro mode only) ---- */}
+            {/* ---- Migration economics (pro mode only) ---- */}
             {mode === 'pro' && (
               <section className="sc-builder-section">
                 <div className="sc-builder-section-head">
                   <span className="sc-section-glyph">▲</span>
                   <div>
-                    <h2>Graduation and migration</h2>
-                    <p>
-                      When the pool leaves the bonding curve, and what it costs
-                    </p>
-                  </div>
-                </div>
-                <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-4">
-                  <p className="mb-2 text-xs uppercase tracking-wide text-neutral-500">
-                    Graduation threshold
-                  </p>
-                  {graduationPreview !== null ? (
-                    <p className="text-neutral-100">
-                      Graduates to{' '}
-                      <strong className="text-primary">DAMM v2</strong> at{' '}
-                      <strong>
-                        ~
-                        {graduationPreview.toLocaleString('en-US', {
-                          maximumFractionDigits: 4,
-                        })}{' '}
-                        {quoteSymbol}
-                      </strong>{' '}
-                      in quote reserves.
-                    </p>
-                  ) : (
-                    <p className="text-neutral-500">
-                      Fix the errors above to compute the graduation threshold.
-                    </p>
-                  )}
-                  <p className="mt-1 text-xs text-neutral-500">
-                    Computed from your curve with the DBC SDK, not an estimate.
-                  </p>
-                  <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-[1fr_auto] md:items-end">
-                    <Field
-                      label={`Graduation target (${quoteSymbol})`}
-                      hint="Optional. Rescales the curve so it graduates at this level."
-                    >
-                      <input
-                        inputMode="decimal"
-                        placeholder="e.g. 85"
-                        value={gradTarget}
-                        onChange={(e) =>
-                          setGradTarget(e.target.value.replace(/[^0-9.]/g, ''))
-                        }
-                      />
-                    </Field>
-                    <button
-                      type="button"
-                      onClick={applyGraduationTarget}
-                      className="sc-button sc-button-secondary"
-                    >
-                      Match curve to target
-                    </button>
+                    <h2>Migration economics</h2>
+                    <p>What graduation costs, and what you keep</p>
                   </div>
                 </div>
                 <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -2289,11 +2343,166 @@ export default function CreatePool() {
                 <p className="mt-3 text-xs text-neutral-500">
                   Locked: you keep ~{lockedCreatorSharePct.toFixed(2)}% of every
                   bonding-curve trade and 50% of the migration fee. Launching
-                  costs 0.02 SOL plus about 0.03 SOL in rent-exempt account
+                  costs 0.01 SOL plus about 0.03 SOL in rent-exempt account
                   funding, plus Solana network fees.
                 </p>
               </section>
             )}
+            {/* ---- Fee splits: share creator fees with collaborators ---- */}
+            <section
+              className="sc-builder-section"
+              aria-labelledby="sc-fee-splits-heading"
+            >
+              <div className="sc-builder-section-head">
+                <span className="sc-section-glyph">◈</span>
+                <div>
+                  <h2 id="sc-fee-splits-heading">Fee splits</h2>
+                  <p>
+                    Share your 0.3% creator trading fees with collaborators.
+                    Fixed at launch and public forever, so everyone can see
+                    the deal before they buy. Entries without a bound wallet
+                    are skipped at claim time and their share stays with you:
+                    send each collaborator their invite link from your pool
+                    page so they can bind their wallet.
+                  </p>
+                </div>
+              </div>
+              {splitRows.map((row, i) => (
+                <div key={i} className="sc-split-form-row">
+                  <Field label="Recipient wallet" className="sc-split-wallet-field">
+                    <input
+                      value={row.wallet}
+                      onChange={(e) =>
+                        setSplitRows((rs) =>
+                          rs.map((r, j) => (j === i ? { ...r, wallet: e.target.value } : r))
+                        )
+                      }
+                      placeholder="Solana address, or leave empty with an X handle"
+                      spellCheck={false}
+                      autoComplete="off"
+                    />
+                  </Field>
+                  <Field label="Share %">
+                    <input
+                      inputMode="decimal"
+                      value={row.percent}
+                      onChange={(e) =>
+                        setSplitRows((rs) =>
+                          rs.map((r, j) =>
+                            j === i
+                              ? { ...r, percent: e.target.value.replace(/[^0-9.]/g, '') }
+                              : r
+                          )
+                        )
+                      }
+                      placeholder="10"
+                      autoComplete="off"
+                    />
+                  </Field>
+                  <Field label="X handle (optional)">
+                    <input
+                      value={row.handle}
+                      onChange={(e) =>
+                        setSplitRows((rs) =>
+                          rs.map((r, j) => (j === i ? { ...r, handle: e.target.value } : r))
+                        )
+                      }
+                      placeholder="name"
+                      spellCheck={false}
+                      autoComplete="off"
+                    />
+                  </Field>
+                  <button
+                    type="button"
+                    className="sc-split-remove"
+                    aria-label="Remove recipient"
+                    onClick={() => setSplitRows((rs) => rs.filter((_, j) => j !== i))}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+              {splitRows.length < 10 && (
+                <button
+                  type="button"
+                  className="sc-button sc-button-secondary"
+                  onClick={() =>
+                    setSplitRows((rs) => [...rs, { wallet: '', percent: '', handle: '' }])
+                  }
+                >
+                  Add recipient
+                </button>
+              )}
+              <p className="sc-split-summary">
+                {splitPreview.error ? (
+                  <span className="sc-form-error">{splitPreview.error}</span>
+                ) : splitRows.length === 0 ? (
+                  'No splits set. You keep the full creator fee.'
+                ) : (
+                  <>
+                    You assign{' '}
+                    <strong>{(splitPreview.totalBps / 100).toFixed(2)}%</strong> to
+                    collaborators and keep{' '}
+                    <strong>{((10000 - splitPreview.totalBps) / 100).toFixed(2)}%</strong>.
+                    Recipients can share at most 90% in total.
+                  </>
+                )}
+              </p>
+            </section>
+
+            {/* ---- Dev buy: the creator's own opening buy, public from block one ---- */}
+            <section className="sc-builder-section">
+              <div className="sc-builder-section-head">
+                <span className="sc-section-glyph">✦</span>
+                <div>
+                  <h2>Dev buy</h2>
+                  <p>
+                    Buy your own token the moment the pool opens. It is
+                    executed in the launch flow and shown publicly from
+                    block one.
+                  </p>
+                </div>
+              </div>
+              <div className="rounded-lg border border-primary/40 bg-primary/5 p-4">
+                <Field
+                  label={`Dev buy (${quoteSymbol})`}
+                  hint="Optional. Runs as a buy right after your pool is created, in the same signing session. A dev buy you can see is trust."
+                  error={devBuyPreview.error ?? undefined}
+                >
+                  <div className="flex items-center gap-3">
+                    <input
+                      inputMode="decimal"
+                      value={devBuy}
+                      onChange={(e) =>
+                        setDevBuy(e.target.value.replace(/[^0-9.]/g, ''))
+                      }
+                      placeholder="0.5"
+                      autoComplete="off"
+                      className="text-lg font-semibold"
+                    />
+                    <span className="shrink-0 text-sm font-medium text-neutral-400">
+                      {quoteSymbol}
+                    </span>
+                  </div>
+                </Field>
+                {devBuyPreview.lamports !== null && !devBuyPreview.error && (
+                  <p className="mt-3 text-sm text-neutral-300">
+                    You will buy{' '}
+                    <strong className="text-primary">
+                      {devBuy.trim()} {quoteSymbol}
+                    </strong>{' '}
+                    worth of your token at launch, visible to everyone on
+                    the trust panel.
+                  </p>
+                )}
+                {devBuy.trim() === '' && (
+                  <p className="mt-3 text-xs text-neutral-500">
+                    Leave empty for no dev buy. You can always buy from the
+                    public curve after launch.
+                  </p>
+                )}
+              </div>
+            </section>
 
             {/* ---- Review ---- */}
             <section className="sc-builder-section">
@@ -2342,14 +2551,14 @@ export default function CreatePool() {
                     Curve
                   </p>
                   <p className="text-neutral-200">
-                    {presetName} · {prices.length} points
+                    {reviewCurveName} · {reviewCurvePrices.length} points
                   </p>
                   <p className="mt-1 text-neutral-400">
-                    {Number.isFinite(priceNums[0]) ? fmtNum(priceNums[0]) : ','}{' '}
+                    {Number.isFinite(reviewCurvePrices[0]) ? fmtNum(reviewCurvePrices[0]) : ','}{' '}
                     →{' '}
-                    {priceNums.length &&
-                    Number.isFinite(priceNums[priceNums.length - 1])
-                      ? fmtNum(priceNums[priceNums.length - 1])
+                    {reviewCurvePrices.length &&
+                    Number.isFinite(reviewCurvePrices[reviewCurvePrices.length - 1])
+                      ? fmtNum(reviewCurvePrices[reviewCurvePrices.length - 1])
                       : ','}{' '}
                     {quoteSymbol}
                     {curveMultiple !== null && (
@@ -2558,12 +2767,11 @@ export default function CreatePool() {
                 </div>
               )}
             </section>
-
             <div className="sc-launch-submit-bar">
               <div>
                 <span>EST. DEPLOY COST</span>
                 <strong
-                  title={`Includes the ${feeRows.length > 0 ? feeRows[0].value : '0.02 SOL'} creation fee plus about ${LAUNCH_FEE_CONFIG.estimatedLaunchRentSol} SOL in refundable Solana account deposits. Network fees on top.`}
+                  title={`Includes the ${feeRows.length > 0 ? feeRows[0].value : '0.01 SOL'} creation fee plus about ${LAUNCH_FEE_CONFIG.estimatedLaunchRentSol} SOL in refundable Solana account deposits. Network fees on top.`}
                 >
                   {deployTotalLabel} + network fees
                 </strong>
@@ -2593,6 +2801,40 @@ export default function CreatePool() {
                 <span className="sc-launch-notice" role="status">
                   {notice}
                 </span>
+              )}
+            </div>              </>
+            )}
+            {/* ---- Wizard nav ---- */}
+            <div className="sc-wizard-nav">
+              {step > 1 ? (
+                <button
+                  type="button"
+                  className="sc-button sc-button-secondary"
+                  onClick={() => setStep(((step - 1) as 1 | 2 | 3))}
+                >
+                  ← Back
+                </button>
+              ) : (
+                <span />
+              )}
+              {step < 3 ? (
+                <div className="sc-wizard-continue">
+                  <button
+                    type="button"
+                    className="sc-button sc-button-primary"
+                    disabled={stepErrors.length > 0}
+                    onClick={() => setStep(((step + 1) as 1 | 2 | 3))}
+                  >
+                    Continue →
+                  </button>
+                  {stepErrors.length > 0 && (
+                    <small className="sc-wizard-continue-hint">
+                      Fix the errors above to continue
+                    </small>
+                  )}
+                </div>
+              ) : (
+                <span />
               )}
             </div>
           </form>
@@ -2679,10 +2921,10 @@ export default function CreatePool() {
             <section className="sc-builder-chart-card">
               <div className="sc-builder-chart-title">
                 <h2>Curve Preview</h2>
-                <span>{presetName}</span>
+                <span>{reviewCurveName}</span>
               </div>
               <div className="mt-3">
-                <CurveChart prices={priceNums} quoteSymbol={quoteSymbol} />
+                <CurveChart prices={reviewCurvePrices} quoteSymbol={quoteSymbol} />
               </div>
             </section>
 

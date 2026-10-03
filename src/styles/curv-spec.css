@@ -6423,3 +6423,182 @@ select {
     grid-column: 1 / -1;
   }
 }
+
+/* ---- Launch wizard (stepped flow) ---- */
+.sc-wizard-steps {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin: 18px 0 0;
+}
+.sc-wizard-step {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid #2a302e;
+  border-radius: 12px;
+  background: #101414;
+  color: #dce3db;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, opacity 0.15s ease;
+}
+.sc-wizard-step:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+.sc-wizard-step:not(:disabled):hover {
+  border-color: #3a453f;
+}
+.sc-wizard-step-num {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  border: 1px solid #3a453f;
+  background: #0c0f0d;
+  font-size: 13px;
+  font-weight: 700;
+  color: #9fb3a0;
+}
+.sc-wizard-step-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.sc-wizard-step-text strong {
+  font-size: 14px;
+  font-weight: 680;
+  letter-spacing: -0.01em;
+}
+.sc-wizard-step-text small {
+  font-size: 11.5px;
+  color: #8f9991;
+}
+.sc-wizard-step-active {
+  border-color: #39dc78;
+  box-shadow: inset 0 0 0 1px #39dc78;
+  background: #0e1a12;
+}
+.sc-wizard-step-active .sc-wizard-step-num {
+  border-color: #39dc78;
+  background: #39dc78;
+  color: #06130b;
+}
+.sc-wizard-step-done .sc-wizard-step-num {
+  border-color: #39dc78;
+  color: #39dc78;
+}
+.sc-wizard-nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 20px 0 4px;
+}
+.sc-wizard-continue {
+  display: grid;
+  gap: 6px;
+  justify-items: end;
+}
+.sc-wizard-continue-hint {
+  font-size: 12px;
+  color: #8f9991;
+}
+
+/* ---- Graduation tier cards ---- */
+.sc-tier-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin: 4px 0 0;
+}
+.sc-tier-card {
+  display: grid;
+  gap: 3px;
+  padding: 16px;
+  border: 1px solid #2a302e;
+  border-radius: 12px;
+  background: #101414;
+  color: #dce3db;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
+}
+.sc-tier-card:hover {
+  border-color: #3a453f;
+  transform: translateY(-1px);
+}
+.sc-tier-card strong {
+  font-size: 26px;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+  color: #eef4ec;
+}
+.sc-tier-card-selected strong {
+  color: #38ee81;
+}
+.sc-tier-name {
+  font-size: 13px;
+  font-weight: 650;
+  color: #c4cec2;
+  text-transform: capitalize;
+}
+.sc-tier-card small {
+  font-size: 12px;
+  color: #8f9991;
+  line-height: 1.45;
+}
+.sc-tier-card-selected {
+  border-color: #39dc78;
+  box-shadow: inset 0 0 0 1px #39dc78, 0 8px 28px -18px rgba(57, 220, 120, 0.55);
+  background: #0e1a12;
+}
+.sc-tier-graduation {
+  margin-top: 14px;
+  padding: 14px 16px;
+  border: 1px solid #232a27;
+  border-radius: 12px;
+  background: #0d100e;
+  font-size: 14px;
+  line-height: 1.55;
+  color: #b9c6b6;
+}
+.sc-tier-graduation strong {
+  color: #38ee81;
+}
+
+@media (max-width: 720px) {
+  .sc-wizard-steps {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  .sc-tier-cards {
+    grid-template-columns: 1fr;
+  }
+  .sc-tier-card {
+    grid-template-columns: auto 1fr;
+    grid-template-areas:
+      'cap name'
+      'cap blurb'
+      'cap usd';
+    align-items: baseline;
+    column-gap: 12px;
+  }
+  .sc-tier-card strong {
+    grid-area: cap;
+    font-size: 22px;
+  }
+  .sc-tier-name {
+    grid-area: name;
+  }
+  .sc-tier-card small:first-of-type {
+    grid-area: blurb;
+  }
+  .sc-tier-cap {
+    grid-area: usd;
+  }
+}

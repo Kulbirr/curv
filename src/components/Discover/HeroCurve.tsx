@@ -1,11 +1,14 @@
-import { QUICK_CURVE_MULTIPLIERS } from '@/lib/launch'
+import { quickTierById, quickTierDisplayPrices } from '@/lib/launch-tiers'
 
 /**
- * Hero chart card: the Curv Quick curve, drawn from the real preset
- * multipliers ([1, 1.8, 4, 14] across the supply) with log-space
- * interpolation between the segment anchors. It is a model illustration,
- * labeled MODEL, not live market data.
+ * Hero chart card: the Curv Quick curve at the default balanced tier,
+ * drawn from the real tier multipliers ([1, 1.8, 4, 7] across the supply)
+ * with log-space interpolation between the segment anchors. It is a model
+ * illustration, labeled MODEL, not live market data.
  */
+
+/** Balanced-tier display ladder: the shape every Quick launch starts with. */
+const HERO_MULTIPLIERS = quickTierDisplayPrices(1, quickTierById('balanced'))
 
 const W = 560
 const H = 330
@@ -15,8 +18,8 @@ const TOP = 26
 const BOTTOM = 288
 
 function pointAt(fraction: number): { x: number; y: number } {
-  const anchors = QUICK_CURVE_MULTIPLIERS.map((m, i) => ({
-    f: i / (QUICK_CURVE_MULTIPLIERS.length - 1),
+  const anchors = HERO_MULTIPLIERS.map((m, i) => ({
+    f: i / (HERO_MULTIPLIERS.length - 1),
     log: Math.log(m),
   }))
   const maxLog = anchors[anchors.length - 1].log
