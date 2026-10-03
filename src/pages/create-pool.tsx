@@ -262,7 +262,7 @@ export default function CreatePool() {
   }, [])
   /** Wizard step: 1 = coin, 2 = pair and raise, 3 = economics and launch. */
   const [step, setStep] = useState<1 | 2 | 3>(1)
-  /** Quick-launch graduation tier. $35K balanced is the default. Declared
+  /** Quick-launch graduation tier. $38K cruise is the default. Declared
    *  before quickCurve because the curve is built from the tier. */
   const [quickTierId, setQuickTierId] =
     useState<QuickTierId>(DEFAULT_QUICK_TIER_ID)
@@ -819,7 +819,7 @@ export default function CreatePool() {
       const d = JSON.parse(raw) as Partial<LaunchDraft>
       if (d.mode === 'quick' || d.mode === 'pro') setMode(d.mode)
       if (d.step === 1 || d.step === 2 || d.step === 3) setStep(d.step)
-      if (d.quickTierId === 'fast' || d.quickTierId === 'balanced' || d.quickTierId === 'deep')
+      if (d.quickTierId === 'sprint' || d.quickTierId === 'cruise' || d.quickTierId === 'marathon')
         setQuickTierId(d.quickTierId)
       if (typeof d.name === 'string') setName(d.name)
       if (typeof d.symbol === 'string') setSymbol(d.symbol)

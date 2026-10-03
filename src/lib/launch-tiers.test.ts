@@ -82,14 +82,14 @@ function migrationMcUsd(
 }
 
 describe('quick graduation tiers', () => {
-  it('defines the three graduation tiers with $35K cruise as default', () => {
-    expect(QUICK_TIERS.map((t) => t.id)).toEqual(['fast', 'balanced', 'deep']);
-    expect(QUICK_TIERS.map((t) => t.capUsd)).toEqual([25000, 35000, 40000]);
-    expect(QUICK_TIERS.map((t) => t.endMultiple)).toEqual([5, 7, 8]);
-    expect(DEFAULT_QUICK_TIER_ID).toBe('balanced');
-    expect(quickTierById('balanced').capUsd).toBe(35000);
+  it('defines the three graduation tiers with $38K cruise as default', () => {
+    expect(QUICK_TIERS.map((t) => t.id)).toEqual(['sprint', 'cruise', 'marathon']);
+    expect(QUICK_TIERS.map((t) => t.capUsd)).toEqual([20000, 38000, 50000]);
+    expect(QUICK_TIERS.map((t) => t.endMultiple)).toEqual([4, 7.6, 10]);
+    expect(DEFAULT_QUICK_TIER_ID).toBe('cruise');
+    expect(quickTierById('cruise').capUsd).toBe(38000);
     // Unknown ids fall back to the default tier, never throw.
-    expect(quickTierById('nope').id).toBe('balanced');
+    expect(quickTierById('nope').id).toBe('cruise');
   });
 
   it('builds a 4-point display ladder and a 5-point on-chain curve with headroom', () => {
@@ -149,8 +149,8 @@ describe('quick graduation tiers', () => {
     },
   );
 
-  it('graduates the cruise tier at exactly $35K on USDC', () => {
-    const tier = quickTierById('balanced');
+  it('graduates the cruise tier at exactly $38K on USDC', () => {
+    const tier = quickTierById('cruise');
     const spec = tierSpec(tier, 1, {
       mint: DEVNET_USDC_MINT,
       decimals: 6,
@@ -163,8 +163,8 @@ describe('quick graduation tiers', () => {
       1,
       6,
     );
-    expect(mc).toBeGreaterThan(35000 * 0.995);
-    expect(mc).toBeLessThan(35000 * 1.005);
+    expect(mc).toBeGreaterThan(38000 * 0.995);
+    expect(mc).toBeLessThan(38000 * 1.005);
   });
 
   it.each(QUICK_TIERS.map((t) => [t.id] as [string]))(
@@ -195,9 +195,9 @@ describe('quick graduation tiers', () => {
   );
 
   it('calibrates by price for quote mints without a USD price', () => {
-    const tier = quickTierById('deep');
+    const tier = quickTierById('marathon');
     // Unknown quote price falls back to $1 per quote unit for the start
-    // price; the tier still graduates at exactly 8x the starting price.
+    // price; the tier still graduates at exactly 10x the starting price.
     const spec = tierSpec(tier, 1, {
       mint: 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB4b',
       decimals: 6,
@@ -213,12 +213,12 @@ describe('quick graduation tiers', () => {
       getPriceFromSqrtPrice(migSqrt, TokenDecimal.NINE, 6).toString(),
     );
     const startPrice = spec.curve.prices[0];
-    expect(price / startPrice).toBeGreaterThan(8 * 0.999);
-    expect(price / startPrice).toBeLessThan(8 * 1.001);
+    expect(price / startPrice).toBeGreaterThan(10 * 0.999);
+    expect(price / startPrice).toBeLessThan(10 * 1.001);
   });
 
   it('calibrateTierThreshold rejects out-of-range targets', () => {
-    const tier = quickTierById('fast');
+    const tier = quickTierById('sprint');
     const spec = tierSpec(tier, 200, {
       mint: SOL_MINT,
       decimals: 9,

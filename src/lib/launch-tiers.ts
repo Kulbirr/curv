@@ -7,16 +7,16 @@ import { BN } from '@coral-xyz/anchor';
 import type { CurveDesign } from './launch';
 
 /**
- * Ember-style Quick graduation tiers.
+ * Curv Quick graduation tiers.
  *
  * Every tier starts near a $5k market cap and graduates at an exact,
- * advertised cap: $25k fast, $35k balanced (the default), $40k deepest
- * liquidity. The end multiple is the price multiple of the $5k start, so
+ * advertised cap: $20k sprint, $38k cruise (the default), $50k marathon.
+ * The end multiple is the price multiple of the $5k start, so
  * the USD caps hold exactly whenever the quote asset has a known USD
  * price; for quote mints without a USD price the same tiers graduate at
- * exactly 5x / 7x / 8x the starting price, which is what the UI shows.
+ * exactly 4x / 7.6x / 10x the starting price, which is what the UI shows.
  */
-export type QuickTierId = 'fast' | 'balanced' | 'deep';
+export type QuickTierId = 'sprint' | 'cruise' | 'marathon';
 
 export interface QuickTier {
   id: QuickTierId;
@@ -26,9 +26,9 @@ export interface QuickTier {
   endMultiple: number;
   /** Middle ladder multiples, keep the exponential feel of the old curve. */
   mids: [number, number];
-  /** Card headline, e.g. "$35K". */
+  /** Card headline, e.g. "$38K". */
   headline: string;
-  /** Card name, e.g. "balanced". */
+  /** Card name, e.g. "cruise". */
   name: string;
   /** Card blurb, e.g. "the balanced pick". */
   blurb: string;
@@ -36,35 +36,35 @@ export interface QuickTier {
 
 export const QUICK_TIERS: QuickTier[] = [
   {
-    id: 'fast',
-    capUsd: 25_000,
-    endMultiple: 5,
-    mids: [1.8, 3.2],
-    headline: '$25K',
+    id: 'sprint',
+    capUsd: 20_000,
+    endMultiple: 4,
+    mids: [1.8, 2.4],
+    headline: '$20K',
     name: 'sprint',
     blurb: 'Quickest path to graduation',
   },
   {
-    id: 'balanced',
-    capUsd: 35_000,
-    endMultiple: 7,
-    mids: [1.8, 4],
-    headline: '$35K',
+    id: 'cruise',
+    capUsd: 38_000,
+    endMultiple: 7.6,
+    mids: [1.8, 4.3],
+    headline: '$38K',
     name: 'cruise',
     blurb: 'Steady climb, most popular',
   },
   {
-    id: 'deep',
-    capUsd: 40_000,
-    endMultiple: 8,
-    mids: [1.8, 4.6],
-    headline: '$40K',
+    id: 'marathon',
+    capUsd: 50_000,
+    endMultiple: 10,
+    mids: [1.8, 5.7],
+    headline: '$50K',
     name: 'marathon',
     blurb: 'Longest run, deepest liquidity',
   },
 ];
 
-export const DEFAULT_QUICK_TIER_ID: QuickTierId = 'balanced';
+export const DEFAULT_QUICK_TIER_ID: QuickTierId = 'cruise';
 
 export function quickTierById(id: string | null | undefined): QuickTier {
   return QUICK_TIERS.find((t) => t.id === id) ?? QUICK_TIERS[1];

@@ -8,7 +8,7 @@ import { quickTierById, quickTierDisplayPrices } from '@/lib/launch-tiers'
  */
 
 /** Balanced-tier display ladder: the shape every Quick launch starts with. */
-const HERO_MULTIPLIERS = quickTierDisplayPrices(1, quickTierById('balanced'))
+const HERO_MULTIPLIERS = quickTierDisplayPrices(1, quickTierById('cruise'))
 
 const W = 560
 const H = 330
