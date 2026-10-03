@@ -9,6 +9,7 @@ import {
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useUnifiedWalletContext } from '@jup-ag/wallet-adapter';
 import Page from '@/components/ui/Page/Page';
+import PrismLogo from '@/components/PrismLogo';
 import { getConnection, isDevnet } from '@/lib/solana';
 import { platformFeeWallet } from '@/lib/launch';
 import { cn } from '@/lib/utils';
@@ -31,9 +32,9 @@ import {
 } from '@/lib/jupiter';
 
 /**
- * Strategies mirror feed.
+ * AI Signals mirror feed, powered by Prism, the Curv AI.
  *
- * The operator publishes identical spot buy signals to every subscriber.
+ * Prism publishes identical AI powered spot buy signals to every subscriber.
  * Each card carries a Mirror button that fetches a fresh Jupiter quote,
  * refuses the trade when the signal expired or the live price moved above
  * the signal max, applies a 1 percent slippage guard, and hands the swap
@@ -238,7 +239,7 @@ function SubscribeCard({
   signature: string | null;
 }) {
   const bullets = [
-    'Every live signal the moment it publishes',
+    'Every Prism signal the moment it publishes',
     'Mirror any signal in one tap',
     'You sign every trade yourself',
     'Flat fee. No cut of your profits, ever.',
@@ -362,7 +363,7 @@ function SignalCard({
                   className="inline-flex items-center gap-1 rounded-md bg-sky-400/12 px-2 py-0.5 text-[11px] font-bold text-sky-300 transition hover:bg-sky-400/20"
                   aria-expanded={showReasons}
                 >
-                  <span aria-hidden="true">✓</span> Vetted signal
+                  <span aria-hidden="true">✦</span> Prism signal
                 </button>
               )}
             </div>
@@ -377,7 +378,7 @@ function SignalCard({
 
       {signal.aiApproved && showReasons && signal.aiReasons && signal.aiReasons.length > 0 && (
         <div className="mt-3 rounded-2xl border border-sky-400/20 bg-sky-400/8 px-4 py-3">
-          <p className="text-[11px] font-bold tracking-wide text-sky-300">WHY THE AI APPROVED IT</p>
+          <p className="text-[11px] font-bold tracking-wide text-sky-300">WHY PRISM APPROVED IT</p>
           <ul className="mt-2 list-disc space-y-1 pl-5 text-xs leading-relaxed text-neutral-300">
             {signal.aiReasons.map((r, i) => (
               <li key={i}>{r}</li>
@@ -945,12 +946,19 @@ export default function StrategiesPage() {
   return (
     <Page>
       <div className="mx-auto w-full max-w-3xl">
-        <p className="text-[11px] font-bold tracking-[0.2em] text-[#32f27b]">STRATEGIES</p>
-        <h1 className="mt-2 text-3xl font-bold text-neutral-50 md:text-4xl">
-          One feed. Same signal for everyone.
+        <div className="flex items-center gap-3">
+          <PrismLogo size={40} />
+          <div>
+            <p className="text-[11px] font-bold tracking-[0.2em] text-[#32f27b]">AI SIGNALS</p>
+            <p className="text-xs font-semibold text-neutral-400">by Prism, the Curv AI</p>
+          </div>
+        </div>
+        <h1 className="mt-4 text-3xl font-bold text-neutral-50 md:text-4xl">
+          Every signal is AI powered.
         </h1>
         <p className="mt-3 max-w-xl text-sm leading-relaxed text-neutral-400 md:text-base">
-          Spot calls on crypto, published once for every subscriber. You review each one and
+          Prism watches the market around the clock and publishes spot calls the moment the
+          setup appears. One feed, same signal for every subscriber. You review each one and
           sign every trade in your own wallet. Curv never touches your money.
         </p>
         <p className="mt-3 max-w-xl text-xs leading-relaxed text-neutral-500">
@@ -1007,7 +1015,7 @@ export default function StrategiesPage() {
           {wallet && active && (
             <>
               <div className="flex items-center justify-between">
-                <h2 className="text-lg font-bold text-neutral-50">Live signals</h2>
+                <h2 className="text-lg font-bold text-neutral-50">Live AI signals</h2>
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-[#32f27b]/10 px-3 py-1 text-xs font-semibold text-[#32f27b]">
                   <span className="h-1.5 w-1.5 rounded-full bg-[#32f27b]" />
                   Pass active · {daysLeft}d left
@@ -1028,7 +1036,7 @@ export default function StrategiesPage() {
                   <div className="rounded-3xl border border-white/5 bg-[#0e1112] p-10 text-center">
                     <p className="text-base font-semibold text-neutral-200">No live signals right now</p>
                     <p className="mt-2 text-sm text-neutral-500">
-                      New calls appear here the moment they publish.
+                      Prism publishes new calls here the moment a setup appears.
                     </p>
                   </div>
                 )}
