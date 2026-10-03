@@ -98,7 +98,7 @@ export function NotificationBell({ wallet }: { wallet: string }) {
           <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
         </svg>
         {unread > 0 && (
-          <span className="absolute -right-0.5 -top-0.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-[#d08a5f] px-1 text-[10px] font-bold text-black">
+          <span className="absolute -right-0.5 -top-0.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-[#32f27b] px-1 text-[10px] font-bold text-[#04120a]">
             {unread > 9 ? '9+' : unread}
           </span>
         )}
@@ -106,9 +106,9 @@ export function NotificationBell({ wallet }: { wallet: string }) {
       {open && (
         <div
           role="menu"
-          className="absolute right-0 top-12 z-50 w-80 overflow-hidden rounded-2xl border border-white/10 bg-[#141110] shadow-2xl"
+          className="fixed left-3 right-3 top-[70px] z-50 overflow-hidden rounded-2xl border border-white/10 bg-[#0e1213] shadow-2xl md:absolute md:left-auto md:right-0 md:top-12 md:w-80"
         >
-          <p className="border-b border-white/5 px-4 py-3 text-[11px] font-bold tracking-[0.2em] text-[#d08a5f]">
+          <p className="border-b border-white/5 px-4 py-3 text-[11px] font-bold tracking-[0.2em] text-[#32f27b]">
             NOTIFICATIONS
           </p>
           {items.length === 0 ? (
@@ -123,7 +123,7 @@ export function NotificationBell({ wallet }: { wallet: string }) {
                     onClick={() => go(n)}
                     className={cn(
                       'block w-full px-4 py-3 text-left transition hover:bg-white/[3%]',
-                      !n.readAt && 'bg-[#d08a5f]/[4%]',
+                      !n.readAt && 'bg-[#32f27b]/[6%]',
                     )}
                   >
                     <p className="text-sm font-semibold text-neutral-100">{n.title}</p>
