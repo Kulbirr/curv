@@ -681,6 +681,8 @@ interface TrackRecordData {
 /**
  * Public proof, visible to everyone: the running win rate plus the
  * resolved signal history it is computed from. No wallet, no pass.
+ * Styled in the strategies premium card language: warm dark card,
+ * copper small-caps labels, bordered pills, label/value rows.
  */
 function TrackRecord() {
   const [data, setData] = useState<TrackRecordData | null>(null);
@@ -700,56 +702,98 @@ function TrackRecord() {
   const { record, history } = data;
   const decided = record.wins + record.losses;
   return (
-    <section aria-label="Track record" className="mt-8 overflow-hidden rounded-3xl border border-white/10 bg-[#0e1112]">
-      <div className="px-6 pt-5 md:px-8">
-        <p className="text-[11px] font-bold tracking-[0.2em] text-[#32f27b]">TRACK RECORD</p>
-        <div className="mt-3 flex flex-wrap items-end gap-x-6 gap-y-2">
-          <p className="sc-number text-4xl font-bold text-neutral-50">
+    <section
+      aria-label="Track record"
+      className="mt-8 rounded-2xl border border-white/10 bg-[#141110]"
+    >
+      <div className="flex items-center justify-between gap-4 px-6 pt-5 md:px-8">
+        <p className="text-[11px] font-bold tracking-[0.25em] text-[#d08a5f]">TRACK RECORD</p>
+        <span className="shrink-0 rounded-full border border-[#d08a5f]/40 px-3 py-1 text-[10px] font-semibold tracking-[0.18em] text-[#d08a5f]">
+          PUBLIC · NO WALLET NEEDED
+        </span>
+      </div>
+
+      <div className="mt-6 flex flex-wrap items-end justify-between gap-6 px-6 md:px-8">
+        <div>
+          <p className="text-5xl font-light tracking-tight text-neutral-50">
             {record.winRate === null ? '—' : `${Math.round(record.winRate * 100)}%`}
           </p>
-          <p className="pb-1.5 text-sm text-neutral-400">
-            win rate · {record.wins} won · {record.losses} lost
-            {record.expired > 0 && ` · ${record.expired} expired untouched`}
+          <p className="mt-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-neutral-500">
+            win rate
           </p>
         </div>
-        <p className="mt-2 text-xs leading-relaxed text-neutral-500">
-          {decided === 0
-            ? 'No signal has resolved yet. Every published signal is scored below once it closes.'
-            : 'Scored on 1-minute candles: first touch of the target wins, first touch of the stop loses. Expired-untouched signals stay neutral and never flatter the rate.'}
-        </p>
+        <div className="flex gap-7 md:gap-9">
+          <div className="text-right">
+            <p className="text-2xl font-semibold text-[#32f27b]">{record.wins}</p>
+            <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-neutral-500">
+              won
+            </p>
+          </div>
+          <div className="text-right">
+            <p className="text-2xl font-semibold text-[#fa6d74]">{record.losses}</p>
+            <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-neutral-500">
+              lost
+            </p>
+          </div>
+          <div className="text-right">
+            <p className="text-2xl font-semibold text-neutral-300">{record.expired}</p>
+            <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-neutral-500">
+              expired
+            </p>
+          </div>
+        </div>
       </div>
-      {history.length > 0 && (
-        <ul className="mt-4 divide-y divide-white/5 border-t border-white/5">
+
+      {history.length > 0 ? (
+        <ul className="mt-6 divide-y divide-white/5 border-t border-white/5">
           {history.map((h) => (
-            <li key={h.id} className="flex items-center justify-between gap-4 px-6 py-3.5 md:px-8">
-              <div className="flex items-center gap-3">
+            <li
+              key={h.id}
+              className="flex items-center justify-between gap-4 px-6 py-4 md:px-8"
+            >
+              <div className="flex items-center gap-4">
                 <span
                   className={cn(
-                    'rounded-md px-2 py-0.5 text-[11px] font-bold',
-                    h.outcome === 'win' && 'bg-[#32f27b]/12 text-[#32f27b]',
-                    h.outcome === 'loss' && 'bg-[#fa6d74]/12 text-[#fa6d74]',
-                    h.outcome === 'expired' && 'bg-white/8 text-neutral-400',
+                    'rounded-full border px-2.5 py-1 text-[10px] font-bold tracking-[0.15em]',
+                    h.outcome === 'win' && 'border-[#32f27b]/40 text-[#32f27b]',
+                    h.outcome === 'loss' && 'border-[#fa6d74]/40 text-[#fa6d74]',
+                    h.outcome === 'expired' && 'border-white/15 text-neutral-400',
                   )}
                 >
                   {h.outcome === 'win' ? 'WON' : h.outcome === 'loss' ? 'LOST' : 'EXPIRED'}
                 </span>
-                <div>
-                  <p className="text-sm font-bold text-neutral-100">
-                    {h.baseSymbol}/{h.quoteSymbol}
-                  </p>
-                  <p className="sc-number text-xs text-neutral-500">
-                    {fmtPrice(h.entryPrice)} → {h.resolvedPrice !== null ? fmtPrice(h.resolvedPrice) : '—'}{' '}
-                    {h.quoteSymbol}
-                  </p>
-                </div>
+                <p className="text-sm font-bold text-neutral-100">
+                  {h.baseSymbol} / {h.quoteSymbol}
+                </p>
               </div>
-              <p className="shrink-0 text-xs text-neutral-500">
-                {h.resolvedAt ? new Date(h.resolvedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : ''}
-              </p>
+              <div className="text-right">
+                <p className="sc-number text-sm text-neutral-300">
+                  {fmtPrice(h.entryPrice)} →{' '}
+                  {h.resolvedPrice !== null ? fmtPrice(h.resolvedPrice) : '—'}
+                </p>
+                <p className="mt-0.5 text-[11px] text-neutral-500">
+                  {h.resolvedAt
+                    ? new Date(h.resolvedAt).toLocaleDateString('en-GB', {
+                        day: 'numeric',
+                        month: 'short',
+                      })
+                    : ''}
+                </p>
+              </div>
             </li>
           ))}
         </ul>
+      ) : (
+        <p className="mt-6 border-t border-white/5 px-6 py-5 text-sm text-neutral-500 md:px-8">
+          No signal has resolved yet. Every published signal is scored here once it closes.
+        </p>
       )}
+
+      <p className="px-6 pb-6 pt-4 text-[11px] leading-relaxed text-neutral-600 md:px-8">
+        {decided === 0
+          ? 'The win rate appears here after the first signal resolves.'
+          : 'Scored on 1-minute candles: first touch of the target wins, first touch of the stop loses. Signals that expire untouched stay neutral and never flatter the rate.'}
+      </p>
     </section>
   );
 }
