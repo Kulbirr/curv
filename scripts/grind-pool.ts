@@ -155,6 +155,11 @@ async function main(): Promise<void> {
       } catch (e) {
         console.error(`[grind-pool] db error on prune, skipping: ${dbErrorMessage(e)}`);
       }
+      // Heartbeat: without this, a topped-up worker is indistinguishable
+      // from a wedged one in the logs (and the monitor reads the log).
+      console.log(
+        `[grind-pool] ready=${stats.ready} consumed=${stats.consumed} — at target, idle check in ${Math.round(TOPUP_MS / 1000)}s`
+      );
       await sleep(TOPUP_MS);
       continue;
     }
