@@ -82,7 +82,7 @@ function migrationMcUsd(
 }
 
 describe('quick graduation tiers', () => {
-  it('defines the three Ember-style tiers with $35K balanced as default', () => {
+  it('defines the three graduation tiers with $35K cruise as default', () => {
     expect(QUICK_TIERS.map((t) => t.id)).toEqual(['fast', 'balanced', 'deep']);
     expect(QUICK_TIERS.map((t) => t.capUsd)).toEqual([25000, 35000, 40000]);
     expect(QUICK_TIERS.map((t) => t.endMultiple)).toEqual([5, 7, 8]);
@@ -149,7 +149,7 @@ describe('quick graduation tiers', () => {
     },
   );
 
-  it('graduates the balanced tier at exactly $35K on USDC', () => {
+  it('graduates the cruise tier at exactly $35K on USDC', () => {
     const tier = quickTierById('balanced');
     const spec = tierSpec(tier, 1, {
       mint: DEVNET_USDC_MINT,

@@ -6554,6 +6554,55 @@ select {
 }
 
 /* ---- Graduation tier cards ---- */
+.sc-tier-segmented {
+  display: flex;
+  padding: 4px;
+  gap: 4px;
+  border: 1px solid #2a302e;
+  border-radius: 14px;
+  background: #0d1110;
+  margin: 4px 0 0;
+}
+.sc-tier-segment {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 10px 8px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: #8a938c;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.sc-tier-segment strong {
+  font-size: 17px;
+  font-weight: 700;
+  color: inherit;
+}
+.sc-tier-segment small {
+  font-size: 11px;
+  text-transform: capitalize;
+  color: inherit;
+  opacity: 0.8;
+}
+.sc-tier-segment-selected {
+  background: #1a241d;
+  color: #d9f99d;
+  box-shadow: inset 0 0 0 1px rgba(163, 230, 53, 0.35);
+}
+.sc-tier-segment-blurb {
+  margin: 10px 2px 0;
+  font-size: 13px;
+  color: #9aa39c;
+}
+@media (max-width: 480px) {
+  .sc-tier-segment strong {
+    font-size: 15px;
+  }
+}
 .sc-tier-cards {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

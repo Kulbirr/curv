@@ -1767,23 +1767,23 @@ export default function CreatePool() {
           </button>
         </div>
 
-            {/* ---- Quick: pick your raise ---- */}
+            {/* ---- Quick: graduation target ---- */}
             {mode === 'quick' && (
               <section className="sc-builder-section" aria-labelledby="sc-tier-heading">
                 <div className="sc-builder-section-head">
                   <span className="sc-section-glyph">✦</span>
                   <div>
-                    <h2 id="sc-tier-heading">Pick your raise</h2>
+                    <h2 id="sc-tier-heading">Graduation target</h2>
                     <p>
-                      Every coin starts near a $5k market cap. You choose
-                      where it graduates.
+                      Every coin starts near a $5k market cap. Slide to set
+                      where yours graduates to DAMM v2.
                     </p>
                   </div>
                 </div>
                 <div
-                  className="sc-tier-cards"
+                  className="sc-tier-segmented"
                   role="radiogroup"
-                  aria-label="Graduation tier"
+                  aria-label="Graduation target"
                 >
                   {QUICK_TIERS.map((t) => {
                     const selected = quickTierId === t.id
@@ -1795,22 +1795,26 @@ export default function CreatePool() {
                         aria-checked={selected}
                         onClick={() => setQuickTierId(t.id)}
                         className={cn(
-                          'sc-tier-card',
-                          selected && 'sc-tier-card-selected'
+                          'sc-tier-segment',
+                          selected && 'sc-tier-segment-selected'
                         )}
                       >
-                        <strong>{t.headline}</strong>
-                        <span className="sc-tier-name">{t.name}</span>
-                        <small>{t.blurb}</small>
-                        <small className="sc-tier-cap">
+                        <strong>
                           {quoteUsdPriced !== null
-                            ? `Graduates at ${fmtUsd(t.capUsd)} market cap`
-                            : `Graduates at ${t.endMultiple}× the starting price`}
-                        </small>
+                            ? fmtUsd(t.capUsd)
+                            : `${t.endMultiple}×`}
+                        </strong>
+                        <small>{t.name}</small>
                       </button>
                     )
                   })}
                 </div>
+                <p className="sc-tier-segment-blurb">
+                  {quickTier.blurb} · graduates at{' '}
+                  {quoteUsdPriced !== null
+                    ? `${fmtUsd(quickTier.capUsd)} market cap`
+                    : `${quickTier.endMultiple}× the starting price`}
+                </p>
                 <div className="sc-tier-graduation">
                   {graduationPreview !== null ? (
                     <p className="text-neutral-100">
@@ -2946,8 +2950,12 @@ export default function CreatePool() {
               </div>
               <div className="sc-fee-cost-line">
                 <span>Cost to launch</span>
-                <strong>{deployTotalLabel} + network fees</strong>
+                <strong>0.01 SOL + network fees</strong>
               </div>
+              <p className="mt-2 text-xs text-neutral-500">
+                0.01 SOL pool creation fee. About 0.03 SOL in refundable
+                Solana rent deposits is also locked for the new pool accounts.
+              </p>
               <dl className="sc-fee-rows">
                 {feeRows.map((r) => (
                   <div key={r.label}>

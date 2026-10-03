@@ -41,8 +41,8 @@ export const QUICK_TIERS: QuickTier[] = [
     endMultiple: 5,
     mids: [1.8, 3.2],
     headline: '$25K',
-    name: 'fast',
-    blurb: 'smallest raise',
+    name: 'sprint',
+    blurb: 'Quickest path to graduation',
   },
   {
     id: 'balanced',
@@ -50,8 +50,8 @@ export const QUICK_TIERS: QuickTier[] = [
     endMultiple: 7,
     mids: [1.8, 4],
     headline: '$35K',
-    name: 'balanced',
-    blurb: 'the balanced pick',
+    name: 'cruise',
+    blurb: 'Steady climb, most popular',
   },
   {
     id: 'deep',
@@ -59,8 +59,8 @@ export const QUICK_TIERS: QuickTier[] = [
     endMultiple: 8,
     mids: [1.8, 4.6],
     headline: '$40K',
-    name: 'deepest liquidity',
-    blurb: 'deepest liquidity',
+    name: 'marathon',
+    blurb: 'Longest run, deepest liquidity',
   },
 ];
 
