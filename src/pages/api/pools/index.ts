@@ -165,6 +165,20 @@ function invalidateListCache(): void {
   listCache = null;
 }
 
+/**
+ * Build the list, retrying once after a short pause. Aiven flaps
+ * transiently (EAI_AGAIN DNS errors seen 2026-10-03) and a retry a
+ * couple of seconds later usually succeeds.
+ */
+async function buildListBodyResilient(): Promise<ListBody> {
+  try {
+    return await buildListBody();
+  } catch {
+    await new Promise((r) => setTimeout(r, 2500));
+    return buildListBody();
+  }
+}
+
 export async function buildListBody(): Promise<ListBody> {
   const pools = await listTrackedPools();
   // Backfill card images for pools whose imageUrl never reached the
@@ -210,6 +224,36 @@ export async function buildListBody(): Promise<ListBody> {
 }
 
 async function handleGet(req: NextApiRequest, res: NextApiResponse) {
+  try {
+    return await handleGetInner(req, res);
+  } catch (e) {
+    console.error('[api/pools] list build failed', e);
+    // Degraded but honest: a stale list beats a bare 500. Only a cold
+    // cache with no list at all gets a 503 with a retryable message.
+    if (process.env.NODE_ENV !== 'test' && listCache) {
+      const pagination = parsePoolsPagination(req.query ?? {});
+      if (!pagination) {
+        res.setHeader('Content-Type', 'application/json');
+        return res.status(200).send(listCache.json);
+      }
+      const sorted = sortPoolSummaries(listCache.body.pools, pagination.sort);
+      const { pools, pagination: pageInfo } = paginatePools(sorted, pagination);
+      return res.status(200).json({
+        network: listCache.body.network,
+        pools,
+        pagination: {
+          ...pageInfo,
+          graduatedCount: listCache.body.pools.filter((p) => p.graduated).length,
+        },
+      });
+    }
+    return res
+      .status(503)
+      .json({ error: 'Pool list temporarily unavailable, please try again shortly' });
+  }
+}
+
+async function handleGetInner(req: NextApiRequest, res: NextApiResponse) {
   // Opt-in pagination: ?limit=&cursor=&sort=. With none of these params
   // the full list is served exactly as before (backward compatible).
   const pagination = parsePoolsPagination(req.query ?? {});
@@ -272,7 +316,7 @@ async function handleGet(req: NextApiRequest, res: NextApiResponse) {
     if (listCache) {
       // Stale-while-revalidate: serve the stale list now, refresh in the
       // background. Failures keep serving stale; the next expiry retries.
-      const rebuild = buildListBody();
+      const rebuild = buildListBodyResilient();
       listRebuild = rebuild;
       rebuild.then(
         (body) => {
@@ -287,7 +331,7 @@ async function handleGet(req: NextApiRequest, res: NextApiResponse) {
       return serveCached();
     }
     // Cold cache: this request must wait for the first build.
-    const rebuild = buildListBody();
+    const rebuild = buildListBodyResilient();
     listRebuild = rebuild;
     try {
       const body = await rebuild;

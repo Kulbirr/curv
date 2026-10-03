@@ -30,34 +30,41 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const wallet = parseAddress(req.query.wallet);
   if (!wallet) return res.status(400).json({ error: 'wallet is not a valid Solana address' });
 
-  const splits = await listSplitsForWallet(wallet);
-  if (splits.length === 0) return res.status(200).json({ wallet, waiting: [] });
+  try {
+    const splits = await listSplitsForWallet(wallet);
+    if (splits.length === 0) return res.status(200).json({ wallet, waiting: [] });
 
-  const states = await getPoolStatesBatch(splits.map((s) => s.poolAddress));
+    const states = await getPoolStatesBatch(splits.map((s) => s.poolAddress));
 
-  const waiting = [];
-  for (const { poolAddress, recipient } of splits) {
-    const pool = await getPool(poolAddress);
-    if (!pool) continue;
-    const state = states.get(poolAddress) ?? null;
-    const shareBaseRaw = splitShareRaw(state?.creatorBaseFeeRaw, recipient.bps);
-    const shareQuoteRaw = splitShareRaw(state?.creatorQuoteFeeRaw, recipient.bps);
-    waiting.push({
-      poolAddress,
-      baseSymbol: pool.baseSymbol,
-      baseName: pool.baseName,
-      quoteSymbol: pool.quoteSymbol,
-      imageUrl: pool.imageUrl ?? null,
-      creator: pool.creator,
-      bps: recipient.bps,
-      shareBaseRaw,
-      shareQuoteRaw,
-      baseDecimals: state?.baseDecimals ?? 9,
-      quoteDecimals: state?.quoteDecimals ?? 9,
-      graduated: state?.graduated ?? false,
-      sampledAt: state?.sampledAt ?? null,
-    });
+    const waiting = [];
+    for (const { poolAddress, recipient } of splits) {
+      const pool = await getPool(poolAddress);
+      if (!pool) continue;
+      const state = states.get(poolAddress) ?? null;
+      const shareBaseRaw = splitShareRaw(state?.creatorBaseFeeRaw, recipient.bps);
+      const shareQuoteRaw = splitShareRaw(state?.creatorQuoteFeeRaw, recipient.bps);
+      waiting.push({
+        poolAddress,
+        baseSymbol: pool.baseSymbol,
+        baseName: pool.baseName,
+        quoteSymbol: pool.quoteSymbol,
+        imageUrl: pool.imageUrl ?? null,
+        creator: pool.creator,
+        bps: recipient.bps,
+        shareBaseRaw,
+        shareQuoteRaw,
+        baseDecimals: state?.baseDecimals ?? 9,
+        quoteDecimals: state?.quoteDecimals ?? 9,
+        graduated: state?.graduated ?? false,
+        sampledAt: state?.sampledAt ?? null,
+      });
+    }
+
+    return res.status(200).json({ wallet, waiting });
+  } catch (e) {
+    console.error('[api/claims/waiting] failed', e);
+    return res
+      .status(503)
+      .json({ error: 'Waiting fees temporarily unavailable, please try again shortly' });
   }
-
-  return res.status(200).json({ wallet, waiting });
 }
