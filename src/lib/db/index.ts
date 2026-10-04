@@ -99,7 +99,9 @@ CREATE TABLE IF NOT EXISTS ticks (
   quote_reserve DOUBLE PRECISION,
   PRIMARY KEY (pool_address, ts)
 );
-CREATE INDEX IF NOT EXISTS idx_ticks_pool_ts ON ticks (pool_address, ts);
+-- idx_ticks_pool_ts removed: byte-identical to the ticks PK (pool_address, ts).
+-- The tick pruner deletes by ts alone, which the PK cannot serve:
+CREATE INDEX IF NOT EXISTS idx_ticks_ts ON ticks (ts);
 
 CREATE TABLE IF NOT EXISTS nonces (
   signature TEXT PRIMARY KEY,
@@ -114,11 +116,15 @@ CREATE TABLE IF NOT EXISTS pool_verifications (
   detail TEXT
 );
 
+-- Mint search (header search by pasted address) must not seq-scan pools.
+CREATE INDEX IF NOT EXISTS idx_pools_base_mint ON pools (base_mint);
+
 CREATE TABLE IF NOT EXISTS rate_limits (
   key TEXT PRIMARY KEY,
   window_start BIGINT NOT NULL,
   count BIGINT NOT NULL
 );
+CREATE INDEX IF NOT EXISTS idx_rate_limits_window ON rate_limits (window_start);
 
 CREATE TABLE IF NOT EXISTS vanity_pool (
   pubkey TEXT PRIMARY KEY,
