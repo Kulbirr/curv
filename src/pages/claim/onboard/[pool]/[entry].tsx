@@ -140,35 +140,42 @@ export default function RecipientOnboardingPage() {
   const [tweetUrl, setTweetUrl] = useState('');
 
   const bind = useCallback(async () => {
-    if (!pool || entryIndex === null || !publicKey || !signMessage) return;
+    if (!pool || entryIndex === null) return;
+    const isTweetFlow = !!entry?.handle && !entry?.wallet;
+    // Tweet flow needs no wallet connection: the wallet comes from
+    // the tweet text itself, authored by the handle owner.
+    if (!isTweetFlow && (!publicKey || !signMessage)) return;
     setView({ kind: 'binding' });
     try {
-      const wallet = publicKey.toBase58();
-      const timestamp = Date.now();
-      const message = buildRecipientBindingMessage(pool, entryIndex, wallet, timestamp);
-      const sigBytes = await signMessage(new TextEncoder().encode(message));
-      const isTweetFlow = !!entry?.handle && !entry?.wallet;
       const endpoint = isTweetFlow ? 'verify-tweet' : 'bindings';
+      const body: Record<string, unknown> = { entryIndex };
+      let wallet: string | null = null;
+      if (isTweetFlow) {
+        body.tweetUrl = tweetUrl.trim();
+      } else {
+        wallet = publicKey!.toBase58();
+        const timestamp = Date.now();
+        const message = buildRecipientBindingMessage(pool, entryIndex, wallet, timestamp);
+        const sigBytes = await signMessage!(new TextEncoder().encode(message));
+        body.wallet = wallet;
+        body.timestamp = timestamp;
+        body.signature = bs58.encode(sigBytes);
+      }
       const res = await fetch(`/api/pools/${pool}/${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          entryIndex,
-          wallet,
-          timestamp,
-          signature: bs58.encode(sigBytes),
-          ...(isTweetFlow ? { tweetUrl: tweetUrl.trim() } : {}),
-        }),
+        body: JSON.stringify(body),
       });
-      const body = (await res.json().catch(() => ({}))) as { error?: string };
-      if (!res.ok) throw new Error(body.error || 'Binding failed');
-      setView({ kind: 'done', wallet });
+      const resBody = (await res.json().catch(() => ({}))) as { error?: string; wallet?: string };
+      if (!res.ok) throw new Error(resBody.error || 'Binding failed');
+      const boundWallet = wallet ?? resBody.wallet ?? '';
+      setView({ kind: 'done', wallet: boundWallet });
       setSplits((s) =>
         s
           ? {
               ...s,
               recipients: s.recipients.map((r, i) =>
-                i === entryIndex ? { ...r, bound: true, effectiveWallet: wallet } : r,
+                i === entryIndex ? { ...r, bound: true, effectiveWallet: boundWallet } : r,
               ),
             }
           : s,
@@ -238,14 +245,16 @@ export default function RecipientOnboardingPage() {
                   <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.03] px-5 py-4">
                     <p className="text-xs leading-relaxed text-neutral-400">
                       This share is reserved for{' '}
-                      <span className="font-semibold text-neutral-100">{entryName}</span>. Prove
-                      it&apos;s you in two steps:
+                      <span className="font-semibold text-neutral-100">{entryName}</span>. No
+                      wallet connection needed, prove it&apos;s you in two steps:
                     </p>
                     <ol className="mt-3 space-y-3 text-xs leading-relaxed text-neutral-400">
                       <li className="flex gap-2">
                         <span className="font-bold text-[#32f27b]">1.</span>
                         <span>
-                          Post a public tweet from {entryName} containing this code:{' '}
+                          Post a public tweet from {entryName} with this code{' '}
+                          <span className="font-semibold text-neutral-100">and</span> the
+                          Solana wallet that should receive your share:{' '}
                           <button
                             type="button"
                             onClick={() => navigator.clipboard?.writeText(entry.verifyCode!)}
@@ -255,7 +264,7 @@ export default function RecipientOnboardingPage() {
                             {entry.verifyCode}
                           </button>
                           <a
-                            href={`https://x.com/intent/post?text=${encodeURIComponent(`Claiming my Curv creator fee share. Verification code: ${entry.verifyCode}`)}`}
+                            href={`https://x.com/intent/post?text=${encodeURIComponent(`Claiming my Curv creator fee share. Verification code: ${entry.verifyCode}\nMy wallet: PASTE_YOUR_SOLANA_WALLET_HERE`)}`}
                             target="_blank"
                             rel="noreferrer"
                             className="mt-2 inline-block text-[#32f27b] underline"
@@ -267,7 +276,8 @@ export default function RecipientOnboardingPage() {
                       <li className="flex gap-2">
                         <span className="font-bold text-[#32f27b]">2.</span>
                         <span className="flex-1">
-                          Paste the tweet link below, then connect your wallet and sign.
+                          Paste the tweet link below and submit. The wallet in your tweet is
+                          what gets paid.
                           <input
                             value={tweetUrl}
                             onChange={(e) => setTweetUrl(e.target.value)}
@@ -283,7 +293,16 @@ export default function RecipientOnboardingPage() {
                 )}
 
                 <div className="mt-6">
-                    {!connected ? (
+                    {isHandleOnly ? (
+                      <button
+                        type="button"
+                        onClick={bind}
+                        disabled={view.kind === 'binding' || !tweetUrl.trim()}
+                        className="inline-flex h-12 w-full items-center justify-center rounded-full bg-[#32f27b] text-sm font-bold text-[#04120a] transition hover:bg-[#4bf78f] disabled:opacity-60"
+                      >
+                        {view.kind === 'binding' ? 'Verifying…' : 'Verify tweet and bind wallet'}
+                      </button>
+                    ) : !connected ? (
                       <button
                         type="button"
                         onClick={() => setShowModal(true)}
@@ -299,14 +318,10 @@ export default function RecipientOnboardingPage() {
                         <button
                           type="button"
                           onClick={bind}
-                          disabled={view.kind === 'binding' || (isHandleOnly && !tweetUrl.trim())}
+                          disabled={view.kind === 'binding'}
                           className="mt-3 inline-flex h-12 w-full items-center justify-center rounded-full bg-[#32f27b] text-sm font-bold text-[#04120a] transition hover:bg-[#4bf78f] disabled:opacity-60"
                         >
-                          {view.kind === 'binding'
-                            ? 'Verifying…'
-                            : isHandleOnly
-                              ? 'Verify tweet and bind wallet'
-                              : 'Sign and bind wallet'}
+                          {view.kind === 'binding' ? 'Verifying…' : 'Sign and bind wallet'}
                         </button>
                       </div>
                     )}

@@ -1,12 +1,14 @@
 import { createHash } from 'crypto';
+import { PublicKey } from '@solana/web3.js';
 
 /**
  * Tweet verification for handle-only fee split recipients.
  *
  * Flow: the claim page shows the recipient a deterministic code for
  * their split entry. They post a public tweet from the named X handle
- * containing the code, paste the tweet URL, and the server verifies
- * through X's own free embed infrastructure (no API key, no credits):
+ * containing the code AND the Solana wallet that should receive their
+ * share, paste the tweet URL, and the server verifies through X's own
+ * free embed infrastructure (no API key, no credits):
  *
  *   1. cdn.syndication.twimg.com/tweet-result (X first-party, JSON)
  *   2. publish.twitter.com/oembed (X first-party, fallback)
@@ -16,7 +18,11 @@ import { createHash } from 'crypto';
  * server-side, so an attacker cannot forge screen_name. The code binds
  * the tweet to this specific claim (replaying someone else's tweet
  * fails the author check; reusing an old tweet of your own fails the
- * code check).
+ * code check). The wallet in the tweet binds the payout destination:
+ * because only the handle owner can author the tweet, nobody can
+ * front-run the binding with a copied link, the copied link names the
+ * owner's wallet, not the attacker's. No wallet signature is needed;
+ * X authorship is the authentication.
  */
 
 const CODE_PREFIX = 'CURV';
@@ -145,11 +151,36 @@ export interface TweetCheck {
   /** User-safe reason when the check fails */
   reason?: string;
   tweet?: VerifiedTweet;
+  /** Solana wallet named in the tweet, set when ok */
+  wallet?: string;
+}
+
+/**
+ * Extract the single Solana wallet address named in a tweet.
+ * Returns the address when the text contains exactly one valid
+ * base58 public key, otherwise null. Requiring exactly one keeps
+ * the binding unambiguous: a tweet naming two wallets cannot say
+ * which one should be paid.
+ */
+export function extractWalletFromText(text: string): string | null {
+  const candidates = String(text || '').match(/[1-9A-HJ-NP-Za-km-z]{32,44}/g) ?? [];
+  const valid: string[] = [];
+  for (const c of candidates) {
+    try {
+      valid.push(new PublicKey(c).toBase58());
+    } catch {
+      // Not a real public key, ignore.
+    }
+  }
+  const unique = [...new Set(valid)];
+  return unique.length === 1 ? unique[0] : null;
 }
 
 /**
  * Full verification: the tweet must be authored by the expected
- * handle and contain the expected code.
+ * handle, contain the expected code, and name exactly one Solana
+ * wallet that will receive the share. The wallet comes from the
+ * tweet itself, so no wallet signature is required.
  */
 export async function verifyTweetForEntry(
   tweetUrl: string,
@@ -179,11 +210,21 @@ export async function verifyTweetForEntry(
       reason: `That post does not contain the code ${expectedCode}. Post a new public post with the code and try again.`,
     };
   }
-  return { ok: true, tweet };
+  const wallet = extractWalletFromText(tweet.text);
+  if (!wallet) {
+    return {
+      ok: false,
+      reason:
+        'That post does not name exactly one Solana wallet. Include the wallet that should receive your share in the same post as the code.',
+    };
+  }
+  return { ok: true, tweet, wallet };
 }
 
 /** Suggested tweet text, pre-filled through x.com/intent/post. */
 export function tweetIntentUrl(code: string): string {
-  const text = `Claiming my Curv creator fee share. Verification code: ${code}`;
+  const text =
+    `Claiming my Curv creator fee share. Verification code: ${code}\n` +
+    `My wallet: PASTE_YOUR_SOLANA_WALLET_HERE`;
   return `https://x.com/intent/post?text=${encodeURIComponent(text)}`;
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { extractTweetId, tweetCodeFor, tweetIntentUrl } from './tweet-verify';
+import { extractTweetId, extractWalletFromText, tweetCodeFor, tweetIntentUrl } from './tweet-verify';
 
 describe('tweetCodeFor', () => {
   it('is deterministic per pool and entry', () => {
@@ -44,9 +44,37 @@ describe('extractTweetId', () => {
 });
 
 describe('tweetIntentUrl', () => {
-  it('builds a pre-filled intent URL containing the code', () => {
+  it('builds a pre-filled intent URL containing the code and a wallet placeholder', () => {
     const url = tweetIntentUrl('CURV-ABCDEF');
     expect(url.startsWith('https://x.com/intent/post?text=')).toBe(true);
-    expect(decodeURIComponent(url)).toContain('CURV-ABCDEF');
+    const decoded = decodeURIComponent(url);
+    expect(decoded).toContain('CURV-ABCDEF');
+    expect(decoded).toContain('PASTE_YOUR_SOLANA_WALLET_HERE');
+  });
+});
+
+describe('extractWalletFromText', () => {
+  const W1 = '7QxYBtYcJ8nWJ9zK3mP2vL5xR8tN1qA4sD6fG7hJ9kL';
+  const W2 = 'B9FvhipCiG13g9RMf84Y1z4srURmi5fkkgfzT7UD8icr';
+
+  it('returns null when no wallet is present', () => {
+    expect(extractWalletFromText('Claiming my share. Code: CURV-ABCDEF')).toBeNull();
+    expect(extractWalletFromText('')).toBeNull();
+  });
+
+  it('extracts a single valid wallet', () => {
+    expect(extractWalletFromText(`Code CURV-ABCDEF, my wallet: ${W1}`)).toBe(W1);
+  });
+
+  it('returns null when two different wallets are present', () => {
+    expect(extractWalletFromText(`Wallets ${W1} and ${W2}`)).toBeNull();
+  });
+
+  it('deduplicates the same wallet repeated', () => {
+    expect(extractWalletFromText(`${W1} ... ${W1}`)).toBe(W1);
+  });
+
+  it('ignores the verification code (too short to match)', () => {
+    expect(extractWalletFromText('CURV-ABCDEF')).toBeNull();
   });
 });

@@ -1,5 +1,4 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { PublicKey } from '@solana/web3.js';
 import { getTrackedPool } from '@/lib/pool-registry';
 import {
   checkBindingEligibility,
@@ -8,8 +7,6 @@ import {
   insertFeeSplitBinding,
 } from '@/lib/db/fee-splits';
 import { insertNotification } from '@/lib/db/notifications';
-import { buildRecipientBindingMessage, isFreshTimestamp } from '@/lib/signature-messages';
-import { verifyWalletSignature } from '@/lib/signatures';
 import { parseAddress } from '@/lib/api-validation';
 import { tweetCodeFor, verifyTweetForEntry } from '@/lib/tweet-verify';
 
@@ -18,13 +15,19 @@ import { tweetCodeFor, verifyTweetForEntry } from '@/lib/tweet-verify';
  *
  * Handle-only fee split entries (no attested wallet) are claimed by
  * proving X handle ownership: the recipient posts a public tweet from
- * the named handle containing their entry's verification code, then
- * submits the tweet URL together with the usual wallet binding
- * signature. The server checks authorship and the code through X's
- * free embed infrastructure (no API key, no credits), then records
- * the binding: first valid verification wins, immutable once set.
+ * the named handle containing their entry's verification code AND the
+ * Solana wallet that should receive their share, then submits the
+ * tweet URL. The server checks authorship, the code, and the wallet
+ * through X's free embed infrastructure (no API key, no credits),
+ * then records the binding: first valid verification wins, immutable
+ * once set.
  *
- * Body: { entryIndex, tweetUrl, wallet, timestamp, signature }
+ * No wallet signature is required. X authorship is the
+ * authentication: only the handle owner can author the tweet, so a
+ * copied link cannot redirect the payout, it names the owner's
+ * wallet. The wallet is read from the tweet text itself.
+ *
+ * Body: { entryIndex, tweetUrl }
  */
 export const config = {
   api: { bodyParser: { sizeLimit: '8kb' } },
@@ -40,24 +43,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const tracked = await getTrackedPool(address);
   if (!tracked) return res.status(404).json({ error: 'Pool not registered' });
 
-  const { entryIndex, tweetUrl, wallet, timestamp, signature } = req.body ?? {};
+  const { entryIndex, tweetUrl } = req.body ?? {};
   if (!Number.isInteger(entryIndex) || entryIndex < 0) {
     return res.status(400).json({ error: 'entryIndex must be a non negative integer' });
   }
   if (typeof tweetUrl !== 'string' || tweetUrl.length === 0) {
     return res.status(400).json({ error: 'tweetUrl is required' });
-  }
-  let normalizedWallet: string;
-  try {
-    normalizedWallet = new PublicKey(String(wallet ?? '')).toBase58();
-  } catch {
-    return res.status(400).json({ error: 'wallet is not a valid Solana address' });
-  }
-  if (!isFreshTimestamp(Number(timestamp))) {
-    return res.status(400).json({ error: 'Signature expired, please sign again' });
-  }
-  if (typeof signature !== 'string' || signature.length === 0) {
-    return res.status(400).json({ error: 'signature is required' });
   }
 
   const recipients = await getFeeSplits(tracked.poolAddress);
@@ -71,28 +62,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       .json({ error: 'This entry is locked to its registered wallet, bind through the invite link instead' });
   }
 
-  // Verify the tweet before touching any binding state.
+  // Verify the tweet before touching any binding state. The wallet
+  // comes from the tweet text itself: only the handle owner could
+  // have authored it, so no wallet signature is needed.
   const code = tweetCodeFor(tracked.poolAddress, entryIndex);
   const check = await verifyTweetForEntry(tweetUrl, entry.handle, code);
-  if (!check.ok) {
+  if (!check.ok || !check.wallet) {
     return res.status(422).json({ error: check.reason || 'Tweet verification failed' });
   }
+  const normalizedWallet = check.wallet;
 
   const bindings = await getFeeSplitBindings(tracked.poolAddress);
   try {
     checkBindingEligibility(recipients, bindings, entryIndex, normalizedWallet, tracked.creator);
   } catch (e) {
     return res.status(409).json({ error: e instanceof Error ? e.message : 'Binding not allowed' });
-  }
-
-  const message = buildRecipientBindingMessage(
-    tracked.poolAddress,
-    entryIndex,
-    normalizedWallet,
-    Number(timestamp)
-  );
-  if (!verifyWalletSignature(message, signature, normalizedWallet)) {
-    return res.status(401).json({ error: 'Signature does not match the wallet' });
   }
 
   const inserted = await insertFeeSplitBinding(tracked.poolAddress, entryIndex, normalizedWallet, {
