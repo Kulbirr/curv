@@ -84,11 +84,37 @@ function makeDb(): PgPool {
     connectionTimeoutMillis: 10_000,
   });
   if (isNeonPooler) {
-    db.on('connect', (client) => {
-      client.query('SET search_path = curv, public').catch((err) => {
-        warn('failed to set search_path on new client', err);
-      });
-    });
+    // Neon's pooler rejects the `options` startup parameter, so search_path
+    // is set on every checkout instead. It must be awaited before the client
+    // is handed out: a fire-and-forget pool.on('connect') SET has a race
+    // where the first query can run before the SET completes (this once
+    // caused a seed import to see an empty pools table and write junk into
+    // `public`). pool.query() routes through connect() internally, so this
+    // covers all query paths.
+    const origConnect = db.connect.bind(db);
+    db.connect = ((...args: unknown[]) => {
+      const cb = args.find((a) => typeof a === 'function') as
+        | ((err: Error | null, client?: unknown, done?: () => void) => void)
+        | undefined;
+      const p = (async () => {
+        const client = await (origConnect as () => Promise<any>)();
+        try {
+          await client.query('SET search_path = curv, public');
+        } catch (err) {
+          client.release();
+          throw err;
+        }
+        return client;
+      })();
+      if (cb) {
+        p.then(
+          (client: any) => cb(null, client, () => client.release()),
+          (err) => cb(err as Error),
+        );
+        return undefined;
+      }
+      return p;
+    }) as typeof db.connect;
   }
   return db;
 }

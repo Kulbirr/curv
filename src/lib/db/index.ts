@@ -1,4 +1,4 @@
-import { Pool, types as pgTypes } from 'pg';
+import { Pool, types as pgTypes, type PoolClient } from 'pg';
 import { randomBytes } from 'crypto';
 import fs from 'fs';
 import path from 'path';
@@ -395,13 +395,42 @@ export function getPool(): Pool {
       connectionTimeoutMillis: 10_000,
     });
     if (isNeonPooler) {
-      // Neon's pooler ignores `options`; set search_path on each new
-      // client so unqualified table names still resolve to the curv schema.
-      pool.on('connect', (client) => {
-        client.query('SET search_path = curv, public').catch((err) => {
-          console.error('[db] failed to set search_path on new client', err);
-        });
-      });
+      // Neon's pooler rejects the `options` startup parameter, so search_path
+      // cannot be set at connection time. A fire-and-forget
+      // `pool.on('connect')` SET is NOT enough: a query issued immediately
+      // after checkout can run before the async SET completes. (This exact
+      // race once made a seed import see an empty `pools` table and write
+      // junk rows into `public`.) Wrap connect() so every checkout awaits
+      // `SET search_path` before the client is handed out. pool.query()
+      // routes through connect() internally, so this covers all query paths,
+      // and re-setting on every checkout also survives the pooler discarding
+      // session state between checkouts.
+      const origConnect = pool.connect.bind(pool);
+      pool.connect = ((...args: unknown[]) => {
+        const cb = args.find((a) => typeof a === 'function') as
+          | ((err: Error | null, client?: PoolClient, done?: () => void) => void)
+          | undefined;
+        const p: Promise<PoolClient> = (async () => {
+          const client = (await (
+            origConnect as () => Promise<PoolClient>
+          )()) as PoolClient;
+          try {
+            await client.query('SET search_path = curv, public');
+          } catch (err) {
+            client.release();
+            throw err;
+          }
+          return client;
+        })();
+        if (cb) {
+          p.then(
+            (client) => cb(null, client, () => client.release()),
+            (err) => cb(err as Error),
+          );
+          return undefined;
+        }
+        return p;
+      }) as typeof pool.connect;
     }
     pool.on('error', (err) => console.error('[db] unexpected pool error', err));
   }
