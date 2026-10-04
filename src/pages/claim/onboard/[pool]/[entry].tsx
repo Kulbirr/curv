@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils';
 interface RecipientWithPending extends EffectiveFeeSplitRecipient {
   pendingBaseRaw: string | null;
   pendingQuoteRaw: string | null;
+  verifyCode: string | null;
 }
 
 interface FeeSplitsResponse {
@@ -136,6 +137,8 @@ export default function RecipientOnboardingPage() {
     ? formatRaw(entry.pendingBaseRaw, splits?.accrued?.baseDecimals ?? 9)
     : null;
 
+  const [tweetUrl, setTweetUrl] = useState('');
+
   const bind = useCallback(async () => {
     if (!pool || entryIndex === null || !publicKey || !signMessage) return;
     setView({ kind: 'binding' });
@@ -144,7 +147,9 @@ export default function RecipientOnboardingPage() {
       const timestamp = Date.now();
       const message = buildRecipientBindingMessage(pool, entryIndex, wallet, timestamp);
       const sigBytes = await signMessage(new TextEncoder().encode(message));
-      const res = await fetch(`/api/pools/${pool}/bindings`, {
+      const isTweetFlow = !!entry?.handle && !entry?.wallet;
+      const endpoint = isTweetFlow ? 'verify-tweet' : 'bindings';
+      const res = await fetch(`/api/pools/${pool}/${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -152,6 +157,7 @@ export default function RecipientOnboardingPage() {
           wallet,
           timestamp,
           signature: bs58.encode(sigBytes),
+          ...(isTweetFlow ? { tweetUrl: tweetUrl.trim() } : {}),
         }),
       });
       const body = (await res.json().catch(() => ({}))) as { error?: string };
@@ -173,7 +179,7 @@ export default function RecipientOnboardingPage() {
         message: e instanceof Error ? e.message : 'Binding failed, please try again',
       });
     }
-  }, [pool, entryIndex, publicKey, signMessage]);
+  }, [pool, entryIndex, publicKey, signMessage, tweetUrl, entry?.handle, entry?.wallet]);
 
   return (
     <Page>
@@ -228,13 +234,51 @@ export default function RecipientOnboardingPage() {
                   )}
                 </p>
 
-                {isHandleOnly && (
-                  <div className="mt-6">
-                    <p className="text-xs leading-relaxed text-neutral-500">
-                      This share is reserved for {entryName}. This invite link is your claim ticket:
-                      connect the wallet you want payouts sent to and sign once to bind it. The
-                      first binding is permanent.
+                {isHandleOnly && entry.verifyCode && (
+                  <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.03] px-5 py-4">
+                    <p className="text-xs leading-relaxed text-neutral-400">
+                      This share is reserved for{' '}
+                      <span className="font-semibold text-neutral-100">{entryName}</span>. Prove
+                      it&apos;s you in two steps:
                     </p>
+                    <ol className="mt-3 space-y-3 text-xs leading-relaxed text-neutral-400">
+                      <li className="flex gap-2">
+                        <span className="font-bold text-[#32f27b]">1.</span>
+                        <span>
+                          Post a public tweet from {entryName} containing this code:{' '}
+                          <button
+                            type="button"
+                            onClick={() => navigator.clipboard?.writeText(entry.verifyCode!)}
+                            className="mt-1 inline-block rounded-lg border border-[#32f27b]/30 bg-[#32f27b]/5 px-3 py-1 font-mono text-sm font-bold tracking-widest text-[#32f27b]"
+                            title="Tap to copy"
+                          >
+                            {entry.verifyCode}
+                          </button>
+                          <a
+                            href={`https://x.com/intent/post?text=${encodeURIComponent(`Claiming my Curv creator fee share. Verification code: ${entry.verifyCode}`)}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="mt-2 inline-block text-[#32f27b] underline"
+                          >
+                            Post the tweet
+                          </a>
+                        </span>
+                      </li>
+                      <li className="flex gap-2">
+                        <span className="font-bold text-[#32f27b]">2.</span>
+                        <span className="flex-1">
+                          Paste the tweet link below, then connect your wallet and sign.
+                          <input
+                            value={tweetUrl}
+                            onChange={(e) => setTweetUrl(e.target.value)}
+                            placeholder="https://x.com/you/status/123…"
+                            spellCheck={false}
+                            autoComplete="off"
+                            className="mt-2 h-11 w-full rounded-xl border border-white/10 bg-black/40 px-4 text-sm text-neutral-100 placeholder:text-neutral-600 focus:border-[#32f27b]/50 focus:outline-none"
+                          />
+                        </span>
+                      </li>
+                    </ol>
                   </div>
                 )}
 
@@ -255,10 +299,14 @@ export default function RecipientOnboardingPage() {
                         <button
                           type="button"
                           onClick={bind}
-                          disabled={view.kind === 'binding'}
+                          disabled={view.kind === 'binding' || (isHandleOnly && !tweetUrl.trim())}
                           className="mt-3 inline-flex h-12 w-full items-center justify-center rounded-full bg-[#32f27b] text-sm font-bold text-[#04120a] transition hover:bg-[#4bf78f] disabled:opacity-60"
                         >
-                          {view.kind === 'binding' ? 'Waiting for signature…' : 'Sign and bind wallet'}
+                          {view.kind === 'binding'
+                            ? 'Verifying…'
+                            : isHandleOnly
+                              ? 'Verify tweet and bind wallet'
+                              : 'Sign and bind wallet'}
                         </button>
                       </div>
                     )}

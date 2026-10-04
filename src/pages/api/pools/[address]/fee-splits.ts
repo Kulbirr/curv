@@ -4,6 +4,7 @@ import { getFeeSplitBindings, getFeeSplits } from '@/lib/db/fee-splits';
 import { creatorRemainderBps, resolveEffectiveRecipients, splitShareRaw } from '@/lib/fee-split-terms';
 import { fetchPoolLiveState } from '@/lib/pool-state';
 import { parseAddress } from '@/lib/api-validation';
+import { tweetCodeFor } from '@/lib/tweet-verify';
 
 /**
  * GET /api/pools/[address]/fee-splits
@@ -54,10 +55,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   } catch {
     accrued = null;
   }
-  const recipientsWithPending = effective.map((r) => ({
+  const recipientsWithPending = effective.map((r, i) => ({
     ...r,
     pendingBaseRaw: accrued ? splitShareRaw(accrued.baseRaw, r.bps) : null,
     pendingQuoteRaw: accrued ? splitShareRaw(accrued.quoteRaw, r.bps) : null,
+    // Verification code for handle-only entries: the recipient posts it
+    // in a public tweet to prove handle ownership. Wallet-locked entries
+    // do not need it.
+    verifyCode: r.handle && !r.wallet ? tweetCodeFor(tracked.poolAddress, i) : null,
   }));
   res.setHeader('Cache-Control', 'public, s-maxage=30, stale-while-revalidate=120');
   return res.status(200).json({
