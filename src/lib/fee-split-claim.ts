@@ -71,8 +71,9 @@ export interface SplitPayout {
 /**
  * Recipients with a wallet to pay: bound wallet when set, otherwise
  * the registered one. Handle-only entries with no bound wallet have
- * nothing to pay to, so they are skipped and their share stays with
- * the creator remainder.
+ * nothing to pay to, so they are skipped and their share stays accrued
+ * in the pool (it is excluded from the creator remainder in the claim
+ * builder, so the creator cannot take it either).
  */
 export function payableRecipients(
   recipients: FeeSplitRecipient[],
@@ -94,7 +95,8 @@ export function planDistribution(
   const out: SplitPayout[] = [];
   for (const r of recipients) {
     // Entries with no wallet anywhere are skipped: their share stays
-    // with the creator remainder.
+    // accrued in the pool (excluded from the creator remainder), never
+    // paid to anyone until the entry is bound.
     if (!r.wallet) continue;
     const baseRaw = splitShareRaw(accruedBaseRaw, r.bps);
     const quoteRaw = splitShareRaw(accruedQuoteRaw, r.bps);
