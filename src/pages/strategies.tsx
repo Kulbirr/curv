@@ -9,7 +9,7 @@ import {
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useUnifiedWalletContext } from '@jup-ag/wallet-adapter';
 import Page from '@/components/ui/Page/Page';
-import PrismLogo from '@/components/PrismLogo';
+import CurvyLogo from '@/components/CurvyLogo';
 import { getConnection, isDevnet } from '@/lib/solana';
 import { platformFeeWallet } from '@/lib/launch';
 import { cn } from '@/lib/utils';
@@ -32,9 +32,9 @@ import {
 } from '@/lib/jupiter';
 
 /**
- * AI Signals mirror feed, powered by Prism, the Curv AI.
+ * AI Signals mirror feed, powered by Curvy, the Curv mascot.
  *
- * Prism publishes identical AI powered spot buy signals to every subscriber.
+ * Curvy publishes identical AI powered spot buy signals to every subscriber.
  * Each card carries a Mirror button that fetches a fresh Jupiter quote,
  * refuses the trade when the signal expired or the live price moved above
  * the signal max, applies a 1 percent slippage guard, and hands the swap
@@ -239,7 +239,7 @@ function SubscribeCard({
   signature: string | null;
 }) {
   const bullets = [
-    'Every Prism signal the moment it publishes',
+    'Every Curvy signal the moment it publishes',
     'Mirror any signal in one tap',
     'You sign every trade yourself',
     'Flat fee. No cut of your profits, ever.',
@@ -363,7 +363,7 @@ function SignalCard({
                   className="inline-flex items-center gap-1 rounded-md bg-sky-400/12 px-2 py-0.5 text-[11px] font-bold text-sky-300 transition hover:bg-sky-400/20"
                   aria-expanded={showReasons}
                 >
-                  <span aria-hidden="true">✦</span> Prism signal
+                  <span aria-hidden="true">✦</span> Curvy signal
                 </button>
               )}
             </div>
@@ -947,17 +947,17 @@ export default function StrategiesPage() {
     <Page>
       <div className="mx-auto w-full max-w-3xl">
         <div className="flex items-center gap-3">
-          <PrismLogo size={40} />
+          <CurvyLogo size={40} />
           <div>
             <p className="text-[11px] font-bold tracking-[0.2em] text-[#32f27b]">AI SIGNALS</p>
-            <p className="text-xs font-semibold text-neutral-400">by Prism, the Curv AI</p>
+            <p className="text-xs font-semibold text-neutral-400">by Curvy, the Curv mascot</p>
           </div>
         </div>
         <h1 className="mt-4 text-3xl font-bold text-neutral-50 md:text-4xl">
           Every signal is AI powered.
         </h1>
         <p className="mt-3 max-w-xl text-sm leading-relaxed text-neutral-400 md:text-base">
-          Prism watches the market around the clock and publishes spot calls the moment the
+          Curvy watches the market around the clock and publishes spot calls the moment the
           setup appears. One feed, same signal for every subscriber. You review each one and
           sign every trade in your own wallet. Curv never touches your money.
         </p>
@@ -1036,7 +1036,7 @@ export default function StrategiesPage() {
                   <div className="rounded-3xl border border-white/5 bg-[#0e1112] p-10 text-center">
                     <p className="text-base font-semibold text-neutral-200">No live signals right now</p>
                     <p className="mt-2 text-sm text-neutral-500">
-                      Prism publishes new calls here the moment a setup appears.
+                      Curvy publishes new calls here the moment a setup appears.
                     </p>
                   </div>
                 )}
