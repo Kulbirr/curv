@@ -7,22 +7,16 @@ import { shortenAddress } from '@/lib/utils';
 import { parsePreviewAddress, previewAddress } from '@/lib/address-preview';
 import { NotificationBell } from '@/components/NotificationBell';
 
-/** The Living Curve mark, ported from the curv-ui spec. */
+/** The Curv brand mark: the signature green curve. */
 export function CurveMark({ className = '' }: { className?: string }) {
   return (
-    <svg
-      className={className}
-      viewBox="0 0 36 36"
-      fill="none"
+    <img
+      src="/curv-logo.png"
+      alt=""
       aria-hidden="true"
-    >
-      <path
-        d="M4 31C10.5 30.2 12.3 27.3 16.1 23.2C21 17.9 22.7 9.5 32 4"
-        stroke="currentColor"
-        strokeWidth="3.2"
-        strokeLinecap="round"
-      />
-    </svg>
+      className={className}
+      style={{ objectFit: 'contain' }}
+    />
   );
 }
 
