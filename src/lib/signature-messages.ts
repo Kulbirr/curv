@@ -21,9 +21,14 @@ export const SIGNATURE_TTL_MS = 5 * 60 * 1000;
  */
 export function canonicalFeeSplitsTerms(recipients: FeeSplitRecipient[] | undefined): string {
   if (!recipients || recipients.length === 0) return '';
-  const rendered = recipients.map((r) =>
-    r.wallet ? `${r.wallet}:${r.bps}${r.handle ? `:${r.handle}` : ''}` : `@${r.handle}:${r.bps}`,
-  );
+  const rendered = recipients.map((r) => {
+    // Platform prefix binds the handle's platform into the signature.
+    // No prefix means X (all rows predate platforms).
+    const platform = r.platform && r.platform !== 'x' ? `${r.platform}:` : '';
+    return r.wallet
+      ? `${r.wallet}:${r.bps}${r.handle ? `:${platform}${r.handle}` : ''}`
+      : `@${platform}${r.handle}:${r.bps}`;
+  });
   return rendered.sort().join(',');
 }
 

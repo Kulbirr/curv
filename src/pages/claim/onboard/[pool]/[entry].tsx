@@ -139,15 +139,24 @@ export default function RecipientOnboardingPage() {
 
   const [tweetUrl, setTweetUrl] = useState('');
 
+  const entryPlatform = (entry?.platform ?? 'x') as 'x' | 'twitch' | 'reddit';
+  const isOAuthFlow = isHandleOnly && (entryPlatform === 'twitch' || entryPlatform === 'reddit');
+  const oauthStatus = typeof router.query.oauth === 'string' ? router.query.oauth : null;
+  const oauthVerified = oauthStatus === 'twitch' || oauthStatus === 'reddit';
+  const oauthError = oauthStatus === 'error' ? (typeof router.query.reason === 'string' ? router.query.reason : 'error') : null;
+
   const bind = useCallback(async () => {
     if (!pool || entryIndex === null) return;
-    const isTweetFlow = !!entry?.handle && !entry?.wallet;
+    const isTweetFlow = !!entry?.handle && !entry?.wallet && (entry?.platform ?? 'x') === 'x';
+    const isOAuthBind = !!entry?.handle && !entry?.wallet && ((entry?.platform ?? 'x') === 'twitch' || (entry?.platform ?? 'x') === 'reddit');
     // Tweet flow needs no wallet connection: the wallet comes from
     // the tweet text itself, authored by the handle owner.
+    // OAuth flow needs the wallet connection: the identity cookie
+    // proves handle ownership, the signature proves wallet control.
     if (!isTweetFlow && (!publicKey || !signMessage)) return;
     setView({ kind: 'binding' });
     try {
-      const endpoint = isTweetFlow ? 'verify-tweet' : 'bindings';
+      const endpoint = isTweetFlow ? 'verify-tweet' : isOAuthBind ? 'verify-oauth' : 'bindings';
       const body: Record<string, unknown> = { entryIndex };
       let wallet: string | null = null;
       if (isTweetFlow) {
@@ -186,7 +195,7 @@ export default function RecipientOnboardingPage() {
         message: e instanceof Error ? e.message : 'Binding failed, please try again',
       });
     }
-  }, [pool, entryIndex, publicKey, signMessage, tweetUrl, entry?.handle, entry?.wallet]);
+  }, [pool, entryIndex, publicKey, signMessage, tweetUrl, entry?.handle, entry?.wallet, entry?.platform]);
 
   return (
     <Page>
@@ -241,7 +250,7 @@ export default function RecipientOnboardingPage() {
                   )}
                 </p>
 
-                {isHandleOnly && entry.verifyCode && (
+                {isHandleOnly && entry.verifyCode && entryPlatform === 'x' && (
                   <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.03] px-5 py-4">
                     <p className="text-xs leading-relaxed text-neutral-400">
                       This share is reserved for{' '}
@@ -292,8 +301,54 @@ export default function RecipientOnboardingPage() {
                   </div>
                 )}
 
+                {isOAuthFlow && (
+                  <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.03] px-5 py-4">
+                    <p className="text-xs leading-relaxed text-neutral-400">
+                      This share is reserved for{' '}
+                      <span className="font-semibold text-neutral-100">{entryName}</span>{' '}
+                      on {entryPlatform === 'twitch' ? 'Twitch' : 'Reddit'}.
+                      {oauthVerified
+                        ? ' Identity verified. Now connect the wallet that should receive your share and sign to bind it.'
+                        : ' Prove it is you in two steps:'}
+                    </p>
+                    {oauthError && (
+                      <p className="mt-3 text-xs text-[#fa6d74]">
+                        Verification failed
+                        {oauthError === 'mismatch'
+                          ? ': the account you logged in with does not match this share.'
+                          : ', please try again.'}
+                      </p>
+                    )}
+                    {!oauthVerified && (
+                      <ol className="mt-3 space-y-3 text-xs leading-relaxed text-neutral-400">
+                        <li className="flex gap-2">
+                          <span className="font-bold text-[#32f27b]">1.</span>
+                          <span>
+                            Log in with {entryPlatform === 'twitch' ? 'Twitch' : 'Reddit'} as{' '}
+                            <span className="font-semibold text-neutral-100">{entryName}</span>.
+                            We only read your username, nothing else.{' '}
+                            <a
+                              href={`/api/auth/${entryPlatform}/authorize?pool=${pool}&entry=${entryIndex}`}
+                              className="mt-2 inline-block rounded-full bg-[#32f27b] px-5 py-2 text-sm font-bold text-[#04120a] transition hover:bg-[#4bf78f]"
+                            >
+                              Verify with {entryPlatform === 'twitch' ? 'Twitch' : 'Reddit'}
+                            </a>
+                          </span>
+                        </li>
+                        <li className="flex gap-2">
+                          <span className="font-bold text-[#32f27b]">2.</span>
+                          <span>
+                            After verifying, connect your wallet below and sign once to bind it.
+                            The wallet you connect is what gets paid.
+                          </span>
+                        </li>
+                      </ol>
+                    )}
+                  </div>
+                )}
+
                 <div className="mt-6">
-                    {isHandleOnly ? (
+                    {isHandleOnly && entryPlatform === 'x' ? (
                       <button
                         type="button"
                         onClick={bind}
@@ -302,7 +357,7 @@ export default function RecipientOnboardingPage() {
                       >
                         {view.kind === 'binding' ? 'Verifying…' : 'Verify tweet and bind wallet'}
                       </button>
-                    ) : !connected ? (
+                    ) : isOAuthFlow && !oauthVerified ? null : !connected ? (
                       <button
                         type="button"
                         onClick={() => setShowModal(true)}
