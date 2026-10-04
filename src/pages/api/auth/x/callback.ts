@@ -34,9 +34,26 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
   const me = await fetchXMe(tokens.access_token);
   if (me.ok === false) {
-    // Include a safe diagnostic code so we can tell 401 (bad token) from
-    // 403 (app permissions) from 429/5xx (X flakiness) without server logs.
-    return res.status(502).json({ error: 'Could not read your X profile, please try again', code: me.reason });
+    // Do not strand the user on raw JSON. Render a plain error page with
+    // a way back. A 403 here specifically means the X developer app's
+    // permissions do not include read access, which is fixed in the
+    // X developer portal, not in code.
+    const detail =
+      me.reason === 'http-403'
+        ? 'X refused to share your profile. The Curv app needs Read permission in the X developer portal (User authentication settings).'
+        : me.reason === 'http-401'
+          ? 'The X session expired before we could read your profile.'
+          : 'X did not respond in time.';
+    res.status(502).setHeader('Content-Type', 'text/html; charset=utf-8').send(
+      `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>X login failed</title></head>` +
+        `<body style="background:#0a0a0a;color:#e5e5e5;font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;padding:24px;box-sizing:border-box">` +
+        `<div style="max-width:420px;text-align:center">` +
+        `<h1 style="font-size:20px;margin:0 0 12px">X login failed</h1>` +
+        `<p style="color:#a3a3a3;font-size:15px;line-height:1.6;margin:0 0 24px">${detail} Please try again.</p>` +
+        `<a href="/api/auth/x/login${cookies.x_oauth_next ? `?next=${encodeURIComponent(cookies.x_oauth_next)}` : ''}" style="display:inline-block;background:#22c55e;color:#052e16;font-weight:600;font-size:15px;padding:12px 28px;border-radius:999px;text-decoration:none">Try again</a>` +
+        `</div></body></html>`,
+    );
+    return;
   }
   const session = signXSession({ xUserId: me.user.id, xUsername: me.user.username, issuedAt: Date.now() });
   const next =
