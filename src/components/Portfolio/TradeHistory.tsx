@@ -42,20 +42,7 @@ function formatTime(ms: number): string {
     d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
 }
 
-/** Human price with meaningful precision: tiny prices keep their decimals instead of rounding to zero. */
-function formatPrice(p: string | null): string {
-  if (!p) return 'n/a';
-  const v = Number(p);
-  if (!Number.isFinite(v) || v <= 0) return 'n/a';
-  let s: string;
-  if (v >= 100) s = v.toFixed(2);
-  else if (v >= 1) s = v.toFixed(4);
-  else if (v >= 0.01) s = v.toFixed(6);
-  else s = v.toFixed(10);
-  return s.replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '');
-}
-
-function DetailTrades({ wallet, poolAddress, baseDecimals }: { wallet: string; poolAddress: string; baseDecimals: number | null }) {
+function DetailTrades({ wallet, poolAddress }: { wallet: string; poolAddress: string }) {
   const [cursor, setCursor] = useState<number | null>(null);
   const [all, setAll] = useState<DetailTrade[]>([]);
   const q = useQuery({
@@ -79,7 +66,6 @@ function DetailTrades({ wallet, poolAddress, baseDecimals }: { wallet: string; p
         <p className="sc-trade-detail-empty">No individual trades found.</p>
       ) : (
         <>
-          <div className="sc-trade-detail-table-wrap">
           <table className="sc-trade-detail-table">
             <thead>
               <tr>
@@ -96,10 +82,8 @@ function DetailTrades({ wallet, poolAddress, baseDecimals }: { wallet: string; p
                   <td>
                     <span className={`sc-trade-side sc-trade-side-${t.side}`}>{t.side}</span>
                   </td>
-                  <td className={t.side === 'buy' ? 'sc-trade-amount-buy' : 'sc-trade-amount-sell'}>
-                    {t.side === 'buy' ? '+' : '-'}{formatRaw(t.baseAmountRaw, baseDecimals)}
-                  </td>
-                  <td>{formatPrice(t.price)}</td>
+                  <td>{t.side === 'buy' ? '+' : '-'}{formatRaw(t.baseAmountRaw, null)}</td>
+                  <td>{t.price ? Number(t.price).toFixed(6) : '—'}</td>
                   <td>{formatTime(t.tradedAt)}</td>
                   <td>
                     <a
@@ -115,7 +99,6 @@ function DetailTrades({ wallet, poolAddress, baseDecimals }: { wallet: string; p
               ))}
             </tbody>
           </table>
-          </div>
           {q.data?.nextCursor && (
             <button
               type="button"
@@ -188,27 +171,20 @@ export default function TradeHistory({ wallet }: { wallet: string }) {
                     <strong>{s.baseSymbol ?? 'Unknown'}</strong>
                     <small>{s.tradeCount} trade{s.tradeCount === 1 ? '' : 's'}</small>
                   </span>
-                  <span className="sc-trade-coin-stats">
-                    <span className="sc-trade-stat">
-                      <small>Bought</small>
-                      <strong className="buy">{formatRaw(s.totalBoughtBaseRaw, s.baseDecimals)}</strong>
+                  <span className="sc-trade-coin-totals">
+                    <span className="sc-trade-total-bought">
+                      Bought {formatRaw(s.totalBoughtBaseRaw, s.baseDecimals)}
                     </span>
-                    <span className="sc-trade-stat">
-                      <small>Sold</small>
-                      <strong className="sell">{formatRaw(s.totalSoldBaseRaw, s.baseDecimals)}</strong>
+                    <span className="sc-trade-total-sold">
+                      Sold {formatRaw(s.totalSoldBaseRaw, s.baseDecimals)}
                     </span>
-                    <span className="sc-trade-stat">
-                      <small>Holding</small>
-                      <strong>
-                        {netBase > BigInt(0)
-                          ? formatRaw(netBase.toString(), s.baseDecimals)
-                          : '0'}
-                      </strong>
-                    </span>
+                  </span>
+                  <span className="sc-trade-coin-net">
+                    {netBase > BigInt(0) ? `Holding ${formatRaw(netBase.toString(), s.baseDecimals)}` : 'Fully sold'}
                   </span>
                   <span className={`sc-trade-chevron ${isOpen ? 'open' : ''}`} aria-hidden="true">▾</span>
                 </button>
-                {isOpen && <DetailTrades wallet={wallet} poolAddress={s.poolAddress} baseDecimals={s.baseDecimals} />}
+                {isOpen && <DetailTrades wallet={wallet} poolAddress={s.poolAddress} />}
               </div>
             );
           })}

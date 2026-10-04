@@ -305,13 +305,10 @@ export default function CreatePool() {
   const [status, setStatus] = useState<LaunchStatus>('idle')
   const [mode, setMode] = useState<'quick' | 'pro'>('quick')
   const [splitRows, setSplitRows] = useState<
-    Array<{ wallet: string; percent: string; handle: string; platform: 'x' | 'twitch' | 'reddit' }>
+    Array<{ wallet: string; percent: string; handle: string }>
   >([])
   const [devBuy, setDevBuy] = useState('')
   const [buybackPct, setBuybackPct] = useState('0')
-  const [traderRewardEnabled, setTraderRewardEnabled] = useState(false)
-  const [traderRewardCount, setTraderRewardCount] = useState('3')
-  const [traderRewardPct, setTraderRewardPct] = useState('')
   const [launchError, setLaunchError] = useState<string | null>(null)
   const [txSig, setTxSig] = useState<string | null>(null)
   const [launchedPool, setLaunchedPool] = useState<string | null>(null)
@@ -1123,7 +1120,6 @@ export default function CreatePool() {
               wallet: r.wallet.trim(),
               bps: Math.round(Number(r.percent) * 100),
               handle: r.handle.trim(),
-              platform: r.platform,
             })),
             publicKey.toBase58()
           )
@@ -1134,24 +1130,13 @@ export default function CreatePool() {
         }
       }
       const buybackBps = Math.round(parseFloat(buybackPct || '0') * 100) || 0
-      let traderReward: { count: number; bps: number } | undefined
-      if (traderRewardPreview.error) {
-        throw new Error(`Trader rewards are invalid: ${traderRewardPreview.error}`)
-      }
-      if (traderRewardEnabled && traderRewardPreview.bps > 0) {
-        traderReward = {
-          count: traderRewardPreview.count,
-          bps: traderRewardPreview.bps,
-        }
-      }
       const message = buildRegistrationMessage(
         poolAddr,
         publicKey.toBase58(),
         timestamp,
         normalizedSplits,
         devBuyLamports,
-        buybackBps || undefined,
-        traderReward ?? undefined
+        buybackBps || undefined
       )
       if (!signMessage) throw new Error('Connected wallet cannot sign messages')
       let sigBytes: Uint8Array
@@ -1188,7 +1173,6 @@ export default function CreatePool() {
           feeSplits: normalizedSplits ?? undefined,
           devBuyLamports: devBuyLamports ?? undefined,
           buybackBps: Math.round(parseFloat(buybackPct || '0') * 100) || 0,
-          traderReward: traderReward ?? undefined,
         }),
       })
       if (!regRes.ok) {
@@ -1232,7 +1216,6 @@ export default function CreatePool() {
           wallet: r.wallet.trim(),
           bps: Math.round(Number(r.percent) * 100),
           handle: r.handle.trim(),
-          platform: r.platform,
         })),
         publicKey?.toBase58() ?? ''
       )
@@ -1244,34 +1227,6 @@ export default function CreatePool() {
       return { error: e instanceof Error ? e.message : 'Invalid fee splits', totalBps: 0 }
     }
   }, [splitRows, publicKey])
-
-  // Trader rewards preview: validated live against the server rules so the
-  // form shows the error before the user ever signs.
-  const traderRewardPreview = useMemo(() => {
-    if (!traderRewardEnabled)
-      return { error: null as string | null, bps: 0, count: 0 }
-    const count = Number(traderRewardCount)
-    const bps = Math.round(Number(traderRewardPct) * 100)
-    if (!Number.isInteger(count) || count < 1 || count > 5) {
-      return { error: 'Winners must be between 1 and 5', bps: 0, count: 0 }
-    }
-    if (!Number.isFinite(bps) || bps < 1 || bps > 9000) {
-      return {
-        error: 'Reward share must be between 0.01% and 90%',
-        bps: 0,
-        count: 0,
-      }
-    }
-    if (splitPreview.totalBps + bps > 9000) {
-      return {
-        error:
-          'Fee splits and trader rewards together can use at most 90% of the creator fee',
-        bps: 0,
-        count: 0,
-      }
-    }
-    return { error: null as string | null, bps, count }
-  }, [traderRewardEnabled, traderRewardCount, traderRewardPct, splitPreview.totalBps])
 
   // Dev buy preview: validated live against the graduation threshold so
   // the form shows the error before the user ever signs.
@@ -2464,12 +2419,9 @@ export default function CreatePool() {
                 <p>
                   <strong>Add a wallet to lock a share to it.</strong> Paste the
                   recipient&apos;s Solana address and only that wallet can ever claim
-                  it. With just a social handle, pick their platform: X
-                  recipients post a public tweet from that handle containing
-                  their claim code and their Solana wallet address. Twitch and
-                  Reddit recipients log in to prove the account is theirs, then
-                  connect a wallet. We verify each one and lock the share to
-                  that wallet. Unclaimed shares stay with you.
+                  it. With just an X handle, the recipient posts a public tweet
+                  containing their claim code to prove the handle is theirs,
+                  then binds a wallet. Unclaimed shares stay with you.
                 </p>
               </div>
               {splitRows.map((row, i) => (
@@ -2504,44 +2456,18 @@ export default function CreatePool() {
                       autoComplete="off"
                     />
                   </Field>
-                  <Field label="Social handle (optional)">
-                    <div className="flex gap-2">
-                      <div className="flex shrink-0 gap-1">
-                        {(['x', 'twitch', 'reddit'] as const).map((p) => (
-                          <button
-                            key={p}
-                            type="button"
-                            onClick={() =>
-                              setSplitRows((rs) =>
-                                rs.map((r, j) => (j === i ? { ...r, platform: p } : r))
-                              )
-                            }
-                            aria-pressed={row.platform === p}
-                            aria-label={`${p} handle`}
-                            title={p === 'x' ? 'X' : p === 'twitch' ? 'Twitch' : 'Reddit'}
-                            className={cn(
-                              'h-9 rounded-lg border px-2.5 text-xs font-bold transition-colors',
-                              row.platform === p
-                                ? 'border-[#32f27b]/60 bg-[#32f27b]/10 text-[#32f27b]'
-                                : 'border-neutral-800 bg-neutral-950 text-neutral-500 hover:border-neutral-600'
-                            )}
-                          >
-                            {p === 'x' ? 'X' : p === 'twitch' ? 'Twitch' : 'Reddit'}
-                          </button>
-                        ))}
-                      </div>
-                      <input
-                        value={row.handle}
-                        onChange={(e) =>
-                          setSplitRows((rs) =>
-                            rs.map((r, j) => (j === i ? { ...r, handle: e.target.value } : r))
-                          )
-                        }
-                        placeholder="name"
-                        spellCheck={false}
-                        autoComplete="off"
-                      />
-                    </div>
+                  <Field label="X handle (optional)">
+                    <input
+                      value={row.handle}
+                      onChange={(e) =>
+                        setSplitRows((rs) =>
+                          rs.map((r, j) => (j === i ? { ...r, handle: e.target.value } : r))
+                        )
+                      }
+                      placeholder="name"
+                      spellCheck={false}
+                      autoComplete="off"
+                    />
                   </Field>
                   <button
                     type="button"
@@ -2558,7 +2484,7 @@ export default function CreatePool() {
                   type="button"
                   className="sc-button sc-button-secondary"
                   onClick={() =>
-                    setSplitRows((rs) => [...rs, { wallet: '', percent: '', handle: '', platform: 'x' as const }])
+                    setSplitRows((rs) => [...rs, { wallet: '', percent: '', handle: '' }])
                   }
                 >
                   Add recipient
@@ -2577,102 +2503,6 @@ export default function CreatePool() {
                     <strong>{((10000 - splitPreview.totalBps) / 100).toFixed(2)}%</strong>.
                     Recipients can share at most 90% in total.
                   </>
-                )}
-              </p>
-            </section>
-
-            {/* ---- Trader rewards: pay your top net buyers ---- */}
-            <section
-              className="sc-builder-section"
-              aria-labelledby="sc-trader-rewards-heading"
-            >
-              <div className="sc-builder-section-head">
-                <span className="sc-section-glyph">🏆</span>
-                <div>
-                  <h2 id="sc-trader-rewards-heading">Trader rewards</h2>
-                  <p>
-                    Reserve a share of your creator fees for your biggest
-                    supporters. The top net buyers at graduation split the
-                    reward automatically in the normal claim flow. Locked at
-                    launch and public forever.
-                  </p>
-                </div>
-              </div>
-              <div className="flex flex-wrap items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => setTraderRewardEnabled((v) => !v)}
-                  aria-pressed={traderRewardEnabled}
-                  className={cn(
-                    'rounded-full border px-5 py-2.5 text-sm font-semibold transition-colors',
-                    traderRewardEnabled
-                      ? 'border-[#32f27b]/60 bg-[#32f27b]/10 text-[#32f27b]'
-                      : 'border-neutral-800 bg-neutral-950 text-neutral-300 hover:border-neutral-600'
-                  )}
-                >
-                  {traderRewardEnabled ? 'On' : 'Off'}
-                </button>
-                {traderRewardEnabled && (
-                  <>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm text-neutral-400">Winners</span>
-                      <div className="flex gap-1.5">
-                        {(['1', '2', '3', '4', '5'] as const).map((v) => (
-                          <button
-                            key={v}
-                            type="button"
-                            onClick={() => setTraderRewardCount(v)}
-                            aria-pressed={traderRewardCount === v}
-                            aria-label={`${v} winners`}
-                            className={cn(
-                              'h-9 w-9 rounded-lg border text-sm font-semibold transition-colors',
-                              traderRewardCount === v
-                                ? 'border-[#32f27b]/60 bg-[#32f27b]/10 text-[#32f27b]'
-                                : 'border-neutral-800 bg-neutral-950 text-neutral-300 hover:border-neutral-600'
-                            )}
-                          >
-                            {v}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <label htmlFor="trader-reward-pct" className="text-sm text-neutral-400 shrink-0">
-                        Share
-                      </label>
-                      <input
-                        id="trader-reward-pct"
-                        inputMode="decimal"
-                        value={traderRewardPct}
-                        onChange={(e) => {
-                          const v = e.target.value.replace(/[^0-9.]/g, '');
-                          const n = parseFloat(v);
-                          if (v === '' || (Number.isFinite(n) && n >= 0 && n <= 90)) {
-                            setTraderRewardPct(v);
-                          }
-                        }}
-                        placeholder="5"
-                        className="w-20 rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm font-semibold text-neutral-100 outline-none focus:border-[#32f27b]/50"
-                      />
-                      <span className="text-sm text-neutral-500">% of creator fees</span>
-                    </div>
-                  </>
-                )}
-              </div>
-              <p className="sc-split-summary">
-                {traderRewardPreview.error ? (
-                  <span className="sc-form-error">{traderRewardPreview.error}</span>
-                ) : !traderRewardEnabled ? (
-                  'Trader rewards are off.'
-                ) : traderRewardPreview.bps > 0 ? (
-                  <>
-                    Top <strong>{traderRewardPreview.count}</strong> net{' '}
-                    {traderRewardPreview.count === 1 ? 'buyer' : 'buyers'} split{' '}
-                    <strong>{(traderRewardPreview.bps / 100).toFixed(2)}%</strong>{' '}
-                    of creator fees at graduation.
-                  </>
-                ) : (
-                  'Set a reward share to enable trader rewards.'
                 )}
               </p>
             </section>

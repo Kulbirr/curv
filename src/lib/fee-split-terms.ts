@@ -12,21 +12,13 @@ import { PublicKey } from '@solana/web3.js';
  * so a launch can never give away the creator's entire stream.
  */
 
-export type SocialPlatform = 'x' | 'twitch' | 'reddit';
-
 export interface FeeSplitRecipient {
   /** Recipient wallet (base58); optional for handle-only placeholders bound later */
   wallet?: string;
   /** Share of the creator trading fee, in basis points */
   bps: number;
-  /** Optional public social handle, without the @ */
+  /** Optional public X handle, without the @ */
   handle?: string;
-  /**
-   * Which platform the handle belongs to. Defaults to 'x' when absent
-   * (all existing rows predate platforms). Determines handle format
-   * rules and which verification flow the recipient uses.
-   */
-  platform?: SocialPlatform;
 }
 
 export const MAX_SPLIT_RECIPIENTS = 10;
@@ -34,23 +26,7 @@ export const MAX_SPLIT_RECIPIENTS = 10;
 export const MAX_SPLIT_TOTAL_BPS = 9_000;
 export const BPS_TOTAL = 10_000;
 
-const HANDLE_RES: Record<SocialPlatform, RegExp> = {
-  x: /^[A-Za-z0-9_]{1,15}$/,
-  twitch: /^[A-Za-z0-9_]{4,25}$/,
-  reddit: /^[A-Za-z0-9_-]{3,20}$/,
-};
-
-const PLATFORM_LABEL: Record<SocialPlatform, string> = {
-  x: 'X',
-  twitch: 'Twitch',
-  reddit: 'Reddit',
-};
-
-/** Normalize and validate a platform value; defaults to 'x'. */
-export function normalizePlatform(raw: unknown): SocialPlatform {
-  if (raw === 'twitch' || raw === 'reddit' || raw === 'x') return raw;
-  return 'x';
-}
+const HANDLE_RE = /^[A-Za-z0-9_]{1,15}$/;
 
 /**
  * Validate and normalize a raw splits payload. Returns the canonical
@@ -94,28 +70,18 @@ export function validateFeeSplits(raw: unknown, creatorWallet: string): FeeSplit
       throw new Error('Fee split recipients can share at most 90% of the creator fee');
     }
     let handle: string | undefined;
-    let platform: SocialPlatform | undefined;
     if (entry.handle !== undefined && entry.handle !== null && entry.handle !== '') {
-      platform = normalizePlatform(entry.platform);
-      const h = String(entry.handle).replace(/^@/, '').replace(/^u\//, '');
-      if (!HANDLE_RES[platform].test(h)) {
-        throw new Error(`A ${PLATFORM_LABEL[platform]} handle in the fee splits is not valid`);
-      }
-      const lowered = `${platform}:${h.toLowerCase()}`;
-      if (seenHandles.has(lowered)) {
-        throw new Error(`A ${PLATFORM_LABEL[platform]} handle appears twice in the fee splits`);
-      }
+      const h = String(entry.handle).replace(/^@/, '');
+      if (!HANDLE_RE.test(h)) throw new Error('An X handle in the fee splits is not valid');
+      const lowered = h.toLowerCase();
+      if (seenHandles.has(lowered)) throw new Error('An X handle appears twice in the fee splits');
       seenHandles.add(lowered);
       handle = h;
     }
     if (!wallet && !handle) {
-      throw new Error('A fee split entry needs a Solana wallet, a social handle, or both');
+      throw new Error('A fee split entry needs a Solana wallet, an X handle, or both');
     }
-    out.push({
-      ...(wallet ? { wallet } : {}),
-      bps,
-      ...(handle ? { handle, ...(platform && platform !== 'x' ? { platform } : {}) } : {}),
-    });
+    out.push({ ...(wallet ? { wallet } : {}), bps, ...(handle ? { handle } : {}) });
   }
   return out;
 }

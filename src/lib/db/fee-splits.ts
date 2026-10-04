@@ -82,13 +82,13 @@ export async function insertFeeSplitBinding(
   poolAddress: string,
   entryIndex: number,
   wallet: string,
-  x?: { xUserId?: string; xHandle?: string; platform?: string; handle?: string },
+  x?: { xUserId: string; xHandle: string },
 ): Promise<boolean> {
   const rowCount = await execute(
-    `INSERT INTO fee_split_bindings (pool_address, entry_index, wallet, bound_at, x_user_id, x_handle, platform)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
+    `INSERT INTO fee_split_bindings (pool_address, entry_index, wallet, bound_at, x_user_id, x_handle)
+     VALUES ($1, $2, $3, $4, $5, $6)
      ON CONFLICT (pool_address, entry_index) DO NOTHING`,
-    [poolAddress, entryIndex, wallet, Date.now(), x?.xUserId ?? null, x?.xHandle ?? x?.handle ?? null, x?.platform ?? null],
+    [poolAddress, entryIndex, wallet, Date.now(), x?.xUserId ?? null, x?.xHandle ?? null],
   );
   return rowCount === 1;
 }
