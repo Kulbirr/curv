@@ -2463,8 +2463,10 @@ export default function CreatePool() {
                   <strong>Add a wallet to lock a share to it.</strong> Paste the
                   recipient&apos;s Solana address and only that wallet can ever claim
                   it. With just an X handle, the recipient posts a public tweet
-                  containing their claim code to prove the handle is theirs,
-                  then binds a wallet. Unclaimed shares stay with you.
+                  from that handle containing their claim code and their Solana
+                  wallet address. We verify the tweet is really from them and
+                  lock the share to that wallet, no sign in needed. Unclaimed
+                  shares stay with you.
                 </p>
               </div>
               {splitRows.map((row, i) => (
