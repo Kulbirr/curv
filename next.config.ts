@@ -87,6 +87,13 @@ const embedSecurityHeaders = securityHeaders.map((h) =>
 const nextConfig: NextConfig = {
   /* config options here */
   reactStrictMode: true,
+  async redirects() {
+    return [
+      // The Signals page lives at /strategies (renamed from Prism); keep
+      // the /signals URL working for bookmarks and external links.
+      { source: '/signals', destination: '/strategies', permanent: false },
+    ];
+  },
   async headers() {
     return [
       {
