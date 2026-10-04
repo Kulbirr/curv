@@ -27,8 +27,9 @@ import { parseAddress } from '@/lib/api-validation';
  * binding per entry, first valid signature wins, immutable once set.
  * A wallet cannot serve two entries in the same pool. Entries that
  * were registered with a wallet can only be bound by that same wallet.
- * Handle-only entries are claimed by whoever holds the invite link:
- * the link itself is the claim ticket, shared privately by the creator.
+ * Handle-only entries (X handle, no wallet) are rejected here and must
+ * go through the tweet verification flow: this endpoint's signature
+ * proves wallet control but says nothing about X handle ownership.
  * Curv never holds funds; the binding only tells the claim builder
  * where to pay an entry's share.
  */
@@ -86,6 +87,17 @@ export default async function handler(
   }
 
   const recipients = await getFeeSplits(tracked.poolAddress);
+  const entry = recipients[entryIndex];
+  // Handle-only entries must go through tweet verification: this
+  // endpoint's signature proves control of the submitted wallet, but
+  // says nothing about who owns the X handle. Without this gate, a
+  // copied tweet link is unnecessary, anyone could bind a handle
+  // owner's entry straight through here.
+  if (entry?.handle && !entry.wallet) {
+    return res.status(400).json({
+      error: 'This share is reserved for an X handle, bind it through the tweet verification flow instead',
+    });
+  }
   const bindings = await getFeeSplitBindings(tracked.poolAddress);
   try {
     checkBindingEligibility(
@@ -100,8 +112,6 @@ export default async function handler(
       .status(409)
       .json({ error: e instanceof Error ? e.message : 'Binding not allowed' });
   }
-
-  const entry = recipients[entryIndex];
 
   const message = buildRecipientBindingMessage(
     tracked.poolAddress,
