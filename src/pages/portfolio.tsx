@@ -7,6 +7,7 @@ import { PublicKey } from '@solana/web3.js';
 import { TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import Page from '@/components/ui/Page/Page';
 import WaitingFees from '@/components/Portfolio/WaitingFees';
+import TradeHistory from '@/components/Portfolio/TradeHistory';
 import { getConnection, isDevnet } from '@/lib/solana';
 import { DASH } from '@/lib/format/number';
 import {
@@ -411,6 +412,8 @@ export default function Portfolio() {
             </section>
 
             {connected && owner && <WaitingFees owner={owner} />}
+
+            {connected && owner && <TradeHistory wallet={owner} />}
 
             <section className="sc-launched-section">
               <h2>Tokens you launched</h2>

@@ -177,6 +177,48 @@ CREATE TABLE IF NOT EXISTS buyback_deposits (
 );
 CREATE INDEX IF NOT EXISTS idx_buyback_deposits_pool ON buyback_deposits (pool_address);
 
+-- Per-wallet trade ledger. One row per (transaction, trader): the
+-- trade indexer watches every pool for swaps and records who traded,
+-- which side, and how much, via on-chain balance deltas. Powers the
+-- profile trade history and the trader rewards (top net buyers).
+-- Append-only, deduplicated on tx_signature. Immutable once written.
+CREATE TABLE IF NOT EXISTS trades (
+  id SERIAL PRIMARY KEY,
+  pool_address TEXT NOT NULL,
+  wallet TEXT NOT NULL,
+  side TEXT NOT NULL, -- 'buy' or 'sell'
+  base_amount_raw TEXT NOT NULL,
+  quote_amount_raw TEXT NOT NULL,
+  price NUMERIC, -- quote per base unit, human-readable, for display
+  tx_signature TEXT NOT NULL,
+  slot BIGINT,
+  traded_at BIGINT NOT NULL,
+  base_decimals INTEGER,
+  quote_decimals INTEGER,
+  UNIQUE (tx_signature, wallet)
+);
+CREATE INDEX IF NOT EXISTS idx_trades_pool_time ON trades (pool_address, traded_at DESC);
+CREATE INDEX IF NOT EXISTS idx_trades_wallet_time ON trades (wallet, traded_at DESC);
+CREATE INDEX IF NOT EXISTS idx_trades_wallet_pool ON trades (wallet, pool_address, id DESC);
+
+-- Trade indexer cursor: the last processed signature per pool, so each
+-- run only fetches new transactions.
+CREATE TABLE IF NOT EXISTS trade_indexer_state (
+  pool_address TEXT PRIMARY KEY,
+  last_signature TEXT NOT NULL,
+  updated_at BIGINT NOT NULL
+);
+
+-- Trader reward winners. One row per pool, written once at graduation:
+-- the top N net buyers by quote volume, immutable after. The rule
+-- (count, bps) was locked at launch in pools.trader_reward; this table
+-- is the deterministic resolution of that rule from the trades ledger.
+CREATE TABLE IF NOT EXISTS trader_reward_winners (
+  pool_address TEXT PRIMARY KEY,
+  winners TEXT NOT NULL, -- JSON: [{wallet, netVolumeRaw, rank}]
+  decided_at BIGINT NOT NULL
+);
+
 -- Wallet bindings for fee split entries, written through the recipient
 -- onboarding links. One row per (pool, entry), first valid signature
 -- wins: the INSERT uses ON CONFLICT DO NOTHING and the application
@@ -709,6 +751,10 @@ export function ensureSchema(db?: DbClient): Promise<void> {
       // Buyback and burn: basis points (0-10000) of the creator fee share
       // committed to automatic buyback and burn at launch. Immutable.
       await client.query('ALTER TABLE pools ADD COLUMN IF NOT EXISTS buyback_bps INTEGER NOT NULL DEFAULT 0');
+      // Trader rewards: JSON {count, bps, rule} reserving a share of
+      // creator fees for the top net buyers, decided at graduation.
+      // Immutable once set at launch. Null = feature off.
+      await client.query('ALTER TABLE pools ADD COLUMN IF NOT EXISTS trader_reward TEXT');
       // AI approval columns added when the signal approval pipeline
       // shipped: older strategy_signals rows predate the pipeline.
       await client.query('ALTER TABLE strategy_signals ADD COLUMN IF NOT EXISTS ai_approved BIGINT NOT NULL DEFAULT 0');

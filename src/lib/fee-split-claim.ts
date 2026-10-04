@@ -183,19 +183,43 @@ export async function buildClaimAndSplitTransactions(args: {
   tracked: TrackedPool;
   recipients: FeeSplitRecipient[];
   bindings?: FeeSplitBinding[];
+  /** Decided trader-reward winners, appended as payable recipients. */
+  traderRewardWinners?: Array<{ wallet: string; rank: number }>;
+  /** Total trader-reward bps (shared equally by winners). */
+  traderRewardBps?: number;
 }): Promise<ClaimAndSplitBuild> {
   const { connection, tracked, recipients } = args;
   const creator = new PublicKey(tracked.creator);
 
+  // Trader rewards: winners are wallet-attested (known wallets), so
+  // they are immediately payable with no binding step. Their bps is
+  // split equally among the actual winners.
+  let allRecipients = recipients;
+  let rewardBpsTotal = 0;
+  const winners = args.traderRewardWinners ?? [];
+  const rewardBps = args.traderRewardBps ?? 0;
+  if (winners.length > 0 && rewardBps > 0) {
+    const each = Math.floor(rewardBps / winners.length);
+    if (each > 0) {
+      rewardBpsTotal = each * winners.length;
+      allRecipients = [
+        ...recipients,
+        ...winners.map((w) => ({ wallet: w.wallet, bps: each }) as FeeSplitRecipient),
+      ];
+    }
+  }
+
   const live = await fetchPoolLiveState(tracked);
-  const payable = payableRecipients(recipients, args.bindings);
+  const payable = payableRecipients(allRecipients, args.bindings);
   const distribution = planDistribution(live.creatorBaseFeeRaw, live.creatorQuoteFeeRaw, payable);
 
   // Partial claim: pull only what is distributed now (bound recipients'
   // shares plus the creator's remainder of total accrued). Unbound
   // X-handle shares stay accrued in the pool until their owners bind;
   // the pool is the vault, nobody holds their money meanwhile.
-  const totalRecipientBps = recipients.reduce((s, r) => s + r.bps, 0);
+  // Trader-reward winners count as recipients here: their share is
+  // excluded from the creator remainder, same as fee splits.
+  const totalRecipientBps = allRecipients.reduce((s, r) => s + r.bps, 0);
   const creatorBps = BPS_TOTAL - totalRecipientBps;
   const sumRaw = (key: 'baseRaw' | 'quoteRaw') =>
     distribution.reduce((s, p) => s + BigInt(p[key]), BigInt(0));
@@ -327,12 +351,16 @@ export async function claimAndSplitFlow(args: {
   tracked: TrackedPool;
   recipients: FeeSplitRecipient[];
   bindings?: FeeSplitBinding[];
+  traderRewardWinners?: Array<{ wallet: string; rank: number }>;
+  traderRewardBps?: number;
 }): Promise<{ signatures: string[]; distribution: SplitPayout[]; buyback: BuybackPlan | null }> {
   const build = await buildClaimAndSplitTransactions({
     connection: args.connection,
     tracked: args.tracked,
     recipients: args.recipients,
     bindings: args.bindings,
+    traderRewardWinners: args.traderRewardWinners,
+    traderRewardBps: args.traderRewardBps,
   });
 
   const signed =

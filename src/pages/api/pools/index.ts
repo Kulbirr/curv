@@ -388,6 +388,7 @@ async function handlePost(req: NextApiRequest, res: NextApiResponse) {
     input.feeSplits,
     input.devBuyLamports,
     input.buybackBps || undefined,
+    input.traderReward || undefined,
   );
   if (!verifyWalletSignature(message, input.signature, input.creator)) {
     return res.status(401).json({ error: 'Invalid wallet signature' });

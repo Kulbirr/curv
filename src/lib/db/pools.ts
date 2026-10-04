@@ -10,6 +10,27 @@ import { execute, query, transaction } from './index';
  * background indexer. This table never stores prices.
  */
 
+/** Trader rewards: a share of creator fees reserved for top net buyers. */
+export interface TraderReward {
+  /** Number of winners (1-5). */
+  count: number;
+  /** Total bps shared equally by winners. */
+  bps: number;
+  /** Winner selection rule; only 'top_net_buyers' in v1. */
+  rule: 'top_net_buyers';
+}
+
+export function parseTraderReward(raw: unknown): TraderReward | undefined {
+  if (raw === null || raw === undefined || raw === '') return undefined;
+  const v = typeof raw === 'string' ? JSON.parse(raw) : raw;
+  if (typeof v !== 'object' || v === null) return undefined;
+  const count = Number(v.count);
+  const bps = Number(v.bps);
+  if (!Number.isInteger(count) || count < 1 || count > 5) return undefined;
+  if (!Number.isInteger(bps) || bps < 1 || bps > 9000) return undefined;
+  return { count, bps, rule: 'top_net_buyers' };
+}
+
 export interface TrackedPool {
   /** DBC virtual pool address (base58) */
   poolAddress: string;
@@ -41,6 +62,7 @@ export interface TrackedPool {
    * immutable after. 0 = feature off.
    */
   buybackBps?: number;
+  traderReward?: TraderReward;
   /**
    * True only when every submitted field (config, creator, baseMint,
    * quoteMint) matched the on-chain accounts at registration time.
@@ -69,6 +91,7 @@ interface PoolRow {
   verified: number;
   dev_buy_lamports: number | null;
   buyback_bps: number | null;
+  trader_reward: string | null;
 }
 
 function rowToPool(r: PoolRow): TrackedPool {
@@ -90,6 +113,7 @@ function rowToPool(r: PoolRow): TrackedPool {
     verified: r.verified === 1,
     devBuyLamports: r.dev_buy_lamports ?? undefined,
     buybackBps: r.buyback_bps ?? 0,
+    traderReward: parseTraderReward(r.trader_reward),
   };
 }
 
@@ -178,6 +202,7 @@ export async function insertPool(input: RegisterPoolInput): Promise<TrackedPool>
       input.buybackBps <= 10000
         ? input.buybackBps
         : 0,
+    traderReward: parseTraderReward(input.traderReward),
   };
   if (!entry.baseSymbol) throw new Error('baseSymbol is required');
   if (!entry.baseName) throw new Error('baseName is required');
@@ -192,8 +217,8 @@ export async function insertPool(input: RegisterPoolInput): Promise<TrackedPool>
       `INSERT INTO pools
        (pool_address, config_address, base_mint, quote_mint, base_symbol, base_name,
         quote_symbol, description, image_url, website, twitter, creator,
-        created_at, launched_at, verified, dev_buy_lamports, buyback_bps)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
+        created_at, launched_at, verified, dev_buy_lamports, buyback_bps, trader_reward)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)`,
       [
         entry.poolAddress,
         entry.configAddress,
@@ -212,6 +237,7 @@ export async function insertPool(input: RegisterPoolInput): Promise<TrackedPool>
         entry.verified ? 1 : 0,
         entry.devBuyLamports ?? null,
         entry.buybackBps ?? 0,
+        entry.traderReward ? JSON.stringify(entry.traderReward) : null,
       ],
     );
     return entry;

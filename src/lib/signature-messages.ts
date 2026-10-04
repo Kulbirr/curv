@@ -34,6 +34,7 @@ export function buildRegistrationMessage(
   feeSplits?: FeeSplitRecipient[],
   devBuyLamports?: number | null,
   buybackBps?: number | null,
+  traderReward?: { count: number; bps: number } | null,
 ): string {
   const lines = [
     'StockCurve pool registration',
@@ -50,6 +51,12 @@ export function buildRegistrationMessage(
   // The buyback and burn commitment. Bound into the signature so it is
   // immutable and publicly verifiable from launch.
   if (buybackBps) lines.push(`buyback: ${buybackBps} bps`);
+  // The trader rewards commitment: top N net buyers split bps of the
+  // creator fee, winners decided at graduation. Bound into the
+  // signature so the rule is immutable and publicly verifiable.
+  if (traderReward && traderReward.bps > 0) {
+    lines.push(`trader rewards: top ${traderReward.count} net buyers split ${traderReward.bps} bps`);
+  }
   return lines.join('\n');
 }
 

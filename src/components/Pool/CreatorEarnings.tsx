@@ -139,6 +139,26 @@ export default function CreatorEarnings({
           quoteMint: splitsQuery.data.quoteMint,
           creator: publicKey.toBase58(),
         } as TrackedPool;
+        // Trader-reward winners, if decided: fetched lazily, paid
+        // atomically in the same claim transaction.
+        let traderRewardWinners: Array<{ wallet: string; rank: number }> | undefined;
+        let traderRewardBps: number | undefined;
+        try {
+          const rr = await fetch(`/api/pools/${poolAddress}/trader-rewards`);
+          if (rr.ok) {
+            const rj = (await rr.json()) as {
+              traderReward: { bps: number } | null;
+              winners: Array<{ wallet: string; rank: number }> | null;
+            };
+            if (rj.traderReward && rj.winners && rj.winners.length > 0) {
+              traderRewardWinners = rj.winners;
+              traderRewardBps = rj.traderReward.bps;
+            }
+          }
+        } catch {
+          // Winners unavailable: claim proceeds without them; their
+          // share stays accrued until the next claim.
+        }
         const { signatures, buyback } = await claimAndSplitFlow({
           connection: getConnection(),
           signTransaction,
@@ -146,6 +166,8 @@ export default function CreatorEarnings({
           tracked,
           recipients: splits,
           bindings,
+          traderRewardWinners,
+          traderRewardBps,
         });
         setTxSig(signatures[0] ?? null);
         setStatus('confirmed');

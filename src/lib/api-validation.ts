@@ -108,6 +108,12 @@ export interface RegistrationInput {
    * committed. Immutable after launch.
    */
   buybackBps?: number;
+  /**
+   * Trader rewards: top N net buyers split bps of the creator fee,
+   * winners decided at graduation. Bound into the signed registration
+   * message. Immutable after launch.
+   */
+  traderReward?: { count: number; bps: number; rule: 'top_net_buyers' };
 }
 
 export type ValidationResult<T> = { ok: true; value: T } | { ok: false; error: string };
@@ -196,6 +202,27 @@ export function validateRegistrationBody(body: unknown): ValidationResult<Regist
       buybackBps = n;
     }
 
+    // Trader rewards: {count, bps}, reserved for top net buyers.
+    // Bound into the signed message like fee splits. The bps counts
+    // toward the 90% recipient cap together with fee splits.
+    let traderReward: { count: number; bps: number } | undefined;
+    if (b.traderReward !== undefined && b.traderReward !== null) {
+      const tr = b.traderReward as { count?: unknown; bps?: unknown };
+      const count = Number(tr.count);
+      const bps = Number(tr.bps);
+      if (!Number.isInteger(count) || count < 1 || count > 5) {
+        return fail('traderReward.count must be an integer between 1 and 5');
+      }
+      if (!Number.isInteger(bps) || bps < 1 || bps > 9000) {
+        return fail('traderReward.bps must be an integer between 1 and 9000');
+      }
+      const splitsBps = (feeSplits ?? []).reduce((s, r) => s + r.bps, 0);
+      if (splitsBps + bps > 9000) {
+        return fail('Fee splits and trader rewards together can use at most 90% of the creator fee');
+      }
+      traderReward = { count, bps };
+    }
+
     return {
       ok: true,
       value: {
@@ -217,6 +244,7 @@ export function validateRegistrationBody(body: unknown): ValidationResult<Regist
         feeSplits,
         devBuyLamports,
         buybackBps,
+        traderReward: traderReward ? { ...traderReward, rule: 'top_net_buyers' as const } : undefined,
       },
     };
   } catch (e) {

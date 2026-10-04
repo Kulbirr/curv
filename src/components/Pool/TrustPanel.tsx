@@ -3,6 +3,7 @@ import { BN } from '@coral-xyz/anchor';
 import { fetchJson } from './usePoolData';
 import { formatFeeRaw } from '@/lib/claim-creator-fees';
 import { rawToUi } from '@/lib/swap-math';
+import TraderRewardsCard from './TraderRewardsCard';
 
 /**
  * Trust panel: checkable facts about this pool, no scores and no
@@ -164,6 +165,7 @@ export default function TrustPanel({ poolAddress }: { poolAddress: string }) {
           <BurnStatsDisplay poolAddress={poolAddress} />
         </div>
       )}
+      <TraderRewardsCard poolAddress={poolAddress} />
       <Row label="Launch record">
         {t.verified ? 'Matched the chain at launch' : 'Not verified at launch'}
       </Row>
