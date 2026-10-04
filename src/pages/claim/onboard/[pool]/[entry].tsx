@@ -142,7 +142,8 @@ export default function RecipientOnboardingPage() {
   const entryPlatform = (entry?.platform ?? 'x') as 'x' | 'twitch' | 'reddit';
   const isOAuthFlow = isHandleOnly && (entryPlatform === 'twitch' || entryPlatform === 'reddit');
   const oauthStatus = typeof router.query.oauth === 'string' ? router.query.oauth : null;
-  const oauthVerified = oauthStatus === 'twitch' || oauthStatus === 'reddit';
+  const [sessionExpired, setSessionExpired] = useState(false);
+  const oauthVerified = (oauthStatus === 'twitch' || oauthStatus === 'reddit') && !sessionExpired;
   const oauthError = oauthStatus === 'error' ? (typeof router.query.reason === 'string' ? router.query.reason : 'error') : null;
 
   const bind = useCallback(async () => {
@@ -176,7 +177,13 @@ export default function RecipientOnboardingPage() {
         body: JSON.stringify(body),
       });
       const resBody = (await res.json().catch(() => ({}))) as { error?: string; wallet?: string };
-      if (!res.ok) throw new Error(resBody.error || 'Binding failed');
+      if (!res.ok) {
+        // The OAuth identity cookie is gone (expired, different tab, or
+        // private window). Drop back to the verify step instead of
+        // leaving the page stuck on "Identity verified".
+        if (res.status === 401 && isOAuthBind) setSessionExpired(true);
+        throw new Error(resBody.error || 'Binding failed');
+      }
       const boundWallet = wallet ?? resBody.wallet ?? '';
       setView({ kind: 'done', wallet: boundWallet });
       setSplits((s) =>
@@ -317,6 +324,13 @@ export default function RecipientOnboardingPage() {
                         {oauthError === 'mismatch'
                           ? ': the account you logged in with does not match this share.'
                           : ', please try again.'}
+                      </p>
+                    )}
+                    {sessionExpired && (
+                      <p className="mt-3 text-xs text-[#fa6d74]">
+                        Your verification expired. Please verify with{' '}
+                        {entryPlatform === 'twitch' ? 'Twitch' : 'Reddit'} again, then
+                        connect your wallet and sign.
                       </p>
                     )}
                     {!oauthVerified && (
