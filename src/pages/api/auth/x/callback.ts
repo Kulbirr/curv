@@ -40,7 +40,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // X developer portal, not in code.
     const detail =
       me.reason === 'http-403'
-        ? 'X refused to share your profile. The Curv app needs Read permission in the X developer portal (User authentication settings).'
+        ? 'X refused to share your profile. The Curv app needs Read permission in the X developer portal (User authentication settings).' +
+          (me.detail ? ` X said: ${me.detail.replace(/</g, '&lt;')}` : '')
         : me.reason === 'http-401'
           ? 'The X session expired before we could read your profile.'
           : 'X did not respond in time.';

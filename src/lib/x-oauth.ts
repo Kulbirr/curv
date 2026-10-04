@@ -101,7 +101,7 @@ export async function exchangeCode(code: string, verifier: string): Promise<XTok
 
 export type FetchXMeResult =
   | { ok: true; user: XUser }
-  | { ok: false; reason: 'network' | 'http-401' | 'http-403' | 'http-429' | 'http-5xx' | 'http-other' | 'bad-shape' };
+  | { ok: false; reason: 'network' | 'http-401' | 'http-403' | 'http-429' | 'http-5xx' | 'http-other' | 'bad-shape'; detail?: string };
 
 export async function fetchXMe(accessToken: string): Promise<FetchXMeResult> {
   // X API is flaky; retry once on network errors or 5xx before giving up.
@@ -121,7 +121,15 @@ export async function fetchXMe(accessToken: string): Promise<FetchXMeResult> {
       return { ok: false, reason: 'network' };
     }
     if (!res.ok) {
-      console.error(`[x-oauth] fetchXMe HTTP ${res.status} (attempt ${attempt + 1})`);
+      // Capture X's error body: it usually names the real cause
+      // (missing scope, restricted app, etc). Truncated and server logged.
+      let detail = '';
+      try {
+        detail = (await res.text()).slice(0, 300);
+      } catch {
+        detail = '';
+      }
+      console.error(`[x-oauth] fetchXMe HTTP ${res.status} (attempt ${attempt + 1}): ${detail}`);
       // Retry on 5xx or 429, not on 4xx (bad token, bad scope).
       if (attempt === 0 && (res.status >= 500 || res.status === 429)) {
         await new Promise((r) => setTimeout(r, 1000));
@@ -133,7 +141,7 @@ export async function fetchXMe(accessToken: string): Promise<FetchXMeResult> {
         : res.status === 429 ? 'http-429'
         : res.status >= 500 ? 'http-5xx'
         : 'http-other';
-      return { ok: false, reason };
+      return { ok: false, reason, detail };
     }
     try {
       const j = (await res.json()) as { data?: { id?: unknown; username?: unknown } };
