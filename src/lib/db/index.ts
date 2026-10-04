@@ -273,6 +273,19 @@ CREATE TABLE IF NOT EXISTS strategy_signal_candidates (
   created_at BIGINT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_signal_candidates_status ON strategy_signal_candidates (status, created_at DESC);
+
+-- Ops alert log for production monitoring. Alerts are raised on
+-- healthy -> unhealthy transitions (deduped while unresolved) and
+-- auto-resolved on recovery. The scheduled health-check worker reads
+-- unresolved rows via /api/status; no PII, just kind + message.
+CREATE TABLE IF NOT EXISTS ops_alerts (
+  id BIGSERIAL PRIMARY KEY,
+  kind TEXT NOT NULL,
+  message TEXT NOT NULL,
+  created_at BIGINT NOT NULL,
+  resolved_at BIGINT
+);
+CREATE INDEX IF NOT EXISTS idx_ops_alerts_kind ON ops_alerts (kind, resolved_at, created_at DESC);
 `;
 
 // pg returns BIGINT (int8) columns as strings by default. Unix-ms

@@ -1,5 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { query } from '@/lib/db/index';
+import { raiseAlert, resolveAlerts } from '@/lib/db/ops-alerts';
 import { getConnection, getRpcStatus, SOLANA_NETWORK } from '@/lib/solana';
 
 export interface HealthResponse {
@@ -45,6 +46,24 @@ export default async function handler(
   const rpcLatencyMs = Date.now() - rpcStart;
 
   const ok = dbOk && rpcOk;
+
+  // Ops alert transitions, best effort: the alert log (read by the
+  // scheduled health-check worker via /api/status) must never break the
+  // probe itself. When the DB is the thing that's down, the write fails
+  // and the 503 status below remains the primary signal.
+  try {
+    if (ok) {
+      await resolveAlerts('health');
+    } else {
+      const parts: string[] = [];
+      if (!dbOk) parts.push(`db down (latency ${dbLatencyMs}ms)`);
+      if (!rpcOk) parts.push(`rpc down (latency ${rpcLatencyMs}ms)`);
+      await raiseAlert('health', parts.join('; '));
+    }
+  } catch {
+    // ignore: alerting is enrichment, the status code is the signal
+  }
+
   res.status(ok ? 200 : 503).json({
     ok,
     network: SOLANA_NETWORK,
