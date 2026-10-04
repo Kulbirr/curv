@@ -73,13 +73,24 @@ function warn(...args: unknown[]): void {
 function makeDb(): PgPool {
   const url = requiredEnv('DATABASE_URL');
   const isLocal = /(^|[@/])(localhost|127\.0\.0\.1)([:/]|$)/.test(url);
-  return new PgPool({
+  // Neon's pooler rejects `options` as a startup param; set search_path
+  // per-client instead (mirrors src/lib/db/index.ts getPool()).
+  const isNeonPooler = /-pooler\./.test(url);
+  const db = new PgPool({
     connectionString: url,
     ssl: isLocal ? false : { rejectUnauthorized: false },
-    options: '-c search_path=curv,public',
+    ...(isNeonPooler ? {} : { options: '-c search_path=curv,public' }),
     max: 2,
     connectionTimeoutMillis: 10_000,
   });
+  if (isNeonPooler) {
+    db.on('connect', (client) => {
+      client.query('SET search_path = curv, public').catch((err) => {
+        warn('failed to set search_path on new client', err);
+      });
+    });
+  }
+  return db;
 }
 
 function loadVaultKeypair(): Keypair {
