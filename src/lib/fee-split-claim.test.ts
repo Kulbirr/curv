@@ -6,7 +6,7 @@ import {
   createCloseAccountInstruction,
   getAssociatedTokenAddressSync,
 } from '@solana/spl-token';
-import { buildClaimAndSplitTransactions, planDistribution } from './fee-split-claim';
+import { buildClaimAndSplitTransactions, planBuyback, planDistribution } from './fee-split-claim';
 import type { FeeSplitRecipient } from './fee-split-terms';
 
 vi.mock('./pool-state', () => ({
@@ -88,6 +88,44 @@ describe('planDistribution', () => {
     const rs = recipients(1, 1); // 0.01%
     const plan = planDistribution('100', '200', rs);
     expect(plan).toHaveLength(0);
+  });
+});
+
+describe('planBuyback', () => {
+  const vault = Keypair.generate().publicKey.toBase58();
+
+  it('takes the committed bps of the creator remainder, not the gross', () => {
+    // Accrued 1.0 base / 2.0 quote, creator keeps 70% (0.7/1.4),
+    // buyback commits 50% of that remainder.
+    const plan = planBuyback('1000000000', '2000000000', 7000, 5000, vault);
+    expect(plan).not.toBeNull();
+    expect(plan!.baseRaw).toBe('350000000'); // 50% of 0.7
+    expect(plan!.quoteRaw).toBe('700000000'); // 50% of 1.4
+    expect(plan!.bps).toBe(5000);
+    expect(plan!.vault).toBe(vault);
+  });
+
+  it('leaves recipient shares untouched: remainder plus recipients never exceed gross', () => {
+    const rs = recipients(3, 1000); // 30% to recipients
+    const dist = planDistribution('1000000000', '2000000000', rs);
+    const plan = planBuyback('1000000000', '2000000000', 7000, 10_000, vault);
+    const distBase = dist.reduce((s, p) => s + BigInt(p.baseRaw), BigInt(0));
+    const remainderBase = BigInt('700000000');
+    // Even at 100% buyback of the remainder, recipients + buyback <= gross.
+    expect(distBase + BigInt(plan!.baseRaw)).toBeLessThanOrEqual(BigInt('1000000000'));
+    expect(distBase + remainderBase).toBeLessThanOrEqual(BigInt('1000000000'));
+  });
+
+  it('returns null when buyback is off or the creator keeps nothing', () => {
+    expect(planBuyback('1000000000', '2000000000', 7000, 0, vault)).toBeNull();
+    expect(planBuyback('1000000000', '2000000000', 0, 5000, vault)).toBeNull();
+    expect(planBuyback('100', '200', 7000, 1, vault)).toBeNull(); // rounds to zero
+  });
+
+  it('clamps out-of-range bps', () => {
+    const plan = planBuyback('1000000000', '2000000000', 10_000, 99_999, vault);
+    expect(plan!.bps).toBe(10_000);
+    expect(plan!.baseRaw).toBe('1000000000');
   });
 });
 
@@ -266,5 +304,46 @@ describe('buildClaimAndSplitTransactions', () => {
     // No recipients: creator keeps 100%, caps equal full accrued.
     expect(last.maxBaseAmount).toBe(BigInt(1_000_000_000));
     expect(last.maxQuoteAmount).toBe(BigInt(2_000_000_000));
+  });
+
+  it('forwards the buyback slice to the vault when buybackBps is set', async () => {
+    const vault = wallet();
+    process.env.NEXT_PUBLIC_BUYBACK_VAULT_WALLET = vault;
+    try {
+      const tracked = { ...makeTracked(), buybackBps: 2500 }; // 25% of remainder
+      const build = await buildClaimAndSplitTransactions({
+        connection: makeConnection({ accountExists: true }),
+        tracked,
+        recipients: [],
+      });
+      // No recipients: creator remainder is the full 1.0/2.0, buyback
+      // takes 25% of it: 0.25 base / 0.5 quote.
+      expect(build.buyback).not.toBeNull();
+      expect(build.buyback!.bps).toBe(2500);
+      expect(build.buyback!.baseRaw).toBe('250000000');
+      expect(build.buyback!.quoteRaw).toBe('500000000');
+      expect(build.buyback!.vault).toBe(vault);
+      // The claim caps are unchanged: the buyback slice is part of the
+      // creator remainder, claimed then forwarded.
+      const { buildClaimCreatorFeesTx } = await import('./claim-creator-fees');
+      const calls = vi.mocked(buildClaimCreatorFeesTx).mock.calls;
+      const last = calls[calls.length - 1][0] as {
+        maxBaseAmount: bigint;
+        maxQuoteAmount: bigint;
+      };
+      expect(last.maxBaseAmount).toBe(BigInt(1_000_000_000));
+      expect(last.maxQuoteAmount).toBe(BigInt(2_000_000_000));
+    } finally {
+      delete process.env.NEXT_PUBLIC_BUYBACK_VAULT_WALLET;
+    }
+  });
+
+  it('reports no buyback when buybackBps is unset', async () => {
+    const build = await buildClaimAndSplitTransactions({
+      connection: makeConnection({ accountExists: true }),
+      tracked: makeTracked(),
+      recipients: [],
+    });
+    expect(build.buyback).toBeNull();
   });
 });

@@ -147,6 +147,19 @@ CREATE TABLE IF NOT EXISTS fee_splits (
   created_at BIGINT NOT NULL
 );
 
+-- Buyback and burn ledger. Append-only: one row per executed burn.
+-- The keeper claims the buyback slice of creator fees, swaps it for the
+-- base token via Jupiter, and burns. Immutable once written.
+CREATE TABLE IF NOT EXISTS buyback_burns (
+  id SERIAL PRIMARY KEY,
+  pool_address TEXT NOT NULL,
+  tx_signature TEXT NOT NULL UNIQUE,
+  quote_amount_raw TEXT NOT NULL,
+  base_amount_raw TEXT NOT NULL,
+  burned_at BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_buyback_burns_pool ON buyback_burns (pool_address, burned_at DESC);
+
 -- Wallet bindings for fee split entries, written through the recipient
 -- onboarding links. One row per (pool, entry), first valid signature
 -- wins: the INSERT uses ON CONFLICT DO NOTHING and the application
@@ -620,6 +633,9 @@ export function ensureSchema(db?: DbClient): Promise<void> {
       // Column added after the pools table already existed in
       // production: backfill it idempotently on every schema check.
       await client.query('ALTER TABLE pools ADD COLUMN IF NOT EXISTS dev_buy_lamports BIGINT');
+      // Buyback and burn: basis points (0-10000) of the creator fee share
+      // committed to automatic buyback and burn at launch. Immutable.
+      await client.query('ALTER TABLE pools ADD COLUMN IF NOT EXISTS buyback_bps INTEGER NOT NULL DEFAULT 0');
       // AI approval columns added when the signal approval pipeline
       // shipped: older strategy_signals rows predate the pipeline.
       await client.query('ALTER TABLE strategy_signals ADD COLUMN IF NOT EXISTS ai_approved BIGINT NOT NULL DEFAULT 0');

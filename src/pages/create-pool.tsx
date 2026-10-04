@@ -307,6 +307,7 @@ export default function CreatePool() {
     Array<{ wallet: string; percent: string; handle: string }>
   >([])
   const [devBuy, setDevBuy] = useState('')
+  const [buybackPct, setBuybackPct] = useState('0')
   const [launchError, setLaunchError] = useState<string | null>(null)
   const [txSig, setTxSig] = useState<string | null>(null)
   const [launchedPool, setLaunchedPool] = useState<string | null>(null)
@@ -1127,12 +1128,14 @@ export default function CreatePool() {
           )
         }
       }
+      const buybackBps = Math.round(parseFloat(buybackPct || '0') * 100) || 0
       const message = buildRegistrationMessage(
         poolAddr,
         publicKey.toBase58(),
         timestamp,
         normalizedSplits,
-        devBuyLamports
+        devBuyLamports,
+        buybackBps || undefined
       )
       if (!signMessage) throw new Error('Connected wallet cannot sign messages')
       let sigBytes: Uint8Array
@@ -1168,6 +1171,7 @@ export default function CreatePool() {
           launchedAt: timestamp,
           feeSplits: normalizedSplits ?? undefined,
           devBuyLamports: devBuyLamports ?? undefined,
+          buybackBps: Math.round(parseFloat(buybackPct || '0') * 100) || 0,
         }),
       })
       if (!regRes.ok) {
@@ -2492,6 +2496,73 @@ export default function CreatePool() {
                     collaborators and keep{' '}
                     <strong>{((10000 - splitPreview.totalBps) / 100).toFixed(2)}%</strong>.
                     Recipients can share at most 90% in total.
+                  </>
+                )}
+              </p>
+            </section>
+
+            {/* ---- Buyback and burn: creator commits a slice of fees ---- */}
+            <section
+              className="sc-builder-section"
+              aria-labelledby="sc-buyback-heading"
+            >
+              <div className="sc-builder-section-head">
+                <span className="sc-section-glyph">♻</span>
+                <div>
+                  <h2 id="sc-buyback-heading">Buyback and burn</h2>
+                  <p>
+                    Commit a share of your creator fees to automatically buy
+                    back and burn the token. Locked at launch and public
+                    forever.
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {(['0', '10', '25', '50', '100'] as const).map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => setBuybackPct(v)}
+                    aria-pressed={buybackPct === v}
+                    className={cn(
+                      'rounded-full border px-5 py-2.5 text-sm font-semibold transition-colors',
+                      buybackPct === v
+                        ? 'border-[#32f27b]/60 bg-[#32f27b]/10 text-[#32f27b]'
+                        : 'border-neutral-800 bg-neutral-950 text-neutral-300 hover:border-neutral-600'
+                    )}
+                  >
+                    {v === '0' ? 'Off' : `${v}%`}
+                  </button>
+                ))}
+              </div>
+              <div className="mt-3 flex items-center gap-3">
+                <label htmlFor="buyback-custom" className="text-sm text-neutral-400 shrink-0">
+                  Custom
+                </label>
+                <input
+                  id="buyback-custom"
+                  inputMode="decimal"
+                  value={buybackPct}
+                  onChange={(e) => {
+                    const v = e.target.value.replace(/[^0-9.]/g, '');
+                    const n = parseFloat(v);
+                    if (v === '' || (Number.isFinite(n) && n >= 0 && n <= 100)) {
+                      setBuybackPct(v);
+                    }
+                  }}
+                  placeholder="98"
+                  className="w-24 rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm font-semibold text-neutral-100 outline-none focus:border-[#32f27b]/50"
+                />
+                <span className="text-sm text-neutral-500">% of your fee share</span>
+              </div>
+              <p className="sc-split-summary">
+                {buybackPct === '0' ? (
+                  'Buyback is off. You keep your full creator fee share.'
+                ) : (
+                  <>
+                    <strong>{buybackPct}%</strong> of your creator fee share
+                    automatically buys back and burns the token. Every trade
+                    makes the remaining supply scarcer.
                   </>
                 )}
               </p>

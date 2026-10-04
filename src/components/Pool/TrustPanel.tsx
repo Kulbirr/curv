@@ -24,6 +24,8 @@ interface TrustResponse {
   freezeAuthority: 'none' | 'held' | null;
   /** Optional dev buy in quote lamports, disclosed by the creator at launch. */
   devBuyLamports: number | null;
+  /** Buyback and burn commitment in bps (0-10000). 0 = off. */
+  buybackBps: number;
   /** Quote decimals for rendering the dev buy amount. Null when unknown. */
   quoteDecimals: number | null;
   lock: { allLocked: boolean; positionCount: number } | null;
@@ -62,6 +64,38 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
     <div>
       <span>{label}</span>
       <strong>{children}</strong>
+    </div>
+  );
+}
+
+interface BurnStats {
+  totalBurns: number;
+  lastBurnAt: number | null;
+}
+
+function BurnStatsDisplay({ poolAddress }: { poolAddress: string }) {
+  const query = useQuery<{ stats: BurnStats }>({
+    queryKey: ['pool-burns', poolAddress],
+    queryFn: () => fetchJson<{ stats: BurnStats }>(`/api/pools/${poolAddress}/burns`),
+    enabled: !!poolAddress,
+    staleTime: 60_000,
+    retry: 1,
+  });
+  const stats = query.data?.stats;
+  if (!stats || stats.totalBurns === 0) return null;
+  return (
+    <div className="mt-3 rounded-lg border border-white/10 bg-white/[2%] p-4">
+      <p className="text-xs font-semibold uppercase tracking-wide text-neutral-400">
+        Burns so far
+      </p>
+      <p className="mt-1 text-lg font-bold text-neutral-100">
+        {stats.totalBurns} {stats.totalBurns === 1 ? 'burn' : 'burns'}
+      </p>
+      {stats.lastBurnAt && (
+        <p className="mt-1 text-xs text-neutral-500">
+          Last burn {new Date(stats.lastBurnAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+        </p>
+      )}
     </div>
   );
 }
@@ -108,6 +142,26 @@ export default function TrustPanel({ poolAddress }: { poolAddress: string }) {
             The creator bought this in the launch flow. It is public from
             block one.
           </p>
+        </div>
+      )}
+      {t.buybackBps > 0 && (
+        <div className="mb-3 rounded-lg border border-[#32f27b]/40 bg-[#32f27b]/5 p-4">
+          <div className="flex items-center gap-2">
+            <span className="sc-section-glyph" aria-hidden="true">
+              ♻
+            </span>
+            <span className="text-xs font-semibold uppercase tracking-wide text-neutral-400">
+              Buyback and burn
+            </span>
+          </div>
+          <p className="mt-2 text-xl font-bold text-[#32f27b]">
+            {(t.buybackBps / 100).toFixed(0)}% of creator fees
+          </p>
+          <p className="mt-1 text-xs leading-relaxed text-neutral-500">
+            Automatically buys back and burns the token. Locked at launch,
+            every trade makes the supply scarcer.
+          </p>
+          <BurnStatsDisplay poolAddress={poolAddress} />
         </div>
       )}
       <Row label="Launch record">

@@ -33,6 +33,7 @@ export function buildRegistrationMessage(
   timestamp: number,
   feeSplits?: FeeSplitRecipient[],
   devBuyLamports?: number | null,
+  buybackBps?: number | null,
 ): string {
   const lines = [
     'StockCurve pool registration',
@@ -46,6 +47,9 @@ export function buildRegistrationMessage(
   // server stores exactly what the creator committed, and the trust
   // panel can show it from block one.
   if (devBuyLamports) lines.push(`dev buy: ${devBuyLamports} lamports`);
+  // The buyback and burn commitment. Bound into the signature so it is
+  // immutable and publicly verifiable from launch.
+  if (buybackBps) lines.push(`buyback: ${buybackBps} bps`);
   return lines.join('\n');
 }
 

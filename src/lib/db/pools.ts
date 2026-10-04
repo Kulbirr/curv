@@ -36,6 +36,12 @@ export interface TrackedPool {
    */
   devBuyLamports?: number;
   /**
+   * Buyback and burn commitment: basis points (0-10000) of the creator fee
+   * share committed to automatic buyback and burn. Set once at launch,
+   * immutable after. 0 = feature off.
+   */
+  buybackBps?: number;
+  /**
    * True only when every submitted field (config, creator, baseMint,
    * quoteMint) matched the on-chain accounts at registration time.
    * False when the RPC was unreachable during registration (honest
@@ -62,6 +68,7 @@ interface PoolRow {
   launched_at: number | null;
   verified: number;
   dev_buy_lamports: number | null;
+  buyback_bps: number | null;
 }
 
 function rowToPool(r: PoolRow): TrackedPool {
@@ -82,6 +89,7 @@ function rowToPool(r: PoolRow): TrackedPool {
     launchedAt: r.launched_at ?? undefined,
     verified: r.verified === 1,
     devBuyLamports: r.dev_buy_lamports ?? undefined,
+    buybackBps: r.buyback_bps ?? 0,
   };
 }
 
@@ -163,6 +171,13 @@ export async function insertPool(input: RegisterPoolInput): Promise<TrackedPool>
       input.devBuyLamports > 0
         ? input.devBuyLamports
         : undefined,
+    buybackBps:
+      typeof input.buybackBps === 'number' &&
+      Number.isInteger(input.buybackBps) &&
+      input.buybackBps >= 0 &&
+      input.buybackBps <= 10000
+        ? input.buybackBps
+        : 0,
   };
   if (!entry.baseSymbol) throw new Error('baseSymbol is required');
   if (!entry.baseName) throw new Error('baseName is required');
@@ -177,8 +192,8 @@ export async function insertPool(input: RegisterPoolInput): Promise<TrackedPool>
       `INSERT INTO pools
        (pool_address, config_address, base_mint, quote_mint, base_symbol, base_name,
         quote_symbol, description, image_url, website, twitter, creator,
-        created_at, launched_at, verified, dev_buy_lamports)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
+        created_at, launched_at, verified, dev_buy_lamports, buyback_bps)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
       [
         entry.poolAddress,
         entry.configAddress,
@@ -196,6 +211,7 @@ export async function insertPool(input: RegisterPoolInput): Promise<TrackedPool>
         entry.launchedAt ?? null,
         entry.verified ? 1 : 0,
         entry.devBuyLamports ?? null,
+        entry.buybackBps ?? 0,
       ],
     );
     return entry;

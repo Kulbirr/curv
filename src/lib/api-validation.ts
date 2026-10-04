@@ -101,6 +101,13 @@ export interface RegistrationInput {
    * stored value is exactly what the creator committed.
    */
   devBuyLamports?: number;
+  /**
+   * Buyback and burn commitment: basis points (0-10000) of the creator fee
+   * share committed to automatic buyback and burn. Bound into the signed
+   * registration message so the stored value is exactly what the creator
+   * committed. Immutable after launch.
+   */
+  buybackBps?: number;
 }
 
 export type ValidationResult<T> = { ok: true; value: T } | { ok: false; error: string };
@@ -178,6 +185,17 @@ export function validateRegistrationBody(body: unknown): ValidationResult<Regist
       devBuyLamports = n;
     }
 
+    // Buyback bps is bound into the signed registration message, so a
+    // forged value fails signature verification.
+    let buybackBps = 0;
+    if (b.buybackBps !== undefined && b.buybackBps !== null) {
+      const n = Number(b.buybackBps);
+      if (!Number.isInteger(n) || n < 0 || n > 10000) {
+        return fail('buybackBps must be an integer between 0 and 10000');
+      }
+      buybackBps = n;
+    }
+
     return {
       ok: true,
       value: {
@@ -198,6 +216,7 @@ export function validateRegistrationBody(body: unknown): ValidationResult<Regist
         launchedAt,
         feeSplits,
         devBuyLamports,
+        buybackBps,
       },
     };
   } catch (e) {

@@ -116,6 +116,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     quoteSymbol: tracked.quoteSymbol,
     quoteDecimals,
     devBuyLamports: tracked.devBuyLamports ?? null,
+    buybackBps: tracked.buybackBps ?? 0,
     graduated,
     mintAuthority,
     freezeAuthority,

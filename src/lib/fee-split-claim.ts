@@ -18,6 +18,7 @@ import { splitShareRaw } from './fee-split-terms';
 import { BPS_TOTAL } from './fee-split-terms';
 import type { EffectiveFeeSplitRecipient, FeeSplitBinding, FeeSplitRecipient } from './fee-split-terms';
 import { resolveEffectiveRecipients } from './fee-split-terms';
+import { platformFeeWallet } from './launch';
 
 /**
  * The DBC SDK appends an unwrap (CloseAccount) of the creator's wSOL ATA
@@ -52,6 +53,11 @@ function isWsolUnwrapOf(ix: TransactionInstruction, wsolAta: PublicKey): boolean
  * transactions signed in the same wallet session, immediately after
  * the claim. Shares are computed from a fresh on chain read of the
  * accrued fees, floored, so payouts can never exceed the claim.
+ *
+ * Buyback and burn: when the pool was launched with buyback_bps, the
+ * creator's committed share of their remainder is forwarded to the
+ * buyback vault in the same atomic flow. Recipients are unaffected:
+ * their bps still apply to the gross accrued fee.
  */
 
 export interface SplitPayout {
@@ -98,6 +104,63 @@ export function planDistribution(
   return out;
 }
 
+export interface BuybackPlan {
+  /** Basis points of the creator remainder committed to buyback, 0 when off. */
+  bps: number;
+  baseRaw: string;
+  quoteRaw: string;
+  /** Vault wallet the buyback slice is forwarded to. */
+  vault: string;
+}
+
+/**
+ * Pure buyback plan: the buyback slice of a claim.
+ *
+ * Semantics, kept consistent with fee-split-terms: recipients take
+ * their bps of the GROSS accrued fee, untouched. The buyback_bps the
+ * creator committed at launch applies to the creator's REMAINDER
+ * (gross minus recipient shares), never to the gross, so recipient
+ * math is unaffected and the parts can never exceed the whole.
+ * The creator nets the remainder minus the buyback slice.
+ */
+export function planBuyback(
+  accruedBaseRaw: string | null | undefined,
+  accruedQuoteRaw: string | null | undefined,
+  creatorBps: number,
+  buybackBps: number,
+  vault: string,
+): BuybackPlan | null {
+  const bps = Math.max(0, Math.min(10_000, Math.floor(buybackBps)));
+  if (bps <= 0 || creatorBps <= 0) return null;
+  const remainderBase = splitShareRaw(accruedBaseRaw, creatorBps);
+  const remainderQuote = splitShareRaw(accruedQuoteRaw, creatorBps);
+  const baseRaw = splitShareRaw(remainderBase, bps);
+  const quoteRaw = splitShareRaw(remainderQuote, bps);
+  if (baseRaw === '0' && quoteRaw === '0') return null;
+  return { bps, baseRaw, quoteRaw, vault };
+}
+
+/**
+ * The wallet that collects buyback slices. The vault address is public
+ * (it only receives funds), so it may come from a NEXT_PUBLIC_ var for
+ * the client claim flow; the server keeper uses the same address.
+ * Falls back to the platform fee wallet when no dedicated vault is set.
+ */
+export function resolveBuybackVault(): PublicKey | null {
+  const raw =
+    process.env.NEXT_PUBLIC_BUYBACK_VAULT_WALLET?.trim() ||
+    process.env.BUYBACK_VAULT_WALLET?.trim() ||
+    '';
+  if (raw) {
+    try {
+      return new PublicKey(raw);
+    } catch {
+      // Fall through to the fee wallet below.
+    }
+  }
+  return platformFeeWallet();
+}
+
 const TX_SIZE_BUDGET = 1200; // legacy transactions cap at 1232 bytes
 
 function txSize(tx: Transaction): number {
@@ -107,6 +170,8 @@ function txSize(tx: Transaction): number {
 export interface ClaimAndSplitBuild {
   transactions: Transaction[];
   distribution: SplitPayout[];
+  /** The buyback slice forwarded to the vault, null when the pool has none. */
+  buyback: BuybackPlan | null;
   accruedBaseRaw: string | null;
   accruedQuoteRaw: string | null;
 }
@@ -139,6 +204,21 @@ export async function buildClaimAndSplitTransactions(args: {
   const capQuote =
     sumRaw('quoteRaw') + BigInt(splitShareRaw(accruedQuote, creatorBps));
 
+  // Buyback and burn diversion: when the creator committed buyback_bps
+  // at launch, that share of the creator remainder is forwarded to the
+  // buyback vault in the same atomic flow. The claim caps above are
+  // unchanged: the buyback slice is part of what the creator receives,
+  // then forwarded. Recipient math is untouched.
+  const buybackBps = Math.max(0, Math.min(10_000, Math.floor(tracked.buybackBps ?? 0)));
+  let buyback: BuybackPlan | null = null;
+  if (buybackBps > 0 && creatorBps > 0) {
+    const vault = resolveBuybackVault();
+    if (!vault) {
+      throw new Error('Buyback is enabled for this pool but no buyback vault is configured');
+    }
+    buyback = planBuyback(accruedBase, accruedQuote, creatorBps, buybackBps, vault.toBase58());
+  }
+
   const claimTx = await buildClaimCreatorFeesTx({
     poolAddress: tracked.poolAddress,
     creator: tracked.creator,
@@ -159,7 +239,9 @@ export async function buildClaimAndSplitTransactions(args: {
   // claim is untouched, so a plain claim still pays native SOL.
   const quoteMintPk = new PublicKey(tracked.quoteMint);
   const owesSolPayouts =
-    quoteMintPk.equals(NATIVE_MINT) && distribution.some((p) => BigInt(p.quoteRaw) > BigInt(0));
+    quoteMintPk.equals(NATIVE_MINT) &&
+    (distribution.some((p) => BigInt(p.quoteRaw) > BigInt(0)) ||
+      (buyback !== null && BigInt(buyback.quoteRaw) > BigInt(0)));
   const claimInstructions = owesSolPayouts
     ? claimTx.instructions.filter(
         (ix) => !isWsolUnwrapOf(ix, getAssociatedTokenAddressSync(NATIVE_MINT, creator)),
@@ -200,9 +282,32 @@ export async function buildClaimAndSplitTransactions(args: {
     }
   }
 
+  // Buyback diversion, packed like any other payout: the creator's
+  // committed slice goes to the vault wallet in the same atomic flow.
+  // The keeper later swaps it for the base token and burns.
+  if (buyback) {
+    const vault = new PublicKey(buyback.vault);
+    const legs: Array<{ mint: PublicKey; raw: string }> = [
+      { mint: baseMint, raw: buyback.baseRaw },
+      { mint: quoteMint, raw: buyback.quoteRaw },
+    ];
+    for (const leg of legs) {
+      const amount = BigInt(leg.raw);
+      if (amount <= BigInt(0)) continue;
+      const source = getAssociatedTokenAddressSync(leg.mint, creator);
+      const dest = getAssociatedTokenAddressSync(leg.mint, vault);
+      const destInfo = await connection.getAccountInfo(dest);
+      if (!destInfo) {
+        pushIx(createAssociatedTokenAccountInstruction(creator, dest, vault, leg.mint));
+      }
+      pushIx(createTransferInstruction(source, dest, creator, amount));
+    }
+  }
+
   return {
     transactions,
     distribution,
+    buyback,
     accruedBaseRaw: live.creatorBaseFeeRaw,
     accruedQuoteRaw: live.creatorQuoteFeeRaw,
   };
@@ -220,7 +325,7 @@ export async function claimAndSplitFlow(args: {
   tracked: TrackedPool;
   recipients: FeeSplitRecipient[];
   bindings?: FeeSplitBinding[];
-}): Promise<{ signatures: string[]; distribution: SplitPayout[] }> {
+}): Promise<{ signatures: string[]; distribution: SplitPayout[]; buyback: BuybackPlan | null }> {
   const build = await buildClaimAndSplitTransactions({
     connection: args.connection,
     tracked: args.tracked,
@@ -252,5 +357,5 @@ export async function claimAndSplitFlow(args: {
     signatures.push(signature);
   }
 
-  return { signatures, distribution: build.distribution };
+  return { signatures, distribution: build.distribution, buyback: build.buyback };
 }
