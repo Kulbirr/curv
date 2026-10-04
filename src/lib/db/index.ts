@@ -361,12 +361,18 @@ let testSchemaName: string | null = null;
 export function getPool(): Pool {
   if (!pool) {
     const cs = connectionString();
+    // Neon's pooled connections reject the `options` startup parameter
+    // (unsupported startup parameter in options). Detect the pooler
+    // hostname and set search_path per-client instead.
+    const isNeonPooler = /-pooler\./.test(cs);
     pool = new Pool({
       connectionString: cs,
       ssl: sslFor(cs),
       // Curv tables live in the curv schema (shared host); unqualified
       // names resolve there first, public stays untouched.
-      options: '-c search_path=curv,public',
+      // Skipped on Neon pooler (it rejects `options`); search_path is set
+      // via SET on each new client below instead.
+      ...(isNeonPooler ? {} : { options: '-c search_path=curv,public' }),
       // Small pool: serverless instances multiply connections, and
       // managed Postgres tiers cap them. PG_IDLE_TIMEOUT_MS lets
       // long-lived workers (e.g. the vanity grinder) keep connections
@@ -375,6 +381,15 @@ export function getPool(): Pool {
       idleTimeoutMillis: numEnv('PG_IDLE_TIMEOUT_MS', 10_000),
       connectionTimeoutMillis: 10_000,
     });
+    if (isNeonPooler) {
+      // Neon's pooler ignores `options`; set search_path on each new
+      // client so unqualified table names still resolve to the curv schema.
+      pool.on('connect', (client) => {
+        client.query('SET search_path = curv, public').catch((err) => {
+          console.error('[db] failed to set search_path on new client', err);
+        });
+      });
+    }
     pool.on('error', (err) => console.error('[db] unexpected pool error', err));
   }
   return pool;
