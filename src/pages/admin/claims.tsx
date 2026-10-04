@@ -4,8 +4,14 @@ import { useWallet, useUnifiedWalletContext } from '@jup-ag/wallet-adapter';
 import Page from '@/components/ui/Page/Page';
 import CurvyLoader from '@/components/CurvyLoader';
 import { getConnection } from '@/lib/solana';
+import { formatFeeRaw } from '@/lib/claim-creator-fees';
 
 const FEE_WALLET = process.env.NEXT_PUBLIC_CURV_FEE_WALLET ?? '';
+
+// Brand green, matching the header wallet button (.sc-wallet): bg-primary in
+// dark mode is a pale lime, not the vivid brand green.
+const BTN =
+  'rounded-lg bg-[#32f27b] px-4 py-2 text-xs font-semibold text-[#06150b] hover:bg-[#78f5a5] disabled:opacity-50';
 
 type ClaimKind = 'trading' | 'migration' | 'creation';
 
@@ -19,6 +25,7 @@ interface PoolRow {
 interface Claimable {
   baseRaw: string | null;
   quoteRaw: string | null;
+  quoteDecimals: number;
 }
 
 function shortAddr(a: string) {
@@ -61,7 +68,14 @@ export default function AdminClaimsPage() {
               const r = await fetch(`/api/claims/partner/claimable?poolAddress=${p.poolAddress}`);
               if (!r.ok) return [p.poolAddress, null] as const;
               const j = await r.json();
-              return [p.poolAddress, { baseRaw: j.baseRaw ?? null, quoteRaw: j.quoteRaw ?? null }] as const;
+              return [
+                p.poolAddress,
+                {
+                  baseRaw: j.baseRaw ?? null,
+                  quoteRaw: j.quoteRaw ?? null,
+                  quoteDecimals: typeof j.quoteDecimals === 'number' ? j.quoteDecimals : 9,
+                },
+              ] as const;
             } catch {
               return [p.poolAddress, null] as const;
             }
@@ -131,7 +145,11 @@ export default function AdminClaimsPage() {
           const j = await r.json();
           setClaimables((prev) => ({
             ...prev,
-            [poolAddress]: { baseRaw: j.baseRaw ?? null, quoteRaw: j.quoteRaw ?? null },
+            [poolAddress]: {
+              baseRaw: j.baseRaw ?? null,
+              quoteRaw: j.quoteRaw ?? null,
+              quoteDecimals: typeof j.quoteDecimals === 'number' ? j.quoteDecimals : 9,
+            },
           }));
         }
       } catch (e) {
@@ -158,7 +176,7 @@ export default function AdminClaimsPage() {
             <p className="text-sm text-muted-foreground">Connect the fee wallet to continue.</p>
             <button
               onClick={() => setShowModal(true)}
-              className="mt-4 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90"
+              className="mt-4 rounded-lg bg-[#32f27b] px-5 py-2.5 text-sm font-semibold text-[#06150b] hover:bg-[#78f5a5]"
             >
               Connect wallet
             </button>
@@ -204,13 +222,21 @@ export default function AdminClaimsPage() {
                         {p.graduated ? ' · graduated' : ''}
                       </p>
                     </div>
-                    <div className="text-right font-mono text-xs text-muted-foreground">
+                    <div className="text-right text-xs text-muted-foreground">
                       {c === undefined ? (
                         '…'
                       ) : hasClaimable(c) ? (
                         <>
-                          {c!.baseRaw && c!.baseRaw !== '0' && <div>base: {c!.baseRaw}</div>}
-                          {c!.quoteRaw && c!.quoteRaw !== '0' && <div>quote: {c!.quoteRaw}</div>}
+                          {c!.quoteRaw && c!.quoteRaw !== '0' && (
+                            <div className="font-semibold text-foreground">
+                              {formatFeeRaw(c!.quoteRaw, c!.quoteDecimals) ?? '…'} {p.quoteSymbol ?? ''}
+                            </div>
+                          )}
+                          {c!.baseRaw && c!.baseRaw !== '0' && (
+                            <div>
+                              {formatFeeRaw(c!.baseRaw, 9) ?? '…'} {p.baseSymbol ?? ''}
+                            </div>
+                          )}
                         </>
                       ) : (
                         'nothing to claim'
@@ -228,7 +254,7 @@ export default function AdminClaimsPage() {
                             key={kind}
                             disabled={claiming !== null}
                             onClick={() => claim(p.poolAddress, kind)}
-                            className="rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                            className={BTN}
                           >
                             {claiming === k ? 'Claiming…' : `Claim ${kind}`}
                           </button>
