@@ -361,7 +361,7 @@ export default function CreatorEarnings({
               </strong>
               <br />
               Their shares stay in the pool until they open their invite
-              link and bind a wallet. Share their invite
+              link and complete verification. Share their invite
               links below so they can claim.
             </div>
           );
@@ -369,10 +369,11 @@ export default function CreatorEarnings({
 
       {hasSplits && (
         <div className="sc-split-plan" aria-label="Invite collaborators">
-          <div className="sc-trade-card-label">Invite collaborators to bind their wallets</div>
+          <div className="sc-trade-card-label">Invite collaborators to claim their shares</div>
           <p className="sc-fee-split-note">
-            Share each link with the right person. They connect their wallet and sign once to bind
-            it to their share. The first valid signature wins and a binding cannot be changed later.
+            Share each link with the right person. If they gave a wallet at launch it is already
+            locked in. With just an X handle, they post a tweet with their claim code and wallet
+            address, and we bind the wallet named in the tweet. A binding cannot be changed later.
           </p>
           {splits.map((r, i) => {
             const link = `${typeof window !== 'undefined' ? window.location.origin : ''}/claim/onboard/${poolAddress}/${i}`;
