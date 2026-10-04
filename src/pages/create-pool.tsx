@@ -2416,9 +2416,11 @@ export default function CreatePool() {
               <div className="sc-x-claim-callout">
                 <span className="sc-x-claim-badge">X</span>
                 <p>
-                  <strong>No wallet needed to add someone.</strong> Just enter
-                  their X handle. They claim their share later by logging in
-                  with X and binding a wallet. Unclaimed shares stay with you.
+                  <strong>Add a wallet to lock a share to it.</strong> Paste the
+                  recipient's Solana address and only that wallet can ever claim
+                  it. With just an X handle and no wallet, whoever opens the
+                  invite link first claims it, so share the link privately.
+                  Unclaimed shares stay with you.
                 </p>
               </div>
               {splitRows.map((row, i) => (
@@ -2431,7 +2433,7 @@ export default function CreatePool() {
                           rs.map((r, j) => (j === i ? { ...r, wallet: e.target.value } : r))
                         )
                       }
-                      placeholder="Solana address, or leave empty with an X handle"
+                      placeholder="Solana address, locks this share to that wallet"
                       spellCheck={false}
                       autoComplete="off"
                     />

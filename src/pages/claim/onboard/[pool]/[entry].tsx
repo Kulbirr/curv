@@ -35,11 +35,6 @@ interface TrustResponse {
   quoteSymbol?: string;
 }
 
-interface XSessionResponse {
-  configured: boolean;
-  user: { xUserId: string; username: string } | null;
-}
-
 type View =
   | { kind: 'loading' }
   | { kind: 'invalid'; message: string }
@@ -67,21 +62,12 @@ function formatRaw(raw: string | null | undefined, decimals: number): string | n
   }
 }
 
-function XLogo({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true">
-      <path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z" />
-    </svg>
-  );
-}
-
 export default function RecipientOnboardingPage() {
   const router = useRouter();
   const { publicKey, connected, signMessage } = useWallet();
   const { setShowModal } = useUnifiedWalletContext();
   const [splits, setSplits] = useState<FeeSplitsResponse | null>(null);
   const [trust, setTrust] = useState<TrustResponse | null>(null);
-  const [xSession, setXSession] = useState<XSessionResponse | null>(null);
   const [view, setView] = useState<View>({ kind: 'loading' });
 
   const pool = typeof router.query.pool === 'string' ? router.query.pool : null;
@@ -96,10 +82,9 @@ export default function RecipientOnboardingPage() {
     let cancelled = false;
     (async () => {
       try {
-        const [sRes, tRes, xRes] = await Promise.all([
+        const [sRes, tRes] = await Promise.all([
           fetch(`/api/pools/${pool}/fee-splits`),
           fetch(`/api/pools/${pool}/trust`),
-          fetch('/api/auth/x/session'),
         ]);
         if (!sRes.ok) throw new Error('Pool not found or has no fee splits');
         const sJson = (await sRes.json()) as FeeSplitsResponse;
@@ -108,9 +93,6 @@ export default function RecipientOnboardingPage() {
         if (tRes.ok) {
           const tJson = (await tRes.json()) as TrustResponse;
           if (!cancelled) setTrust(tJson);
-        }
-        if (xRes.ok && !cancelled) {
-          setXSession((await xRes.json()) as XSessionResponse);
         }
         const entry = sJson.recipients[entryIndex];
         if (!entry) {
@@ -145,13 +127,7 @@ export default function RecipientOnboardingPage() {
   const sharePct = entry ? (entry.bps / 100).toFixed(2) : '';
   const tokenName = trust?.baseName || trust?.baseSymbol || 'this token';
   const quoteSymbol = trust?.quoteSymbol || 'quote';
-  const needsX = !!entry?.handle && !entry.wallet;
-  const xUser = xSession?.user ?? null;
-  const xMismatch =
-    needsX && xUser && entry?.handle
-      ? xUser.username.toLowerCase() !== entry.handle.toLowerCase()
-      : false;
-  const xVerified = needsX && xUser && !xMismatch;
+  const isHandleOnly = !!entry?.handle && !entry.wallet;
 
   const pendingQuote = entry
     ? formatRaw(entry.pendingQuoteRaw, splits?.accrued?.quoteDecimals ?? 6)
@@ -159,11 +135,6 @@ export default function RecipientOnboardingPage() {
   const pendingBase = entry
     ? formatRaw(entry.pendingBaseRaw, splits?.accrued?.baseDecimals ?? 9)
     : null;
-
-  const loginWithX = useCallback(() => {
-    if (!pool || entryIndex === null) return;
-    window.location.href = `/api/auth/x/login?next=${encodeURIComponent(`/claim/onboard/${pool}/${entryIndex}`)}`;
-  }, [pool, entryIndex]);
 
   const bind = useCallback(async () => {
     if (!pool || entryIndex === null || !publicKey || !signMessage) return;
@@ -203,8 +174,6 @@ export default function RecipientOnboardingPage() {
       });
     }
   }, [pool, entryIndex, publicKey, signMessage]);
-
-  const canBind = !needsX || xVerified;
 
   return (
     <Page>
@@ -259,48 +228,17 @@ export default function RecipientOnboardingPage() {
                   )}
                 </p>
 
-                {needsX && !xUser && (
+                {isHandleOnly && (
                   <div className="mt-6">
                     <p className="text-xs leading-relaxed text-neutral-500">
-                      This share is reserved for the X account {entryName}. Log in with X to prove
-                      it&apos;s you, then connect the wallet you want payouts sent to.
-                    </p>
-                    {xSession && !xSession.configured ? (
-                      <p className="mt-3 text-xs text-neutral-500">
-                        X login isn&apos;t enabled on this site yet. Ask the pool creator for the direct
-                        invite flow instead.
-                      </p>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={loginWithX}
-                        className="mt-4 inline-flex h-12 w-full items-center justify-center gap-3 rounded-full bg-neutral-50 text-sm font-bold text-black transition hover:bg-white"
-                      >
-                        <XLogo className="h-4 w-4" />
-                        Log in with X
-                      </button>
-                    )}
-                  </div>
-                )}
-
-                {xMismatch && (
-                  <div className="mt-6 rounded-2xl border border-[#fa6d74]/30 bg-[#fa6d74]/5 px-4 py-3">
-                    <p className="text-sm text-neutral-300">
-                      You&apos;re logged in as <span className="font-semibold">@{xUser!.username}</span>,
-                      but this share is reserved for{' '}
-                      <span className="font-semibold">{entryName}</span>. Switch X accounts to
-                      continue.
+                      This share is reserved for {entryName}. This invite link is your claim ticket:
+                      connect the wallet you want payouts sent to and sign once to bind it. The
+                      first binding is permanent.
                     </p>
                   </div>
                 )}
 
-                {canBind && (
-                  <div className="mt-6">
-                    {xVerified && (
-                      <p className="mb-3 inline-flex items-center gap-2 rounded-full border border-[#32f27b]/30 bg-[#32f27b]/5 px-3 py-1 text-xs font-semibold text-[#32f27b]">
-                        <XLogo className="h-3 w-3" />@{xUser!.username} verified
-                      </p>
-                    )}
+                <div className="mt-6">
                     {!connected ? (
                       <button
                         type="button"
@@ -325,7 +263,6 @@ export default function RecipientOnboardingPage() {
                       </div>
                     )}
                   </div>
-                )}
 
                 {view.kind === 'error' && (
                   <p className="mt-4 text-sm text-[#fa6d74]">{view.message}</p>

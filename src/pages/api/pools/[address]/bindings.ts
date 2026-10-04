@@ -13,7 +13,6 @@ import {
   isFreshTimestamp,
 } from '@/lib/signature-messages';
 import { verifyWalletSignature } from '@/lib/signatures';
-import { parseCookies, verifyXSession } from '@/lib/x-oauth';
 import { parseAddress } from '@/lib/api-validation';
 
 /**
@@ -26,9 +25,12 @@ import { parseAddress } from '@/lib/api-validation';
  * message, so the signature itself proves control of the destination:
  * nobody can bind someone else's entry to their own wallet. One
  * binding per entry, first valid signature wins, immutable once set.
- * A wallet cannot serve two entries in the same pool. Curv never
- * holds funds; the binding only tells the claim builder where to
- * pay an entry's share.
+ * A wallet cannot serve two entries in the same pool. Entries that
+ * were registered with a wallet can only be bound by that same wallet.
+ * Handle-only entries are claimed by whoever holds the invite link:
+ * the link itself is the claim ticket, shared privately by the creator.
+ * Curv never holds funds; the binding only tells the claim builder
+ * where to pay an entry's share.
  */
 export const config = {
   api: { bodyParser: { sizeLimit: '8kb' } },
@@ -99,22 +101,7 @@ export default async function handler(
       .json({ error: e instanceof Error ? e.message : 'Binding not allowed' });
   }
 
-  // Handle-only entries (no registered wallet) must be claimed by the
-  // X account named in the entry: the session's verified username has
-  // to match the handle. This is the anti-hijack check, first-come
-  // signatures alone cannot prove handle ownership.
   const entry = recipients[entryIndex];
-  let x: { xUserId: string; xHandle: string } | undefined;
-  if (entry?.handle && !entry.wallet) {
-    const cookies = parseCookies(req.headers.cookie);
-    const session = cookies.x_session ? verifyXSession(cookies.x_session) : null;
-    if (!session || session.xUsername.toLowerCase() !== entry.handle.toLowerCase()) {
-      return res.status(401).json({
-        error: `Log in with the X account @${entry.handle} to bind this entry`,
-      });
-    }
-    x = { xUserId: session.xUserId, xHandle: session.xUsername };
-  }
 
   const message = buildRecipientBindingMessage(
     tracked.poolAddress,
@@ -132,8 +119,7 @@ export default async function handler(
   const inserted = await insertFeeSplitBinding(
     tracked.poolAddress,
     entryIndex,
-    normalizedWallet,
-    x
+    normalizedWallet
   );
   if (!inserted) {
     return res
@@ -143,7 +129,7 @@ export default async function handler(
   // Tell the creator: someone bound, their share is now payable on the
   // next claim.
   const sharePct = entry ? (entry.bps / 100).toFixed(2) : '';
-  const who = x ? `@${x.xHandle}` : normalizedWallet.slice(0, 6) + '…';
+  const who = entry?.handle ? `@${entry.handle}` : normalizedWallet.slice(0, 6) + '…';
   await insertNotification({
     id: `split-bound-${tracked.poolAddress}-${entryIndex}-${normalizedWallet}`,
     wallet: tracked.creator,
