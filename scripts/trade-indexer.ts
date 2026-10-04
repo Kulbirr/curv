@@ -133,24 +133,48 @@ function parseTrades(
     balances.set(key, e);
   }
 
-  // owner -> { baseDelta, quoteDelta }
+  // owner -> { baseDelta, quoteDelta } (signers only)
   const deltas = new Map<string, { base: bigint; quote: bigint }>();
+  // owner -> quoteDelta for non-signers (pool vaults). Fallback for native
+  // SOL trades: the trader pays/receives lamports directly, so no wSOL token
+  // account exists for the signer. The quote vault's delta mirrors the trade.
+  const vaultQuote = new Map<string, bigint>();
   for (const [key, e] of balances) {
     const delta = e.post - e.pre;
-    if (delta === BigInt(0) || !e.owner || !signers.has(e.owner)) continue;
+    if (delta === BigInt(0) || !e.owner) continue;
     const mint = key.split(':')[1];
-    const d = deltas.get(e.owner) ?? { base: BigInt(0), quote: BigInt(0) };
-    if (mint === baseMint) d.base += delta;
-    else if (mint === quoteMint) d.quote += delta;
-    deltas.set(e.owner, d);
+    if (mint !== baseMint && mint !== quoteMint) continue;
+    if (signers.has(e.owner)) {
+      const d = deltas.get(e.owner) ?? { base: BigInt(0), quote: BigInt(0) };
+      if (mint === baseMint) d.base += delta;
+      else d.quote += delta;
+      deltas.set(e.owner, d);
+    } else if (mint === quoteMint) {
+      vaultQuote.set(e.owner, (vaultQuote.get(e.owner) ?? BigInt(0)) + delta);
+    }
+  }
+
+  // The pool's quote vault: largest absolute non-signer quote delta.
+  let vaultDelta = BigInt(0);
+  const abs = (v: bigint) => (v < BigInt(0) ? -v : v);
+  for (const v of vaultQuote.values()) {
+    if (abs(v) > abs(vaultDelta)) vaultDelta = v;
   }
 
   const out: ParsedTrade[] = [];
   for (const [wallet, d] of deltas) {
-    if (d.base > BigInt(0) && d.quote < BigInt(0)) {
-      out.push({ wallet, side: 'buy', baseAmountRaw: d.base.toString(), quoteAmountRaw: (-d.quote).toString() });
-    } else if (d.base < BigInt(0) && d.quote > BigInt(0)) {
-      out.push({ wallet, side: 'sell', baseAmountRaw: (-d.base).toString(), quoteAmountRaw: d.quote.toString() });
+    let quote = d.quote;
+    if (quote === BigInt(0) && d.base !== BigInt(0) && vaultDelta !== BigInt(0)) {
+      const aligned =
+        (d.base > BigInt(0) && vaultDelta > BigInt(0)) ||
+        (d.base < BigInt(0) && vaultDelta < BigInt(0));
+      // Trader's side mirrors the vault's.
+      if (aligned) quote = -vaultDelta;
+    }
+    if (d.base > BigInt(0) && quote < BigInt(0)) {
+      out.push({ wallet, side: 'buy', baseAmountRaw: d.base.toString(), quoteAmountRaw: (-quote).toString() });
+    } else if (d.base < BigInt(0) && quote > BigInt(0)) {
+      out.push({ wallet, side: 'sell', baseAmountRaw: (-d.base).toString(), quoteAmountRaw: quote.toString() });
     }
   }
   return out;
