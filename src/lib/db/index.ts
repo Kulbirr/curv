@@ -160,6 +160,23 @@ CREATE TABLE IF NOT EXISTS buyback_burns (
 );
 CREATE INDEX IF NOT EXISTS idx_buyback_burns_pool ON buyback_burns (pool_address, burned_at DESC);
 
+-- Buyback deposit ledger. Append-only: one row per verified buyback
+-- slice that landed in the vault. The keeper needs per-pool attribution
+-- because the vault is one shared wallet: without this ledger, two
+-- pools on the same quote mint would cannibalize one shared balance
+-- in undefined order. Deposits are recorded through the deposit API,
+-- which verifies the transfer on-chain from the claim transaction, so
+-- the client cannot inflate its pool's budget. Immutable once written.
+CREATE TABLE IF NOT EXISTS buyback_deposits (
+  id SERIAL PRIMARY KEY,
+  pool_address TEXT NOT NULL,
+  quote_mint TEXT NOT NULL,
+  amount_raw TEXT NOT NULL,
+  tx_signature TEXT NOT NULL UNIQUE,
+  created_at BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_buyback_deposits_pool ON buyback_deposits (pool_address);
+
 -- Wallet bindings for fee split entries, written through the recipient
 -- onboarding links. One row per (pool, entry), first valid signature
 -- wins: the INSERT uses ON CONFLICT DO NOTHING and the application

@@ -230,6 +230,26 @@ async function burnRecorded(db: PgPool, txSignature: string): Promise<boolean> {
   return (r.rowCount ?? 0) > 0;
 }
 
+/**
+ * A pool's sweepable budget: verified buyback deposits attributed to
+ * this pool minus what the keeper already swept for it. The vault is
+ * one shared wallet, so without this per-pool cap two pools on the
+ * same quote mint would cannibalize one shared balance. BigInt math,
+ * never negative.
+ */
+async function getSweepBudget(db: PgPool, poolAddress: string): Promise<bigint> {
+  const dep = await db.query(
+    'SELECT COALESCE(SUM(amount_raw::numeric), 0) AS total FROM buyback_deposits WHERE pool_address = $1',
+    [poolAddress],
+  );
+  const brn = await db.query(
+    'SELECT COALESCE(SUM(quote_amount_raw::numeric), 0) AS total FROM buyback_burns WHERE pool_address = $1',
+    [poolAddress],
+  );
+  const budget = BigInt(dep.rows[0].total) - BigInt(brn.rows[0].total);
+  return budget > BigInt(0) ? budget : BigInt(0);
+}
+
 async function recordBurn(
   db: PgPool,
   poolAddress: string,
@@ -267,26 +287,35 @@ async function sweepPool(
     return;
   }
 
-  const price = await jupiterPrice(pool.quoteMint);
-  if (price.usdPrice === null || price.decimals === null) {
-    log(`${tag}: quote mint unpriced, skipping (vault holds ${quoteBal.toString()} raw)`);
+  // Per-pool budget: only sweep what this pool's verified deposits
+  // cover, never another pool's share of the shared vault balance.
+  const budget = await getSweepBudget(db, pool.poolAddress);
+  const toSweep = quoteBal < budget ? quoteBal : budget;
+  if (toSweep <= BigInt(0)) {
+    log(`${tag}: no sweepable budget (vault holds ${quoteBal.toString()} raw, none attributed to this pool)`);
     return;
   }
-  const usdValue = (Number(quoteBal) / 10 ** price.decimals) * price.usdPrice;
+
+  const price = await jupiterPrice(pool.quoteMint);
+  if (price.usdPrice === null || price.decimals === null) {
+    log(`${tag}: quote mint unpriced, skipping (sweepable ${toSweep.toString()} raw)`);
+    return;
+  }
+  const usdValue = (Number(toSweep) / 10 ** price.decimals) * price.usdPrice;
   if (usdValue < opts.minUsd) {
-    log(`${tag}: vault balance ~$${usdValue.toFixed(2)}, below $${opts.minUsd} dust threshold, skipping`);
+    log(`${tag}: sweepable ~$${usdValue.toFixed(2)}, below $${opts.minUsd} dust threshold, skipping`);
     return;
   }
 
   if (opts.isDevnet) {
     // Jupiter has no devnet routes; the app mirrors this same guard.
-    log(`${tag}: devnet, Jupiter cannot route here, skipping swap (vault holds ~$${usdValue.toFixed(2)})`);
+    log(`${tag}: devnet, Jupiter cannot route here, skipping swap (sweepable ~$${usdValue.toFixed(2)})`);
     return;
   }
 
   log(`${tag}: sweeping ~$${usdValue.toFixed(2)} of quote into ${pool.baseSymbol}`);
 
-  const quote = await jupiterQuote(pool.quoteMint, pool.baseMint, quoteBal.toString(), opts.slippageBps);
+  const quote = await jupiterQuote(pool.quoteMint, pool.baseMint, toSweep.toString(), opts.slippageBps);
   log(`${tag}: quote ${quote.inAmount} -> ~${quote.outAmount} base`);
   const swapB64 = await jupiterSwapTransaction(quote, vaultPk.toBase58());
   const swapSig = await sendAndConfirm(connection, signWithKeypair(swapB64, vault), `${tag} swap`);
@@ -305,8 +334,8 @@ async function sweepPool(
   burnTx.partialSign(vault);
   const burnSig = await sendAndConfirm(connection, burnTx.serialize(), `${tag} burn`);
 
-  await recordBurn(db, pool.poolAddress, burnSig, quoteBal.toString(), baseBal.toString());
-  log(`${tag}: burned ${baseBal.toString()} ${pool.baseSymbol} (swap in ${quoteBal.toString()} quote)`);
+  await recordBurn(db, pool.poolAddress, burnSig, toSweep.toString(), baseBal.toString());
+  log(`${tag}: burned ${baseBal.toString()} ${pool.baseSymbol} (swap in ${toSweep.toString()} quote)`);
 }
 
 async function main(): Promise<void> {

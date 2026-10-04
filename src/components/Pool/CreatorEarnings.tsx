@@ -139,7 +139,7 @@ export default function CreatorEarnings({
           quoteMint: splitsQuery.data.quoteMint,
           creator: publicKey.toBase58(),
         } as TrackedPool;
-        const { signatures } = await claimAndSplitFlow({
+        const { signatures, buyback } = await claimAndSplitFlow({
           connection: getConnection(),
           signTransaction,
           signAllTransactions: signAllTransactions ?? undefined,
@@ -150,6 +150,21 @@ export default function CreatorEarnings({
         setTxSig(signatures[0] ?? null);
         setStatus('confirmed');
         queryClient.invalidateQueries({ queryKey: ['pool-state', poolAddress] });
+        // Record the buyback deposit in the per-pool ledger so the
+        // keeper can attribute vault funds to this pool. The server
+        // verifies the transfer on-chain; best effort, like the
+        // notification below.
+        try {
+          if (buyback && signatures[0]) {
+            await fetch(`/api/pools/${poolAddress}/buyback-deposits`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ txSignature: signatures[0] }),
+            });
+          }
+        } catch {
+          // Deposit recording failure never fails the claim.
+        }
         // Tell each paid recipient: their share landed. Best effort,
         // idempotent per event id; the chain is the source of truth.
         try {
