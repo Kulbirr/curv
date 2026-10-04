@@ -950,7 +950,7 @@ export default function StrategiesPage() {
           <CurvyLogo size={40} />
           <div>
             <p className="text-[11px] font-bold tracking-[0.2em] text-[#32f27b]">AI SIGNALS</p>
-            <p className="text-xs font-semibold text-neutral-400">by Curvy, the Curv mascot</p>
+            <p className="text-xs font-semibold text-neutral-400">by Curvy</p>
           </div>
         </div>
         <h1 className="mt-4 text-3xl font-bold text-neutral-50 md:text-4xl">
