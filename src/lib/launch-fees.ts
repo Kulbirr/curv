@@ -7,8 +7,8 @@
  *
  * Every unit was verified against the Meteora DBC SDK and docs:
  * - poolCreationFeeSol: the SDK runs convertToLamports(poolCreationFee),
- *   so the config value is denominated in SOL. 0.01 undercuts pump.fun's
- *   0.02. Meteora requires 0.001-100 SOL and splits it 10% protocol / 90%
+ *   so the config value is denominated in SOL. 0.01 SOL per pool.
+ *   Meteora requires 0.001-100 SOL and splits it 10% protocol / 90%
  *   to the fee claimer (Curv). This is a per-config setting chosen by
  *   Curv, not a Meteora protocol mandate.
  * - Trading fees: every swap pays Base Fee + Dynamic Fee (capped at 99%).
@@ -17,7 +17,7 @@
  *   by creatorTradingFeePercentage.
  * - creatorTradingFeePercent: percent of the non-protocol trading fee
  *   that goes to the creator. 31.51% of 80% of a 1.19% fee = 0.30% of
- *   trade volume to the creator (pump.fun parity); Curv keeps ~0.652%.
+ *   trade volume to the creator; Curv keeps ~0.652%.
  *   The creator claims with a signed transaction via claimCreatorTradingFee.
  * - migrationFeePercent / creatorMigrationFeePercent: the SDK divides
  *   feePercentage by 100 (percent), and creatorFeePercentage is a
@@ -25,8 +25,8 @@
  * - migratedPoolFeeBps: basis points.
  */
 export const LAUNCH_FEE_CONFIG = {
-  /** Pool creation fee baked into Curv's DBC config (SOL), half of
-   *  pump.fun's 0.02 SOL. 90% goes to Curv as fee claimer. */
+  /** Pool creation fee baked into Curv's DBC config (SOL).
+   *  90% goes to Curv as fee claimer. */
   poolCreationFeeSol: 0.01,
   /** Estimated SOL locked as rent exempt deposits for the accounts a
    *  createConfigAndPool launch creates (config, pool, base and quote
@@ -43,9 +43,8 @@ export const LAUNCH_FEE_CONFIG = {
   dynamicFeeEnabled: true,
   /** Creator's cut of the non-protocol trading fee, in percent.
    *  31.51 here = exactly 0.30% of each trade's volume at the 1.19%
-   *  flat fee. Note: pump.fun's creator rate is dynamic (0.95% at small
-   *  market caps decaying to 0.05% near $20M, "Project Ascend", Sep 2026),
-   *  so no fixed multiple is claimed here. */
+   *  flat fee. Note: creator rates on other launchpads vary by market
+   *  cap, so no fixed multiple is claimed here. */
   creatorTradingFeePercent: 31.51,
   /** Which token trade fees are collected in. */
   collectFeeMode: 'quote token',
@@ -216,7 +215,7 @@ export function buildFeeDisclosureRows(input: FeeDisclosureInput): FeeDisclosure
       label: 'Pool creation fee',
       value: `${c.poolCreationFeeSol} SOL`,
       hint:
-        `A ${c.poolCreationFeeSol} SOL creation fee set in Curv's own pool config, half of pump.fun's 0.02, not a Meteora protocol charge. ` +
+        `A ${c.poolCreationFeeSol} SOL creation fee set in Curv's own pool config, not a Meteora protocol charge. ` +
         `Meteora takes 10% of it and Curv receives 90%. On top of the fee, Solana locks about ${c.estimatedLaunchRentSol} SOL ` +
         `as refundable deposits for the new pool accounts, so the launch transaction moves about ${two(c.poolCreationFeeSol + c.estimatedLaunchRentSol)} SOL ` +
         `in total, plus a few cents of network fees.`,

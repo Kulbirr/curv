@@ -124,8 +124,7 @@ export function presetCurve(preset: CurvePresetId, startPrice: number): CurveDes
 
 /** Target starting valuation for Quick launches: $5,000 fully-diluted at
  *  the 1B default supply, so the Quick curve (14x end-price multiple)
- *  graduates near ~$70k market cap, matching pump.fun's own $5k start and
- *  ~$69k graduation scale. */
+ *  graduates near ~$70k market cap from the $5k starting valuation. */
 export const QUICK_TARGET_START_FDV_USD = 5000;
 
 /** Quick-launch curve shape, kept separate from the Pro "exponential"

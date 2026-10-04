@@ -12,7 +12,7 @@ export { VANITY_SUFFIX, estimateVanityMintAttempts, matchesVanitySuffix };
  * Vanity mint grinding for Curv launches.
  *
  * Every token launched through the app gets a mint address ending in
- * VANITY_SUFFIX (like pump.fun's "...pump"). Nothing on-chain enforces
+ * VANITY_SUFFIX (currently "...curv"). Nothing on-chain enforces
  * this, it is purely cosmetic branding. The grind runs client-side in the
  * user's browser; the keypair never leaves browser memory, is never sent
  * to any server, never logged, and never persisted, exactly the same

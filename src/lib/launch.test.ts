@@ -412,7 +412,7 @@ describe('quickDefaultStartPrice', () => {
     expect(quickDefaultStartPrice(-5)).toBeCloseTo(5e-6, 12);
   });
 
-  it('quick curve keeps the pump.fun shape, separate from the Pro exponential preset', async () => {
+  it('quick curve keeps its own shape, separate from the Pro exponential preset', async () => {
     // Pro's exponential preset is untouched by the Quick redesign.
     expect(presetCurve('exponential', 1).prices).toEqual([1, 1.6, 3.2, 10]);
     expect(quickCurveDesign(1).prices).toEqual([1, 1.8, 4, 14]);
@@ -424,8 +424,8 @@ describe('quickDefaultStartPrice', () => {
     });
     const threshold = graduationThresholdQuote(spec);
     // Graduation scales with the starting valuation (curve shape is
-    // unchanged): $5k start graduates near ~74 SOL, matching pump.fun's
-    // graduation scale, not hundreds of thousands of SOL.
+    // unchanged): $5k start graduates near ~74 SOL, a typical graduation
+    // scale, not hundreds of thousands of SOL.
     expect(threshold).toBeGreaterThan(60);
     expect(threshold).toBeLessThan(120);
   });

@@ -2414,7 +2414,7 @@ export default function CreatePool() {
                 <span className="sc-x-claim-badge">X</span>
                 <p>
                   <strong>No wallet needed to add someone.</strong> Just enter
-                  their X handle — they claim their share later by logging in
+                  their X handle. They claim their share later by logging in
                   with X and binding a wallet. Unclaimed shares stay with you.
                 </p>
               </div>
@@ -2981,7 +2981,7 @@ export default function CreatePool() {
                     Mcap<strong>$0</strong>
                   </span>
                   <span>
-                    24h<strong>—</strong>
+                    24h<strong>-</strong>
                   </span>
                 </div>
                 <div className="sc-progress">

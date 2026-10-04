@@ -775,7 +775,7 @@ function TrackRecord() {
       <div className="mt-6 flex flex-wrap items-end justify-between gap-6 px-6 md:px-8">
         <div>
           <p className="text-5xl font-light tracking-tight text-neutral-50">
-            {record.winRate === null ? '—' : `${Math.round(record.winRate * 100)}%`}
+            {record.winRate === null ? '-' : `${Math.round(record.winRate * 100)}%`}
           </p>
           <p className="mt-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-neutral-500">
             win rate
@@ -828,7 +828,7 @@ function TrackRecord() {
               <div className="text-right">
                 <p className="sc-number text-sm text-neutral-300">
                   {fmtPrice(h.entryPrice)} →{' '}
-                  {h.resolvedPrice !== null ? fmtPrice(h.resolvedPrice) : '—'}
+                  {h.resolvedPrice !== null ? fmtPrice(h.resolvedPrice) : '-'}
                 </p>
                 <p className="mt-0.5 text-[11px] text-neutral-500">
                   {h.resolvedAt

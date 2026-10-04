@@ -3,7 +3,7 @@ import { execute, query, transaction } from './index';
 /**
  * Pre-ground vanity mint pool.
  *
- * Instant launch works like pump.fun's: the mint keypair is NOT ground at
+ * Instant launch: the mint keypair is NOT ground at
  * click time. A background grinder (scripts/grind-pool.ts) keeps this
  * table topped up with "...curv" keypairs; the handout endpoint
  * (src/pages/api/vanity-mint.ts) claims one atomically per launch.

@@ -12,9 +12,8 @@
  *   liquidity and decimals (batched, 50 mints per query):
  *   https://api.jup.ag/price/v3
  *   The picker shows "Powered by Jupiter" attribution per their licence.
- * - We deliberately do NOT use pump.fun's list or API: their Terms of Use
- *   (§16, §17, §21) prohibit scraping or reusing their curated data in a
- *   competing product.
+ * - We do not use third-party token lists or APIs whose terms prohibit
+ *   reusing their curated data in a competing product.
  *
  * All directory assets are mainnet mints. The launch UI must keep showing
  * the network badge and the devnet guidance, because a mainnet mint does

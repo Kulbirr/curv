@@ -1,8 +1,7 @@
 /**
  * Site footer, styled after the curv-ui spec.
  * Docs points at the FAQ page, which is the current user documentation.
- * Terms and the social channels stay plain text: there are no real URLs to
- * point at yet, and a link to nowhere would be dishonest.
+ * Terms, Privacy and Risks link to the legal pages every real product needs.
  */
 import Link from 'next/link';
 
@@ -22,7 +21,15 @@ export default function Footer() {
         <Link href="/faqs" prefetch={false}>
           <b>Docs</b>
         </Link>
-        <b>Terms</b>
+        <Link href="/terms" prefetch={false}>
+          <b>Terms</b>
+        </Link>
+        <Link href="/privacy" prefetch={false}>
+          <b>Privacy</b>
+        </Link>
+        <Link href="/risks" prefetch={false}>
+          <b>Risks</b>
+        </Link>
       </span>
     </footer>
   );
