@@ -30,6 +30,9 @@ export default function Footer() {
         <Link href="/risks" prefetch={false}>
           <b>Risks</b>
         </Link>
+        <a href="mailto:hello@curvpad.fun">
+          <b>Contact</b>
+        </a>
       </span>
     </footer>
   );

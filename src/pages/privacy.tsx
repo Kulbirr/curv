@@ -42,7 +42,7 @@ const SECTIONS: { h: string; body: string[] }[] = [
   {
     h: '7. Data retention and deletion',
     body: [
-      'Pool and transaction records are kept for as long as the service operates, because token pages and fee histories depend on them. If you want usage data linked to your IP address removed, contact us and we will delete what we can. On chain records are public and permanent and cannot be deleted by us.',
+      'Pool and transaction records are kept for as long as the service operates, because token pages and fee histories depend on them. If you want usage data linked to your IP address removed, contact us at hello@curvpad.fun and we will delete what we can. On chain records are public and permanent and cannot be deleted by us.',
     ],
   },
   {
