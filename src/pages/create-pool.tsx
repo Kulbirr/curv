@@ -2419,9 +2419,9 @@ export default function CreatePool() {
                 <p>
                   <strong>Add a wallet to lock a share to it.</strong> Paste the
                   recipient&apos;s Solana address and only that wallet can ever claim
-                  it. With just an X handle and no wallet, whoever opens the
-                  invite link first claims it, so share the link privately.
-                  Unclaimed shares stay with you.
+                  it. With just an X handle, the recipient posts a public tweet
+                  containing their claim code to prove the handle is theirs,
+                  then binds a wallet. Unclaimed shares stay with you.
                 </p>
               </div>
               {splitRows.map((row, i) => (
