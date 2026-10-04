@@ -323,7 +323,8 @@ export default function CreatorEarnings({
                   : `${waiting.length} collaborators haven't bound wallets yet`}
               </strong>
               <br />
-              Their shares stay in the pool until they log in with X and bind. Share their invite
+              Their shares stay in the pool until they open their invite
+              link and bind a wallet. Share their invite
               links below so they can claim.
             </div>
           );

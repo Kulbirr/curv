@@ -172,9 +172,8 @@ CREATE TABLE IF NOT EXISTS fee_split_bindings (
   bound_at BIGINT NOT NULL,
   PRIMARY KEY (pool_address, entry_index)
 );
--- X identity behind a binding, when the recipient claimed through
--- Login with X. The numeric user ID is the stable match key (handles
--- can be renamed); the handle is stored for display.
+-- X identity behind a binding, for old rows bound through the removed
+-- Login with X flow. Kept for history; new bindings leave these null.
 ALTER TABLE fee_split_bindings ADD COLUMN IF NOT EXISTS x_user_id TEXT;
 ALTER TABLE fee_split_bindings ADD COLUMN IF NOT EXISTS x_handle TEXT;
 
