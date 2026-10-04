@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { usePoolHistory } from './usePoolData';
 import type { HistoryPoint } from './types';
+import CurvyLoader from '../CurvyLoader';
 import {
   formatFullValue,
   formatMcapAxis,
@@ -221,16 +222,7 @@ export default function PriceChart({ poolAddress, quoteSymbol, supply }: Props) 
           className="sc-pool-chart-wrap"
           style={{ alignItems: 'center', justifyContent: 'center' }}
         >
-          <div
-            className="animate-spin"
-            style={{
-              width: 28,
-              height: 28,
-              borderRadius: '50%',
-              border: '2px solid #2a3134',
-              borderTopColor: '#32f27b',
-            }}
-          />
+          <CurvyLoader size={40} />
         </div>
       </section>
     );

@@ -6,6 +6,7 @@ import { useWallet } from '@solana/wallet-adapter-react';
 import { useUnifiedWalletContext } from '@jup-ag/wallet-adapter';
 import { useQueryClient } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
+import CurvyLoader from '../CurvyLoader';
 import { getConnection, getDbcClient, isDevnet } from '@/lib/solana';
 import { getCurrentPoint } from '@meteora-ag/dynamic-bonding-curve-sdk';
 import { NATIVE_SOL_MINT, type PoolStateResponse } from './types';
@@ -414,16 +415,7 @@ export default function TradePanel({ poolAddress, state }: Props) {
         </p>
       ) : onChainLoading ? (
         <div style={{ display: 'flex', justifyContent: 'center', padding: '28px 0' }}>
-          <div
-            className="animate-spin"
-            style={{
-              width: 24,
-              height: 24,
-              borderRadius: '50%',
-              border: '2px solid #2a3134',
-              borderTopColor: '#32f27b',
-            }}
-          />
+          <CurvyLoader size={36} />
         </div>
       ) : onChainError || !onChain ? (
         <p

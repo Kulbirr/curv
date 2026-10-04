@@ -6,6 +6,7 @@ import bs58 from 'bs58'
 import { useWallet } from '@solana/wallet-adapter-react'
 import { useUnifiedWalletContext } from '@jup-ag/wallet-adapter';
 import Page from '@/components/ui/Page/Page'
+import CurvyLoader from '@/components/CurvyLoader'
 import { CurveChart } from '../components/Launch/CurveChart'
 import { ErrorList, Field, Toggle } from '../components/Launch/ui'
 import {
@@ -2834,7 +2835,7 @@ export default function CreatePool() {
               {status !== 'idle' && status !== 'error' && (
                 <div className="mt-4 rounded-lg border border-primary/40 bg-primary/5 p-4">
                   <p className="flex items-center gap-2 text-sm font-medium text-primary">
-                    <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                    <CurvyLoader size={24} />
                     {STATUS_LABEL[status as keyof typeof STATUS_LABEL]}
                   </p>
                   {status === 'grinding' && (
