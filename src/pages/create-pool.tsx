@@ -2417,7 +2417,7 @@ export default function CreatePool() {
                 <span className="sc-x-claim-badge">X</span>
                 <p>
                   <strong>Add a wallet to lock a share to it.</strong> Paste the
-                  recipient's Solana address and only that wallet can ever claim
+                  recipient&apos;s Solana address and only that wallet can ever claim
                   it. With just an X handle and no wallet, whoever opens the
                   invite link first claims it, so share the link privately.
                   Unclaimed shares stay with you.
