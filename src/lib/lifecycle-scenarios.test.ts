@@ -83,7 +83,7 @@ describe('lifecycle: claim with fee splits and buyback', () => {
     const dist = planDistribution('0', accrued, recipients);
     expect(dist.length).toBe(2);
     // 30% + 20% = 50% of gross to recipients
-    const paid = dist.reduce((s, d) => s + BigInt(d.quoteRaw), 0n);
+    const paid = dist.reduce((s, d) => s + BigInt(d.quoteRaw), BigInt(0));
     expect(paid).toBe(BigInt(5 * SOL));
 
     // 98% buyback applies to the creator's 5 SOL remainder, not the 10 SOL gross
@@ -102,7 +102,7 @@ describe('lifecycle: claim with fee splits and buyback', () => {
     expect(bb).not.toBeNull();
     expect(BigInt(bb!.quoteRaw)).toBe(BigInt(5 * SOL));
     const dist = planDistribution('0', accrued, recipients);
-    const paid = dist.reduce((s, d) => s + BigInt(d.quoteRaw), 0n);
+    const paid = dist.reduce((s, d) => s + BigInt(d.quoteRaw), BigInt(0));
     expect(paid).toBe(BigInt(5 * SOL)); // recipients untouched
   });
 
@@ -118,7 +118,7 @@ describe('lifecycle: claim with fee splits and buyback', () => {
   it('10 recipients at max split still cannot exceed the gross', () => {
     const ten = Array.from({ length: 10 }, (_, i) => ({ wallet: `w${i}`, bps: 900 }));
     const dist = planDistribution('0', accrued, ten);
-    const paid = dist.reduce((s, d) => s + BigInt(d.quoteRaw), 0n);
+    const paid = dist.reduce((s, d) => s + BigInt(d.quoteRaw), BigInt(0));
     expect(paid).toBeLessThanOrEqual(BigInt(accrued));
   });
 });
@@ -126,20 +126,20 @@ describe('lifecycle: claim with fee splits and buyback', () => {
 describe('lifecycle: graduation and post-grad fees', () => {
   it('migration fee splits 2% creator / 2% Curv of the migrating liquidity', () => {
     const migratingRaw = BigInt(50_000 * SOL); // $50k tier in SOL terms
-    const fee = (migratingRaw * BigInt(MIGRATION_FEE_PERCENT)) / 100n;
-    const creator = (fee * BigInt(CREATOR_MIGRATION_SHARE)) / 100n;
+    const fee = (migratingRaw * BigInt(MIGRATION_FEE_PERCENT)) / BigInt(100);
+    const creator = (fee * BigInt(CREATOR_MIGRATION_SHARE)) / BigInt(100);
     const curv = fee - creator;
-    expect(creator).toBe((migratingRaw * 2n) / 100n);
-    expect(curv).toBe((migratingRaw * 2n) / 100n);
+    expect(creator).toBe((migratingRaw * BigInt(2)) / BigInt(100));
+    expect(curv).toBe((migratingRaw * BigInt(2)) / BigInt(100));
     expect(creator + curv).toBe(fee);
   });
 
   it('post-grad DAMM v2 fees split 80/20 after Meteora takes 20%', () => {
     const volumeRaw = BigInt(1_000_000 * SOL);
-    const poolFee = (volumeRaw * BigInt(DAMM_FEE_BPS)) / 10_000n;
-    const meteora = (poolFee * 20n) / 100n;
+    const poolFee = (volumeRaw * BigInt(DAMM_FEE_BPS)) / BigInt(10000);
+    const meteora = (poolFee * BigInt(20)) / BigInt(100);
     const lpFees = poolFee - meteora;
-    const creator = (lpFees * 80n) / 100n;
+    const creator = (lpFees * BigInt(80)) / BigInt(100);
     const curv = lpFees - creator;
     expect(creator + curv + meteora).toBe(poolFee);
     // Creator earns ~0.768% of post-grad volume, Curv ~0.192%

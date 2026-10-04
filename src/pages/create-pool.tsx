@@ -1901,8 +1901,11 @@ export default function CreatePool() {
                   <li>
                     You keep <strong>~0.3%</strong> of every trade,{' '}
                     <strong>2%</strong> of the liquidity at graduation, and{' '}
-                    <strong>80%</strong> of the graduated pool&apos;s fees,
-                    forever
+                    <strong>80%</strong> of the graduated pool&apos;s fees.
+                    Your rate never drops as your coin grows. Other launchpads
+                    cut the creator&apos;s share at higher market caps. Ours
+                    stays flat forever, so the bigger your coin gets, the more
+                    you keep compared to anywhere else.
                   </li>
                   <li>
                     <strong>0.01 SOL</strong> pool creation fee. Solana also
