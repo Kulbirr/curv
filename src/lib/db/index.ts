@@ -241,6 +241,9 @@ CREATE TABLE IF NOT EXISTS fee_split_bindings (
 -- Login with X flow. Kept for history; new bindings leave these null.
 ALTER TABLE fee_split_bindings ADD COLUMN IF NOT EXISTS x_user_id TEXT;
 ALTER TABLE fee_split_bindings ADD COLUMN IF NOT EXISTS x_handle TEXT;
+-- Social platform behind a Twitch/Reddit OAuth binding ('twitch' or
+-- 'reddit'). Null for wallet and X tweet bindings, which predate it.
+ALTER TABLE fee_split_bindings ADD COLUMN IF NOT EXISTS platform TEXT;
 
 -- In-app notification inbox, keyed to the connected wallet. Events:
 -- a split recipient bound their wallet, fees are claimable, a split

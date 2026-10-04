@@ -305,7 +305,7 @@ export default function CreatePool() {
   const [status, setStatus] = useState<LaunchStatus>('idle')
   const [mode, setMode] = useState<'quick' | 'pro'>('quick')
   const [splitRows, setSplitRows] = useState<
-    Array<{ wallet: string; percent: string; handle: string }>
+    Array<{ wallet: string; percent: string; handle: string; platform: 'x' | 'twitch' | 'reddit' }>
   >([])
   const [devBuy, setDevBuy] = useState('')
   const [buybackPct, setBuybackPct] = useState('0')
@@ -1123,6 +1123,7 @@ export default function CreatePool() {
               wallet: r.wallet.trim(),
               bps: Math.round(Number(r.percent) * 100),
               handle: r.handle.trim(),
+              platform: r.platform,
             })),
             publicKey.toBase58()
           )
@@ -1231,6 +1232,7 @@ export default function CreatePool() {
           wallet: r.wallet.trim(),
           bps: Math.round(Number(r.percent) * 100),
           handle: r.handle.trim(),
+          platform: r.platform,
         })),
         publicKey?.toBase58() ?? ''
       )
@@ -2462,11 +2464,12 @@ export default function CreatePool() {
                 <p>
                   <strong>Add a wallet to lock a share to it.</strong> Paste the
                   recipient&apos;s Solana address and only that wallet can ever claim
-                  it. With just an X handle, the recipient posts a public tweet
-                  from that handle containing their claim code and their Solana
-                  wallet address. We verify the tweet is really from them and
-                  lock the share to that wallet, no sign in needed. Unclaimed
-                  shares stay with you.
+                  it. With just a social handle, pick their platform: X
+                  recipients post a public tweet from that handle containing
+                  their claim code and their Solana wallet address. Twitch and
+                  Reddit recipients log in to prove the account is theirs, then
+                  connect a wallet. We verify each one and lock the share to
+                  that wallet. Unclaimed shares stay with you.
                 </p>
               </div>
               {splitRows.map((row, i) => (
@@ -2501,18 +2504,44 @@ export default function CreatePool() {
                       autoComplete="off"
                     />
                   </Field>
-                  <Field label="X handle (optional)">
-                    <input
-                      value={row.handle}
-                      onChange={(e) =>
-                        setSplitRows((rs) =>
-                          rs.map((r, j) => (j === i ? { ...r, handle: e.target.value } : r))
-                        )
-                      }
-                      placeholder="name"
-                      spellCheck={false}
-                      autoComplete="off"
-                    />
+                  <Field label="Social handle (optional)">
+                    <div className="flex gap-2">
+                      <div className="flex shrink-0 gap-1">
+                        {(['x', 'twitch', 'reddit'] as const).map((p) => (
+                          <button
+                            key={p}
+                            type="button"
+                            onClick={() =>
+                              setSplitRows((rs) =>
+                                rs.map((r, j) => (j === i ? { ...r, platform: p } : r))
+                              )
+                            }
+                            aria-pressed={row.platform === p}
+                            aria-label={`${p} handle`}
+                            title={p === 'x' ? 'X' : p === 'twitch' ? 'Twitch' : 'Reddit'}
+                            className={cn(
+                              'h-9 rounded-lg border px-2.5 text-xs font-bold transition-colors',
+                              row.platform === p
+                                ? 'border-[#32f27b]/60 bg-[#32f27b]/10 text-[#32f27b]'
+                                : 'border-neutral-800 bg-neutral-950 text-neutral-500 hover:border-neutral-600'
+                            )}
+                          >
+                            {p === 'x' ? 'X' : p === 'twitch' ? 'Twitch' : 'Reddit'}
+                          </button>
+                        ))}
+                      </div>
+                      <input
+                        value={row.handle}
+                        onChange={(e) =>
+                          setSplitRows((rs) =>
+                            rs.map((r, j) => (j === i ? { ...r, handle: e.target.value } : r))
+                          )
+                        }
+                        placeholder="name"
+                        spellCheck={false}
+                        autoComplete="off"
+                      />
+                    </div>
                   </Field>
                   <button
                     type="button"
@@ -2529,7 +2558,7 @@ export default function CreatePool() {
                   type="button"
                   className="sc-button sc-button-secondary"
                   onClick={() =>
-                    setSplitRows((rs) => [...rs, { wallet: '', percent: '', handle: '' }])
+                    setSplitRows((rs) => [...rs, { wallet: '', percent: '', handle: '', platform: 'x' as const }])
                   }
                 >
                   Add recipient

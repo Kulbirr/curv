@@ -6,6 +6,7 @@ import {
   buildMetadataUploadMessage,
   buildRecipientBindingMessage,
   buildRegistrationMessage,
+  canonicalFeeSplitsTerms,
   isFreshTimestamp,
   SIGNATURE_TTL_MS,
 } from './signature-messages';
@@ -170,5 +171,25 @@ describe('buildRegistrationMessage with dev buy', () => {
     expect(verifyWalletSignature(message, sig, wallet)).toBe(true);
     const tampered = message.replace('500000000', '900000000');
     expect(verifyWalletSignature(tampered, sig, wallet)).toBe(false);
+  });
+});
+
+describe('canonicalFeeSplitsTerms platforms', () => {
+  it('omits the platform prefix for X (backward compatible)', () => {
+    const terms = canonicalFeeSplitsTerms([{ handle: 'alice', bps: 1000 }]);
+    expect(terms).toBe('@alice:1000');
+  });
+  it('prefixes twitch and reddit handles', () => {
+    const terms = canonicalFeeSplitsTerms([
+      { handle: 'ninja', bps: 1000, platform: 'twitch' },
+      { handle: 'spez', bps: 2000, platform: 'reddit' },
+    ]);
+    expect(terms).toBe('@reddit:spez:2000,@twitch:ninja:1000');
+  });
+  it('prefixes platform on wallet registered handles', () => {
+    const terms = canonicalFeeSplitsTerms([
+      { wallet: '11111111111111111111111111111111', bps: 1000, handle: 'ninja', platform: 'twitch' },
+    ]);
+    expect(terms).toBe('11111111111111111111111111111111:1000:twitch:ninja');
   });
 });
