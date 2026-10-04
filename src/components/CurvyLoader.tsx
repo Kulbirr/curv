@@ -23,7 +23,7 @@ export default function CurvyLoader({
         height={size}
         alt=""
         aria-hidden="true"
-        className="curvy-crawl rounded-full object-cover"
+        className="curvy-crawl object-contain"
         style={{ width: size, height: size }}
       />
       <style jsx>{`
