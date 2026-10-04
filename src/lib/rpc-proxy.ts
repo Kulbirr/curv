@@ -74,15 +74,36 @@ export function parseProxyRequest(body: unknown): ParsedProxyRequest {
 }
 
 /**
- * Keyed upstream for the proxy. Set RPC_PROXY_UPSTREAM_URL to point it at
- * Alchemy (or any keyed endpoint) without a code change; otherwise it uses
- * the existing server Helius lane. Empty string means "no keyed upstream".
+ * Ordered keyed upstream tiers for the proxy, mirroring lib/solana's server
+ * tiering: the explicit RPC_PROXY_UPSTREAM_URL override first, then the
+ * Helius primary lane, then the Alchemy secondary lane (ALCHEMY_RPC_URL).
+ * Read at call time so tests and runtime env changes behave. The public
+ * fallback is handled by the route itself and never appears here.
+ */
+function keyedUpstreamTiers(): string[] {
+  const tiers: string[] = [];
+  const candidates = [
+    process.env.RPC_PROXY_UPSTREAM_URL || '',
+    process.env.SOLANA_RPC_URL || process.env.RPC_URL || '',
+    process.env.ALCHEMY_RPC_URL || '',
+  ];
+  for (const c of candidates) {
+    if (c && !tiers.includes(c)) tiers.push(c);
+  }
+  return tiers;
+}
+
+/**
+ * Primary keyed upstream for the proxy. Set RPC_PROXY_UPSTREAM_URL to
+ * override; otherwise it uses the server's Helius lane, then the Alchemy
+ * lane. Empty string means "no keyed upstream" (the route goes straight
+ * to the public endpoint).
  */
 export function resolveProxyUpstream(): string {
-  return (
-    process.env.RPC_PROXY_UPSTREAM_URL ||
-    process.env.SOLANA_RPC_URL ||
-    process.env.RPC_URL ||
-    ''
-  );
+  return keyedUpstreamTiers()[0] || '';
+}
+
+/** All keyed upstream tiers in failover order (override, Helius, Alchemy). */
+export function resolveProxyUpstreams(): string[] {
+  return keyedUpstreamTiers();
 }

@@ -135,4 +135,57 @@ describe('solana connection setup', () => {
     expect(m.getRpcStatus().primaryIsPublic).toBe(true);
     expect(m.SOLANA_RPC_URL).toBe(m.SOLANA_RPC_FALLBACK_URL);
   });
+
+  it('fails over through the Alchemy lane before the public endpoint', async () => {
+    const alchemyKey = 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6';
+    const m = await loadSolana({
+      SOLANA_RPC_URL: 'https://primary.example/rpc?key=secret',
+      ALCHEMY_RPC_URL: `https://alchemy.example/v2/${alchemyKey}`,
+    });
+    const attempted: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      async (input: unknown) => {
+        attempted.push(String(input));
+        const u = String(input);
+        if (u.startsWith('https://primary.example')) {
+          throw new Error('primary down');
+        }
+        if (u.startsWith('https://alchemy.example')) {
+          return new Response(
+            JSON.stringify({ jsonrpc: '2.0', id: 'test-id', result: 999 }),
+            { status: 200 },
+          );
+        }
+        throw new Error('should not reach the public endpoint');
+      },
+    );
+    expect(await m.getConnection().getSlot()).toBe(999);
+    expect(attempted[0]).toContain('primary.example');
+    expect(attempted[1]).toBe(`https://alchemy.example/v2/${alchemyKey}`);
+    const status = m.getRpcStatus();
+    expect(status.activeTier).toBe('alchemy');
+    expect(status.alchemy).toBe('https://alchemy.example/v2/<redacted>');
+    expect(status.alchemy).not.toContain(alchemyKey);
+    expect(status.lastFallbackAt).toEqual(expect.any(Number));
+  });
+
+  it('skips the Alchemy tier when unset and reports it as null', async () => {
+    const m = await loadSolana({
+      SOLANA_RPC_URL: 'https://primary.example/rpc?key=secret',
+      ALCHEMY_RPC_URL: undefined,
+    });
+    expect(m.ALCHEMY_RPC_URL).toBe('');
+    const status = m.getRpcStatus();
+    expect(status.alchemy).toBeNull();
+    expect(status.activeTier).toBe('primary');
+  });
+
+  it('never exposes the Alchemy URL in the browser bundle', async () => {
+    vi.stubGlobal('window', { location: { origin: 'https://example.invalid' } });
+    const m = await loadSolana({ ALCHEMY_RPC_URL: 'https://alchemy.example/v2/key2' });
+    expect(m.ALCHEMY_RPC_URL).toBe('');
+    expect(m.SOLANA_RPC_URL).toBe('https://example.invalid/api/rpc');
+    vi.unstubAllGlobals();
+  });
 });

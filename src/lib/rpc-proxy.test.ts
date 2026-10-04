@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   parseProxyRequest,
   resolveProxyUpstream,
+  resolveProxyUpstreams,
   RPC_PROXY_ALLOWED_METHODS,
   RPC_PROXY_TIMEOUT_MS,
 } from './rpc-proxy';
@@ -60,5 +61,20 @@ describe('rpc-proxy upstream resolution', () => {
     delete process.env.RPC_PROXY_UPSTREAM_URL;
     expect(resolveProxyUpstream()).toBe('https://example.invalid/helius');
     delete process.env.SOLANA_RPC_URL;
+  });
+
+  it('lists the Alchemy lane after Helius in the tiered upstreams', () => {
+    process.env.SOLANA_RPC_URL = 'https://example.invalid/helius';
+    process.env.ALCHEMY_RPC_URL = 'https://example.invalid/alchemy';
+    expect(resolveProxyUpstream()).toBe('https://example.invalid/helius');
+    expect(resolveProxyUpstreams()).toEqual([
+      'https://example.invalid/helius',
+      'https://example.invalid/alchemy',
+    ]);
+    delete process.env.ALCHEMY_RPC_URL;
+    expect(resolveProxyUpstreams()).toEqual(['https://example.invalid/helius']);
+    delete process.env.SOLANA_RPC_URL;
+    expect(resolveProxyUpstreams()).toEqual([]);
+    expect(resolveProxyUpstream()).toBe('');
   });
 });

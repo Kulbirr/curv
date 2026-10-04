@@ -28,8 +28,50 @@ function resolvePrimaryRpcUrl(): string {
 
 export const SOLANA_RPC_URL = resolvePrimaryRpcUrl();
 
-/** Public fallback endpoint, always keyless. Used when the primary RPC fails. */
+function resolveAlchemyRpcUrl(): string {
+  // Server: Alchemy is the second keyed lane. A keyed URL must never ship
+  // in the browser bundle (any visitor could copy the key); browser chain
+  // reads go through the same-origin /api/rpc proxy instead.
+  if (typeof window === 'undefined') {
+    return process.env.ALCHEMY_RPC_URL || '';
+  }
+  return '';
+}
+
+/**
+ * Second keyed lane (Alchemy). Empty string when unset or in the browser.
+ * Set ALCHEMY_RPC_URL in the server environment (Vercel): the full Alchemy
+ * HTTPS URL including the API key, e.g.
+ * https://solana-devnet.g.alchemy.com/v2/<api-key> (devnet now; swap to the
+ * mainnet URL at launch — one setting flips networks).
+ */
+export const ALCHEMY_RPC_URL = resolveAlchemyRpcUrl();
+
+/** Public fallback endpoint, always keyless. Used when the keyed lanes fail. */
 export const SOLANA_RPC_FALLBACK_URL = clusterApiUrl(SOLANA_NETWORK);
+
+/** RPC tier names, in failover order. */
+export type RpcTier = 'primary' | 'alchemy' | 'public';
+
+/**
+ * Ordered failover tiers: Helius primary, Alchemy secondary, public last.
+ * Deduped, so a single-tier config (no keyed lanes) yields just [primary].
+ */
+function rpcTiers(): Array<{ name: RpcTier; url: string }> {
+  const tiers: Array<{ name: RpcTier; url: string }> = [
+    { name: 'primary', url: SOLANA_RPC_URL },
+  ];
+  if (ALCHEMY_RPC_URL && ALCHEMY_RPC_URL !== SOLANA_RPC_URL) {
+    tiers.push({ name: 'alchemy', url: ALCHEMY_RPC_URL });
+  }
+  if (
+    SOLANA_RPC_FALLBACK_URL !== SOLANA_RPC_URL &&
+    SOLANA_RPC_FALLBACK_URL !== ALCHEMY_RPC_URL
+  ) {
+    tiers.push({ name: 'public', url: SOLANA_RPC_FALLBACK_URL });
+  }
+  return tiers;
+}
 
 let connectionSingleton: Connection | null = null;
 let dbcClientSingleton: DynamicBondingCurveClient | null = null;
@@ -37,20 +79,27 @@ let dbcClientSingleton: DynamicBondingCurveClient | null = null;
 /** Per-RPC-call budget. When it fires the socket is destroyed, never leaked. */
 export const RPC_TIMEOUT_MS = 8_000;
 
-/** Last time a call fell back to the public endpoint (null = never). */
+/** Last time a call fell past the primary tier (null = never). */
 let lastFallbackAt: number | null = null;
+
+/** Which RPC tier served the last successful call ('primary' until the first failover). */
+let activeTier: RpcTier = 'primary';
 
 /** For the health endpoint: which RPC tier is serving and fallback history. */
 export function getRpcStatus(): {
   primary: string;
+  alchemy: string | null;
   fallback: string;
   primaryIsPublic: boolean;
+  activeTier: RpcTier;
   lastFallbackAt: number | null;
 } {
   return {
     primary: describeEndpoint(SOLANA_RPC_URL),
+    alchemy: ALCHEMY_RPC_URL ? describeEndpoint(ALCHEMY_RPC_URL) : null,
     fallback: describeEndpoint(SOLANA_RPC_FALLBACK_URL),
     primaryIsPublic: SOLANA_RPC_URL === SOLANA_RPC_FALLBACK_URL,
+    activeTier,
     lastFallbackAt,
   };
 }
@@ -59,11 +108,22 @@ export function getRpcStatus(): {
 function describeEndpoint(url: string): string {
   try {
     const u = new URL(url);
-    const path = u.pathname === '/' ? '' : u.pathname;
-    return `${u.protocol}//${u.host}${path}`;
+    // Strip query strings and fragments (Helius-style ?api-key=...) and
+    // redact long key-like path segments (Alchemy-style /v2/<api-key>).
+    const path = u.pathname
+      .split('/')
+      .map((seg) => (looksLikeKeySegment(seg) ? '<redacted>' : seg))
+      .join('/');
+    const cleanPath = path === '/' ? '' : path;
+    return `${u.protocol}//${u.host}${cleanPath}`;
   } catch {
     return 'unparseable-endpoint';
   }
+}
+
+/** Heuristic: a long alphanumeric path segment is treated as an API key. */
+function looksLikeKeySegment(seg: string): boolean {
+  return seg.length >= 20 && /^[A-Za-z0-9_-]+$/.test(seg);
 }
 
 async function attemptFetch(
@@ -72,10 +132,17 @@ async function attemptFetch(
   init: Parameters<typeof fetch>[1],
   ms: number,
 ): Promise<Response> {
-  const target =
-    typeof input === 'string' && input.startsWith(SOLANA_RPC_URL)
-      ? endpoint + input.slice(SOLANA_RPC_URL.length)
-      : input;
+  let target = input;
+  if (typeof input === 'string') {
+    // Rewrite the request to the tier being tried: web3.js always posts to
+    // the connection's primary endpoint, so strip any tier's URL prefix.
+    for (const tier of rpcTiers()) {
+      if (input.startsWith(tier.url)) {
+        target = endpoint + input.slice(tier.url.length);
+        break;
+      }
+    }
+  }
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(new Error('RPC request timed out')), ms);
   try {
@@ -86,35 +153,41 @@ async function attemptFetch(
 }
 
 /**
- * fetch wrapper with per-call budget AND primary/fallback routing.
- * Tries the primary RPC (Helius when configured); on network failure,
- * timeout, HTTP 429 or 5xx it retries once against the public fallback
- * endpoint. Solana RPC errors ride inside HTTP 200 bodies, so only
- * transport-level failures trigger the fallback, a valid RPC error
- * response is returned as-is.
+ * fetch wrapper with per-call budget AND tiered failover routing.
+ * Walks the tiers in order (Helius primary, Alchemy secondary, public
+ * fallback): on network failure, timeout, HTTP 429 or 5xx it tries the next
+ * tier. Solana RPC errors ride inside HTTP 200 bodies, so only
+ * transport-level failures trigger the failover; a valid RPC error response
+ * is returned as-is. If every tier degrades, the last degraded response is
+ * returned; if every tier fails transport, it throws.
  * A dead RPC endpoint must fail fast; a hung request that only rejects at
  * the application level would leak the socket and degrade every later call.
  */
 function fetchWithFallback(ms: number): typeof fetch {
-  const singleTier = SOLANA_RPC_URL === SOLANA_RPC_FALLBACK_URL;
   return (async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
-    try {
-      const res = await attemptFetch(SOLANA_RPC_URL, input, init, ms);
-      if (!singleTier && (res.status === 429 || res.status >= 500)) {
-        try {
-          const fb = await attemptFetch(SOLANA_RPC_FALLBACK_URL, input, init, ms);
-          lastFallbackAt = Date.now();
-          return fb;
-        } catch {
-          return res;
+    const tiers = rpcTiers();
+    let lastDegraded: { tier: RpcTier; res: Response } | null = null;
+    for (const tier of tiers) {
+      try {
+        const res = await attemptFetch(tier.url, input, init, ms);
+        if (res.status === 429 || res.status >= 500) {
+          // Degraded: remember it and try the next tier.
+          lastDegraded = { tier: tier.name, res };
+          continue;
         }
+        activeTier = tier.name;
+        if (tier.name !== 'primary') lastFallbackAt = Date.now();
+        return res;
+      } catch {
+        // Transport failure or timeout: try the next tier.
       }
-      return res;
-    } catch {
-      if (singleTier) throw new Error('RPC request failed');
-      lastFallbackAt = Date.now();
-      return attemptFetch(SOLANA_RPC_FALLBACK_URL, input, init, ms);
     }
+    if (lastDegraded) {
+      activeTier = lastDegraded.tier;
+      if (tiers.length > 1) lastFallbackAt = Date.now();
+      return lastDegraded.res;
+    }
+    throw new Error('RPC request failed');
   }) as typeof fetch;
 }
 
