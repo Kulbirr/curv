@@ -330,13 +330,24 @@ export default function TradePanel({ poolAddress, state }: Props) {
       queryClient.invalidateQueries({ queryKey: ['pool-history', poolAddress] });
     } catch (e) {
       const rawMsg = e instanceof Error ? e.message : 'Transaction failed';
-      // Friendly message for the near-cap 6033: the buy was too large for
-      // the remaining room before graduation. Never show raw program errors.
-      const msg = /6033|0x1791|InsufficientLiquidity/i.test(rawMsg)
-        ? 'This buy is too large for the room left before graduation. Try a smaller amount.'
-        : isSignTimeout(e)
-          ? signingTimeoutMessage()
-          : rawMsg;
+      // Never show raw program errors to users. Map known program errors to
+      // plain language; anything else program-shaped gets a generic message
+      // with the raw text kept in the console for debugging.
+      let msg: string;
+      if (/6033|0x1791|InsufficientLiquidity/i.test(rawMsg)) {
+        msg = 'This buy is too large for the room left before graduation. Try a smaller amount.';
+      } else if (/6002|0x1772|ExceededSlippage|slippage tolerance/i.test(rawMsg)) {
+        msg = 'The price moved before your swap could go through. Try again or raise your slippage tolerance.';
+      } else if (isSignTimeout(e)) {
+        msg = signingTimeoutMessage();
+      } else if (/User rejected|rejected the request/i.test(rawMsg)) {
+        msg = 'You cancelled the transaction in your wallet.';
+      } else if (/Simulation failed|custom program error|0x[0-9a-f]{4}/i.test(rawMsg)) {
+        console.warn('[trade] raw transaction error:', rawMsg);
+        msg = 'The transaction failed. Please try again.';
+      } else {
+        msg = rawMsg;
+      }
       // User rejecting in the wallet is not an app error worth alarming about.
       setError(msg);
       setStatus('failed');
@@ -547,6 +558,12 @@ export default function TradePanel({ poolAddress, state }: Props) {
                   </strong>
                 </div>
               )}
+              {quote.priceImpactPct !== null &&
+                quote.priceImpactPct > slippageBps / 100 && (
+                  <p className="sc-trade-message" style={{ marginTop: 6 }}>
+                    Price impact is above your {(slippageBps / 100).toFixed(1).replace(/\.0$/, '')}% slippage tolerance, so this swap will likely fail. Raise slippage or use a smaller amount.
+                  </p>
+                )}
             </>
           )}
 
