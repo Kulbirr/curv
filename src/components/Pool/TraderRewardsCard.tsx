@@ -14,8 +14,8 @@ function shortAddress(a: string): string {
  * and, after graduation, the decided winners. Self-contained: fetches
  * its own data so the trust pipeline stays untouched.
  *
- * Uses inline styles for layout to guarantee the vertical stack renders
- * identically on all viewports, bypassing any Tailwind CSS caching issues.
+ * Mobile: clean vertical stack. Desktop: horizontal three-section layout
+ * (label | headline | description | winners).
  */
 export default function TraderRewardsCard({ poolAddress }: { poolAddress: string }) {
   const q = useQuery({
@@ -31,107 +31,57 @@ export default function TraderRewardsCard({ poolAddress }: { poolAddress: string
   if (!reward) return null;
   const winners = q.data?.winners ?? [];
   const perWinner = winners.length > 0 ? reward.bps / winners.length / 100 : 0;
+  const description = winners.length > 0
+    ? 'Decided at graduation. Paid on creator claims.'
+    : 'Decided at graduation. Locked at launch.';
 
   return (
-    <div
-      style={{
-        marginBottom: 12,
-        borderRadius: 8,
-        border: '1px solid rgba(50, 242, 123, 0.4)',
-        backgroundColor: 'rgba(50, 242, 123, 0.05)',
-        padding: 16,
-        display: 'block',
-        width: '100%',
-        boxSizing: 'border-box',
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span className="sc-section-glyph" aria-hidden="true">
-          🏆
-        </span>
-        <span
-          style={{
-            fontSize: 12,
-            fontWeight: 600,
-            textTransform: 'uppercase',
-            letterSpacing: '0.05em',
-            color: '#a3a3a3',
-          }}
-        >
-          Trader rewards
-        </span>
-      </div>
-      <p
-        style={{
-          marginTop: 8,
-          fontSize: 12,
-          fontWeight: 700,
-          lineHeight: 1.4,
-          color: '#32f27b',
-        }}
-      >
-        Top {reward.count} buyers split {(reward.bps / 100).toFixed(0)}%
-      </p>
-      <p
-        style={{
-          marginTop: 4,
-          fontSize: 10,
-          lineHeight: 1.6,
-          color: '#737373',
-        }}
-      >
-        {winners.length > 0
-          ? 'Decided at graduation. Paid on creator claims.'
-          : 'Decided at graduation. Locked at launch.'}
-      </p>
-      {winners.length > 0 && (
-        <div
-          style={{
-            marginTop: 12,
-            paddingTop: 12,
-            borderTop: '1px solid rgba(255,255,255,0.05)',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 6,
-          }}
-        >
-          {winners.map((w) => (
-            <div
-              key={w.wallet}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: 12,
-                borderRadius: 8,
-                backgroundColor: 'rgba(0,0,0,0.25)',
-                padding: '8px 12px',
-              }}
-            >
-              <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-                <span style={{ fontSize: 12, fontWeight: 700, color: '#d4d4d4', flexShrink: 0 }}>
-                  #{w.rank}
-                </span>
-                <span
-                  className="sc-mono"
-                  style={{
-                    fontSize: 12,
-                    color: '#737373',
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                  }}
-                >
-                  {shortAddress(w.wallet)}
-                </span>
-              </span>
-              <span style={{ fontSize: 14, fontWeight: 700, color: '#32f27b', flexShrink: 0 }}>
-                {perWinner.toFixed(1)}%
-              </span>
-            </div>
-          ))}
+    <div className="mb-3 rounded-2xl border border-[#32f27b]/25 bg-[#32f27b]/[0.04] p-5">
+      {/* Mobile: vertical stack / Desktop: horizontal */}
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:gap-8">
+        {/* Label */}
+        <div className="shrink-0">
+          <div className="mb-1 h-0.5 w-6 bg-[#32f27b]" aria-hidden="true" />
+          <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-neutral-400">
+            Trader rewards
+          </div>
         </div>
-      )}
+
+        {/* Headline */}
+        <div className="shrink-0 md:max-w-[220px]">
+          <p className="text-xl font-bold leading-tight text-neutral-50 md:text-2xl">
+            Top {reward.count} buyers split{' '}
+            <span className="text-[#32f27b]">{(reward.bps / 100).toFixed(0)}%</span>
+          </p>
+        </div>
+
+        {/* Description */}
+        <div className="min-w-0 flex-1">
+          <p className="text-xs leading-relaxed text-neutral-500">{description}</p>
+        </div>
+
+        {/* Winners */}
+        {winners.length > 0 && (
+          <div className="flex shrink-0 flex-col gap-2 md:w-[280px]">
+            {winners.map((w) => (
+              <div
+                key={w.wallet}
+                className="flex items-center justify-between gap-3 rounded-xl bg-black/30 px-4 py-2.5"
+              >
+                <span className="flex min-w-0 items-center gap-3">
+                  <span className="shrink-0 text-sm font-bold text-neutral-300">#{w.rank}</span>
+                  <span className="truncate font-mono text-xs text-neutral-500">
+                    {shortAddress(w.wallet)}
+                  </span>
+                </span>
+                <span className="shrink-0 text-sm font-bold text-[#32f27b]">
+                  {perWinner.toFixed(1)}%
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
