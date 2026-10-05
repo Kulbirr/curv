@@ -1,5 +1,6 @@
 import { Cluster, Connection, clusterApiUrl } from '@solana/web3.js';
 import { DynamicBondingCurveClient } from '@meteora-ag/dynamic-bonding-curve-sdk';
+import { createFailoverFetch, type RpcLane } from './rpc-failover';
 
 export type SolanaNetwork = 'devnet' | 'mainnet-beta';
 
@@ -126,69 +127,23 @@ function looksLikeKeySegment(seg: string): boolean {
   return seg.length >= 20 && /^[A-Za-z0-9_-]+$/.test(seg);
 }
 
-async function attemptFetch(
-  endpoint: string,
-  input: Parameters<typeof fetch>[0],
-  init: Parameters<typeof fetch>[1],
-  ms: number,
-): Promise<Response> {
-  let target = input;
-  if (typeof input === 'string') {
-    // Rewrite the request to the tier being tried: web3.js always posts to
-    // the connection's primary endpoint, so strip any tier's URL prefix.
-    for (const tier of rpcTiers()) {
-      if (input.startsWith(tier.url)) {
-        target = endpoint + input.slice(tier.url.length);
-        break;
-      }
-    }
-  }
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(new Error('RPC request timed out')), ms);
-  try {
-    return await fetch(target, { ...init, signal: ctrl.signal });
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
 /**
  * fetch wrapper with per-call budget AND tiered failover routing.
- * Walks the tiers in order (Helius primary, Alchemy secondary, public
- * fallback): on network failure, timeout, HTTP 429 or 5xx it tries the next
- * tier. Solana RPC errors ride inside HTTP 200 bodies, so only
- * transport-level failures trigger the failover; a valid RPC error response
- * is returned as-is. If every tier degrades, the last degraded response is
- * returned; if every tier fails transport, it throws.
- * A dead RPC endpoint must fail fast; a hung request that only rejects at
- * the application level would leak the socket and degrade every later call.
+ * Delegates to the shared rpc-failover wrapper (Helius primary, Alchemy
+ * secondary, public fallback), which additionally fails over on retryable
+ * JSON-RPC errors like -32603 that ride inside HTTP 200 bodies and that
+ * plain HTTP-status failover misses. Tier bookkeeping here feeds the health
+ * endpoint's rpc status.
  */
 function fetchWithFallback(ms: number): typeof fetch {
-  return (async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
-    const tiers = rpcTiers();
-    let lastDegraded: { tier: RpcTier; res: Response } | null = null;
-    for (const tier of tiers) {
-      try {
-        const res = await attemptFetch(tier.url, input, init, ms);
-        if (res.status === 429 || res.status >= 500) {
-          // Degraded: remember it and try the next tier.
-          lastDegraded = { tier: tier.name, res };
-          continue;
-        }
-        activeTier = tier.name;
-        if (tier.name !== 'primary') lastFallbackAt = Date.now();
-        return res;
-      } catch {
-        // Transport failure or timeout: try the next tier.
-      }
-    }
-    if (lastDegraded) {
-      activeTier = lastDegraded.tier;
-      if (tiers.length > 1) lastFallbackAt = Date.now();
-      return lastDegraded.res;
-    }
-    throw new Error('RPC request failed');
-  }) as typeof fetch;
+  const lanes: RpcLane[] = rpcTiers().map((t) => ({ name: t.name, url: t.url }));
+  return createFailoverFetch(lanes, {
+    timeoutMs: ms,
+    onLaneUsed: (name) => {
+      activeTier = name as RpcTier;
+      if (name !== 'primary') lastFallbackAt = Date.now();
+    },
+  });
 }
 
 /**

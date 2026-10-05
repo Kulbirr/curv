@@ -13,19 +13,24 @@
  * excluded by construction.
  *
  * Runs with plain `node` (Node 24 type stripping): imports only npm
- * packages and node builtins, never repo source.
+ * packages, node builtins, and the dependency-free shared RPC failover
+ * wrapper (../src/lib/rpc-failover.ts), never other repo source.
  *
  * Usage:
  *   DATABASE_URL=... SOLANA_RPC_URL=... node scripts/trade-indexer.ts
  *
  * Env:
  *   DATABASE_URL            Postgres (required, same as the app)
- *   SOLANA_RPC_URL | RPC    Solana RPC (required)
+ *   SOLANA_RPC_URL | RPC    Solana RPC primary lane, Helius (required)
+ *   ALCHEMY_RPC_URL         Solana RPC fallback lane, Alchemy (optional:
+ *                           calls fail over to it automatically when the
+ *                           primary lane degrades)
  *   TRADE_INDEXER_BACKFILL  Max txs to backfill per pool on first run (default 1000)
  */
 
 import { Connection, PublicKey } from '@solana/web3.js';
 import { Pool as PgPool } from 'pg';
+import { createFailoverConnection } from '../src/lib/rpc-failover.ts';
 
 function env(name: string, fallback = ''): string {
   return process.env[name] ?? fallback;
@@ -251,9 +256,10 @@ async function indexPool(
 }
 
 async function main(): Promise<void> {
-  const rpc = requiredEnv('SOLANA_RPC_URL', 'RPC');
   const backfillLimit = Number(env('TRADE_INDEXER_BACKFILL', '1000')) || 1000;
-  const connection = new Connection(rpc, 'confirmed');
+  // Shared failover connection: Helius primary, Alchemy fallback when
+  // ALCHEMY_RPC_URL is set. Throws a clear error when no lane is configured.
+  const connection = createFailoverConnection();
   const db = makeDb();
   try {
     // Ensure schema exists (same DDL the app runs on boot).

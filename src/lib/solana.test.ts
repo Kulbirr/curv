@@ -170,6 +170,35 @@ describe('solana connection setup', () => {
     expect(status.lastFallbackAt).toEqual(expect.any(Number));
   });
 
+  it('fails over on a -32603 JSON-RPC error inside HTTP 200 (degraded lane)', async () => {
+    const alchemyKey = 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6';
+    const m = await loadSolana({
+      SOLANA_RPC_URL: 'https://primary.example/rpc?key=secret',
+      ALCHEMY_RPC_URL: `https://alchemy.example/v2/${alchemyKey}`,
+    });
+    const attempted: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      async (input: unknown) => {
+        attempted.push(String(input));
+        if (String(input).startsWith('https://primary.example')) {
+          return new Response(
+            JSON.stringify({ jsonrpc: '2.0', id: 'test-id', error: { code: -32603, message: 'Internal error' } }),
+            { status: 200 },
+          );
+        }
+        return new Response(
+          JSON.stringify({ jsonrpc: '2.0', id: 'test-id', result: 555 }),
+          { status: 200 },
+        );
+      },
+    );
+    expect(await m.getConnection().getSlot()).toBe(555);
+    expect(attempted).toHaveLength(2);
+    expect(attempted[1]).toBe(`https://alchemy.example/v2/${alchemyKey}`);
+    expect(m.getRpcStatus().activeTier).toBe('alchemy');
+  });
+
   it('skips the Alchemy tier when unset and reports it as null', async () => {
     const m = await loadSolana({
       SOLANA_RPC_URL: 'https://primary.example/rpc?key=secret',

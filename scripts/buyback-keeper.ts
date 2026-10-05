@@ -7,8 +7,9 @@
  * received, and records the burn in buyback_burns.
  *
  * Runs with plain `node` (Node 24 type stripping): it imports only npm
- * packages and node builtins, never repo source, so there is no tsx
- * step and no @/ alias to resolve.
+ * packages, node builtins, and the dependency-free shared RPC failover
+ * wrapper (../src/lib/rpc-failover.ts), never other repo source, so there
+ * is no tsx step and no @/ alias to resolve.
  *
  * Usage:
  *   DATABASE_URL=... SOLANA_RPC_URL=... BUYBACK_VAULT_SECRET='[1,2,...]' \
@@ -16,7 +17,10 @@
  *
  * Env:
  *   DATABASE_URL            Postgres (required, same as the app)
- *   SOLANA_RPC_URL | RPC    Solana RPC (required)
+ *   SOLANA_RPC_URL | RPC    Solana RPC primary lane, Helius (required)
+ *   ALCHEMY_RPC_URL         Solana RPC fallback lane, Alchemy (optional:
+ *                           calls fail over to it automatically when the
+ *                           primary lane degrades)
  *   BUYBACK_VAULT_SECRET    Vault keypair: JSON secret-key array, or a
  *                           path to a JSON keypair file (required; never logged)
  *   NEXT_PUBLIC_SOLANA_NETWORK | SOLANA_NETWORK
@@ -36,6 +40,7 @@
 
 import { Connection, Keypair, PublicKey, Transaction, VersionedTransaction } from '@solana/web3.js';
 import { createBurnInstruction, getAssociatedTokenAddressSync } from '@solana/spl-token';
+import { createFailoverConnection } from '../src/lib/rpc-failover.ts';
 import { Pool as PgPool } from 'pg';
 import fs from 'fs';
 
@@ -339,7 +344,6 @@ async function sweepPool(
 }
 
 async function main(): Promise<void> {
-  const rpc = requiredEnv('SOLANA_RPC_URL', 'RPC');
   const network = (env('NEXT_PUBLIC_SOLANA_NETWORK') || env('SOLANA_NETWORK') || 'devnet').toLowerCase();
   const isDevnet = network !== 'mainnet-beta' && network !== 'mainnet';
   const slippageBps = Number(env('BUYBACK_SLIPPAGE_BPS', '100')) || 100;
@@ -348,7 +352,9 @@ async function main(): Promise<void> {
   const vault = loadVaultKeypair();
   log(`vault ${vault.publicKey.toBase58()} on ${isDevnet ? 'devnet' : 'mainnet'}`);
 
-  const connection = new Connection(rpc, 'confirmed');
+  // Shared failover connection: Helius primary, Alchemy fallback when
+  // ALCHEMY_RPC_URL is set. Throws a clear error when no lane is configured.
+  const connection = createFailoverConnection();
   const db = makeDb();
   try {
     const { rows } = await db.query<BuybackPool>(

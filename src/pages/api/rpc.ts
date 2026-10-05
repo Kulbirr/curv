@@ -1,9 +1,10 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import {
   parseProxyRequest,
-  resolveProxyUpstreams,
+  resolveProxyLanes,
   RPC_PROXY_TIMEOUT_MS,
 } from '@/lib/rpc-proxy';
+import { createFailoverFetch, type RpcLane } from '@/lib/rpc-failover';
 import { getClientIp } from '@/lib/api-validation';
 import { hitRateLimit } from '@/lib/db/rate-limits';
 import { SOLANA_RPC_FALLBACK_URL } from '@/lib/solana';
@@ -31,23 +32,24 @@ export const config = {
  * The browser never sees a keyed RPC URL. This route forwards an allowlisted
  * set of Solana JSON-RPC methods from the server's keyed lanes (Helius
  * primary, Alchemy secondary via ALCHEMY_RPC_URL; RPC_PROXY_UPSTREAM_URL
- * overrides both) and falls back to the public endpoint on transport
- * failure, mirroring the server routing in lib/solana. The upstream URLs
- * are never logged or returned to the client.
+ * overrides both) through the shared failover wrapper, then the public
+ * endpoint. Failover triggers on transport failure, timeout, HTTP 429/5xx,
+ * and retryable JSON-RPC errors (e.g. -32603) that ride inside HTTP 200
+ * bodies. The upstream URLs are never logged or returned to the client.
  */
-async function forward(upstream: string, body: unknown): Promise<Response> {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), RPC_PROXY_TIMEOUT_MS);
-  try {
-    return await fetch(upstream, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(body),
-      signal: ctrl.signal,
-    });
-  } finally {
-    clearTimeout(timer);
+async function forwardUpstream(body: unknown): Promise<Response> {
+  const lanes: RpcLane[] = [...resolveProxyLanes()];
+  if (!lanes.some((l) => l.url === SOLANA_RPC_FALLBACK_URL)) {
+    lanes.push({ name: 'public', url: SOLANA_RPC_FALLBACK_URL });
   }
+  const fetchUpstream = createFailoverFetch(lanes, {
+    timeoutMs: RPC_PROXY_TIMEOUT_MS,
+  });
+  return fetchUpstream(lanes[0].url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
 }
 
 function passthrough(res: NextApiResponse, upstreamRes: Response, text: string) {
@@ -100,28 +102,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
   }
 
-  // Keyed tiers in failover order: RPC_PROXY_UPSTREAM_URL override, the
-  // Helius primary lane, then the Alchemy secondary lane. Transport failure,
-  // timeout, 429 or 5xx falls through to the next tier; valid RPC errors
-  // ride inside HTTP 200 bodies and are returned as-is. When no keyed
-  // upstream is configured the loop is skipped and the allowlist still
-  // guards the public endpoint, so this route is never an open relay.
-  const upstreams = resolveProxyUpstreams();
-  for (const upstream of upstreams) {
-    try {
-      const r = await forward(upstream, body);
-      if (r.status !== 429 && r.status < 500) {
-        return passthrough(res, r, await r.text());
-      }
-      // Degraded: try the next keyed tier.
-    } catch {
-      // Transport failure or timeout: try the next keyed tier.
-    }
-  }
-
+  // Keyed tiers in failover order (RPC_PROXY_UPSTREAM_URL override, the
+  // Helius primary lane, then the Alchemy secondary lane), then the public
+  // endpoint, all through the shared failover wrapper. Transport failure,
+  // timeout, 429/5xx, and retryable JSON-RPC errors fall through to the next
+  // lane; legitimate RPC errors ride inside HTTP 200 bodies and are returned
+  // as-is. The allowlist still guards the public endpoint, so this route is
+  // never an open relay.
+  let upstreamRes: Response;
   try {
-    const r = await forward(SOLANA_RPC_FALLBACK_URL, body);
-    return passthrough(res, r, await r.text());
+    upstreamRes = await forwardUpstream(body);
   } catch {
     return res.status(502).json({
       jsonrpc: '2.0',
@@ -129,4 +119,5 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       error: { code: -32000, message: 'Upstream RPC unreachable' },
     });
   }
+  return passthrough(res, upstreamRes, await upstreamRes.text());
 }

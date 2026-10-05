@@ -73,6 +73,8 @@ export function parseProxyRequest(body: unknown): ParsedProxyRequest {
   return { ok: true, req: { jsonrpc: '2.0', id: reqId, method: b.method, params: b.params } };
 }
 
+import type { RpcLane } from './rpc-failover';
+
 /**
  * Ordered keyed upstream tiers for the proxy, mirroring lib/solana's server
  * tiering: the explicit RPC_PROXY_UPSTREAM_URL override first, then the
@@ -81,16 +83,28 @@ export function parseProxyRequest(body: unknown): ParsedProxyRequest {
  * fallback is handled by the route itself and never appears here.
  */
 function keyedUpstreamTiers(): string[] {
-  const tiers: string[] = [];
-  const candidates = [
-    process.env.RPC_PROXY_UPSTREAM_URL || '',
-    process.env.SOLANA_RPC_URL || process.env.RPC_URL || '',
-    process.env.ALCHEMY_RPC_URL || '',
+  return resolveProxyLanes().map((l) => l.url);
+}
+
+/**
+ * The keyed upstream tiers as named lanes for the shared failover wrapper.
+ * Names are log labels only; URLs (which carry API keys) are never logged.
+ */
+export function resolveProxyLanes(): RpcLane[] {
+  const lanes: RpcLane[] = [];
+  const seen = new Set<string>();
+  const candidates: Array<[string, string]> = [
+    ['override', process.env.RPC_PROXY_UPSTREAM_URL || ''],
+    ['primary', process.env.SOLANA_RPC_URL || process.env.RPC_URL || ''],
+    ['alchemy', process.env.ALCHEMY_RPC_URL || ''],
   ];
-  for (const c of candidates) {
-    if (c && !tiers.includes(c)) tiers.push(c);
+  for (const [name, url] of candidates) {
+    if (url && !seen.has(url)) {
+      seen.add(url);
+      lanes.push({ name, url });
+    }
   }
-  return tiers;
+  return lanes;
 }
 
 /**
