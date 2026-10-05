@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { pctOfSupply, signedRawToUi } from './dev-radar';
+import { pctOfSupply, signedRawToUi } from '@/pages/api/pools/[address]/dev-radar';
 import { relativeTime } from '@/components/Pool/relativeTime';
 
 describe('pctOfSupply', () => {
