@@ -43,14 +43,13 @@ export default function TraderRewardsCard({ poolAddress }: { poolAddress: string
           Trader rewards
         </span>
       </div>
-      <p className="mt-2 text-lg font-bold leading-snug text-[#32f27b] sm:text-xl">
-        Top {reward.count} net buyer{reward.count === 1 ? '' : 's'} split{' '}
-        {(reward.bps / 100).toFixed(0)}% of creator fees
+      <p className="mt-2 text-xs font-bold leading-snug text-[#32f27b]">
+        Top {reward.count} buyers split {(reward.bps / 100).toFixed(0)}%
       </p>
-      <p className="mt-1 text-xs leading-relaxed text-neutral-500">
+      <p className="mt-1 text-[10px] leading-relaxed text-neutral-500">
         {winners.length > 0
-          ? 'Winners decided at graduation from on-chain trade history. Paid automatically on creator claims.'
-          : 'Winners are decided at graduation from on-chain buy volume. Locked at launch, the rule cannot change.'}
+          ? 'Decided at graduation. Paid on creator claims.'
+          : 'Decided at graduation. Locked at launch.'}
       </p>
       {winners.length > 0 && (
         <div className="mt-3 space-y-1.5 border-t border-white/5 pt-3">
