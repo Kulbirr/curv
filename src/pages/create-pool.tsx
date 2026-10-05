@@ -44,6 +44,7 @@ import {
 import { buildDevBuyTransaction } from '@/lib/dev-buy'
 import { BN } from '@coral-xyz/anchor'
 import { getConnection, isDevnet, SOLANA_NETWORK } from '@/lib/solana'
+import { PAYOUT_TYPES, getPayoutType, type PayoutTypeId } from '@/lib/payout-types'
 import { getUsdcMint, inspectQuoteMint } from '@/lib/quote-assets'
 import type { QuoteMintProgram } from '@/lib/quote-assets'
 import { normalizeTwitterUrl } from '@/lib/twitter'
@@ -305,7 +306,7 @@ export default function CreatePool() {
   const [status, setStatus] = useState<LaunchStatus>('idle')
   const [mode, setMode] = useState<'quick' | 'pro'>('quick')
   const [splitRows, setSplitRows] = useState<
-    Array<{ wallet: string; percent: string; handle: string; platform: 'x' | 'twitch' | 'reddit' }>
+    Array<{ wallet: string; percent: string; handle: string; platform: 'x' | 'twitch' | 'reddit'; payoutType: 'wallet' | 'x' | 'twitch' | 'reddit' }>
   >([])
   const [devBuy, setDevBuy] = useState('')
   const [buybackPct, setBuybackPct] = useState('0')
@@ -2455,224 +2456,270 @@ export default function CreatePool() {
                   <p>
                     Share your 0.3% creator trading fees with collaborators.
                     Fixed at launch and public forever, so everyone can see
-                    the deal before they buy.
+                    the deal before they buy. Pick a payout type below, each
+                    one shows how it works and what to fill in.
                   </p>
                 </div>
               </div>
-              <div className="sc-x-claim-callout">
-                <span className="sc-x-claim-badge">X</span>
-                <p>
-                  <strong>Add a wallet to lock a share to it.</strong> Paste the
-                  recipient&apos;s Solana address and only that wallet can ever claim
-                  it. With just a social handle, pick their platform: X
-                  recipients post a public tweet from that handle containing
-                  their claim code and their Solana wallet address. Twitch and
-                  Reddit recipients log in to prove the account is theirs, then
-                  connect a wallet. We verify each one and lock the share to
-                  that wallet. Unclaimed shares stay with you.
-                </p>
-              </div>
-              {splitRows.map((row, i) => (
-                <div key={i} className="sc-split-form-row">
-                  <Field label="Recipient wallet" className="sc-split-wallet-field">
-                    <input
-                      value={row.wallet}
-                      onChange={(e) =>
-                        setSplitRows((rs) =>
-                          rs.map((r, j) => (j === i ? { ...r, wallet: e.target.value } : r))
-                        )
-                      }
-                      placeholder="Solana address, locks this share to that wallet"
-                      spellCheck={false}
-                      autoComplete="off"
-                    />
-                  </Field>
-                  <Field label="Share %">
-                    <input
-                      inputMode="decimal"
-                      value={row.percent}
-                      onChange={(e) =>
-                        setSplitRows((rs) =>
-                          rs.map((r, j) =>
-                            j === i
-                              ? { ...r, percent: e.target.value.replace(/[^0-9.]/g, '') }
-                              : r
-                          )
-                        )
-                      }
-                      placeholder="10"
-                      autoComplete="off"
-                    />
-                  </Field>
-                  <Field label="Social handle (optional)">
-                    <div className="flex gap-2">
-                      <div className="flex shrink-0 gap-1">
-                        {(['x', 'twitch', 'reddit'] as const).map((p) => (
-                          <button
-                            key={p}
-                            type="button"
-                            onClick={() =>
+
+              {/* Payout type picker */}
+              {splitRows.length + (traderRewardEnabled ? 1 : 0) < 10 && (
+                <div className="mb-5">
+                  <p className="mb-3 text-xs font-bold tracking-[0.2em] text-neutral-500">
+                    ADD A PAYOUT
+                  </p>
+                  <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5">
+                    {PAYOUT_TYPES.map((t) => {
+                      const alreadyAdded =
+                        t.id === 'traders'
+                          ? traderRewardEnabled
+                          : false;
+                      return (
+                        <button
+                          key={t.id}
+                          type="button"
+                          disabled={alreadyAdded}
+                          onClick={() => {
+                            if (t.id === 'traders') {
+                              setTraderRewardEnabled(true);
+                            } else {
+                              setSplitRows((rs) => [
+                                ...rs,
+                                {
+                                  wallet: '',
+                                  percent: '',
+                                  handle: '',
+                                  platform: t.id as 'x' | 'twitch' | 'reddit',
+                                  payoutType: t.id as 'wallet' | 'x' | 'twitch' | 'reddit',
+                                },
+                              ]);
+                            }
+                          }}
+                          className={cn(
+                            'group flex flex-col items-start gap-2 rounded-2xl border p-4 text-left transition-all',
+                            alreadyAdded
+                              ? 'cursor-not-allowed border-neutral-800 bg-neutral-950/50 opacity-40'
+                              : 'border-white/10 bg-white/[0.03] hover:border-[#32f27b]/50 hover:bg-[#32f27b]/[0.05]'
+                          )}
+                        >
+                          <t.Icon className="h-6 w-6 text-[#32f27b]" />
+                          <span className="text-sm font-bold text-neutral-100">
+                            {t.label}
+                          </span>
+                          <span className="text-[11px] leading-snug text-neutral-500">
+                            {t.tagline}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Added payouts as cards */}
+              <div className="space-y-3">
+                {splitRows.map((row, i) => {
+                  const def = getPayoutType(row.payoutType);
+                  return (
+                    <div
+                      key={i}
+                      className="rounded-2xl border border-white/10 bg-white/[0.02] p-4"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#32f27b]/10">
+                            <def.Icon className="h-5 w-5 text-[#32f27b]" />
+                          </span>
+                          <div>
+                            <p className="text-sm font-bold text-neutral-100">
+                              {def.label}
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const el = document.getElementById(`payout-how-${i}`);
+                                if (el) el.classList.toggle('hidden');
+                              }}
+                              className="text-[11px] text-[#32f27b] underline underline-offset-2 hover:text-[#4bf78f]"
+                            >
+                              How it works
+                            </button>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          aria-label="Remove payout"
+                          onClick={() => setSplitRows((rs) => rs.filter((_, j) => j !== i))}
+                          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/10 text-neutral-500 transition hover:border-red-500/50 hover:text-red-400"
+                        >
+                          ×
+                        </button>
+                      </div>
+                      <p id={`payout-how-${i}`} className="mt-3 hidden text-xs leading-relaxed text-neutral-400">
+                        {def.howItWorks}
+                      </p>
+                      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                        {row.payoutType === 'wallet' ? (
+                          <Field label="Recipient wallet" className="sm:col-span-2">
+                            <input
+                              value={row.wallet}
+                              onChange={(e) =>
+                                setSplitRows((rs) =>
+                                  rs.map((r, j) => (j === i ? { ...r, wallet: e.target.value } : r))
+                                )
+                              }
+                              placeholder="Solana address, locks this share to that wallet"
+                              spellCheck={false}
+                              autoComplete="off"
+                            />
+                          </Field>
+                        ) : (
+                          <Field
+                            label={`${def.label} ${row.payoutType === 'reddit' ? '(without u/)' : '(without @)'}`}
+                            className="sm:col-span-2"
+                          >
+                            <input
+                              value={row.handle}
+                              onChange={(e) =>
+                                setSplitRows((rs) =>
+                                  rs.map((r, j) => (j === i ? { ...r, handle: e.target.value } : r))
+                                )
+                              }
+                              placeholder={row.payoutType === 'x' ? 'username' : row.payoutType === 'twitch' ? 'twitch username' : 'username'}
+                              spellCheck={false}
+                              autoComplete="off"
+                            />
+                          </Field>
+                        )}
+                        <Field label="Share %">
+                          <input
+                            inputMode="decimal"
+                            value={row.percent}
+                            onChange={(e) =>
                               setSplitRows((rs) =>
-                                rs.map((r, j) => (j === i ? { ...r, platform: p } : r))
+                                rs.map((r, j) =>
+                                  j === i
+                                    ? { ...r, percent: e.target.value.replace(/[^0-9.]/g, '') }
+                                    : r
+                                )
                               )
                             }
-                            aria-pressed={row.platform === p}
-                            aria-label={`${p} handle`}
-                            title={p === 'x' ? 'X' : p === 'twitch' ? 'Twitch' : 'Reddit'}
-                            className={cn(
-                              'h-9 rounded-lg border px-2.5 text-xs font-bold transition-colors',
-                              row.platform === p
-                                ? 'border-[#32f27b]/60 bg-[#32f27b]/10 text-[#32f27b]'
-                                : 'border-neutral-800 bg-neutral-950 text-neutral-500 hover:border-neutral-600'
-                            )}
-                          >
-                            {p === 'x' ? 'X' : p === 'twitch' ? 'Twitch' : 'Reddit'}
-                          </button>
-                        ))}
+                            placeholder="10"
+                            autoComplete="off"
+                          />
+                        </Field>
                       </div>
-                      <input
-                        value={row.handle}
-                        onChange={(e) =>
-                          setSplitRows((rs) =>
-                            rs.map((r, j) => (j === i ? { ...r, handle: e.target.value } : r))
-                          )
-                        }
-                        placeholder="name"
-                        spellCheck={false}
-                        autoComplete="off"
-                      />
                     </div>
-                  </Field>
-                  <button
-                    type="button"
-                    className="sc-split-remove"
-                    aria-label="Remove recipient"
-                    onClick={() => setSplitRows((rs) => rs.filter((_, j) => j !== i))}
-                  >
-                    ×
-                  </button>
-                </div>
-              ))}
-              {splitRows.length < 10 && (
-                <button
-                  type="button"
-                  className="sc-button sc-button-secondary"
-                  onClick={() =>
-                    setSplitRows((rs) => [...rs, { wallet: '', percent: '', handle: '', platform: 'x' as const }])
-                  }
-                >
-                  Add recipient
-                </button>
-              )}
-              <p className="sc-split-summary">
+                  );
+                })}
+
+                {/* Trader rewards as a payout card */}
+                {traderRewardEnabled && (() => {
+                  const def = getPayoutType('traders');
+                  return (
+                    <div className="rounded-2xl border border-[#32f27b]/25 bg-[#32f27b]/[0.03] p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#32f27b]/10">
+                            <def.Icon className="h-5 w-5 text-[#32f27b]" />
+                          </span>
+                          <div>
+                            <p className="text-sm font-bold text-neutral-100">
+                              {def.label}
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const el = document.getElementById('payout-how-traders');
+                                if (el) el.classList.toggle('hidden');
+                              }}
+                              className="text-[11px] text-[#32f27b] underline underline-offset-2 hover:text-[#4bf78f]"
+                            >
+                              How it works
+                            </button>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          aria-label="Remove trader rewards"
+                          onClick={() => setTraderRewardEnabled(false)}
+                          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/10 text-neutral-500 transition hover:border-red-500/50 hover:text-red-400"
+                        >
+                          ×
+                        </button>
+                      </div>
+                      <p id="payout-how-traders" className="mt-3 hidden text-xs leading-relaxed text-neutral-400">
+                        {def.howItWorks}
+                      </p>
+                      <div className="mt-4 flex flex-wrap items-center gap-4">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm text-neutral-400">Winners</span>
+                          <div className="flex gap-1.5">
+                            {(['1', '2', '3', '4', '5'] as const).map((v) => (
+                              <button
+                                key={v}
+                                type="button"
+                                onClick={() => setTraderRewardCount(v)}
+                                aria-pressed={traderRewardCount === v}
+                                aria-label={`${v} winners`}
+                                className={cn(
+                                  'h-9 w-9 rounded-lg border text-sm font-semibold transition-colors',
+                                  traderRewardCount === v
+                                    ? 'border-[#32f27b]/60 bg-[#32f27b]/10 text-[#32f27b]'
+                                    : 'border-neutral-800 bg-neutral-950 text-neutral-300 hover:border-neutral-600'
+                                )}
+                              >
+                                {v}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <label htmlFor="trader-reward-pct-card" className="text-sm text-neutral-400 shrink-0">
+                            Share
+                          </label>
+                          <input
+                            id="trader-reward-pct-card"
+                            inputMode="decimal"
+                            value={traderRewardPct}
+                            onChange={(e) => {
+                              const v = e.target.value.replace(/[^0-9.]/g, '');
+                              const n = parseFloat(v);
+                              if (v === '' || (Number.isFinite(n) && n >= 0 && n <= 90)) {
+                                setTraderRewardPct(v);
+                              }
+                            }}
+                            placeholder="5"
+                            className="w-20 rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm font-semibold text-neutral-100 outline-none focus:border-[#32f27b]/50"
+                          />
+                          <span className="text-sm text-neutral-500">% of creator fees</span>
+                        </div>
+                      </div>
+                      {traderRewardPreview.error && (
+                        <p className="mt-3 text-xs text-[#fa6d74]">{traderRewardPreview.error}</p>
+                      )}
+                    </div>
+                  );
+                })()}
+              </div>
+
+              <p className="sc-split-summary mt-4">
                 {splitPreview.error ? (
                   <span className="sc-form-error">{splitPreview.error}</span>
-                ) : splitRows.length === 0 ? (
-                  'No splits set. You keep the full creator fee.'
+                ) : splitRows.length === 0 && !traderRewardEnabled ? (
+                  'No payouts set. You keep the full creator fee.'
                 ) : (
                   <>
                     You assign{' '}
                     <strong>{(splitPreview.totalBps / 100).toFixed(2)}%</strong> to
-                    collaborators and keep{' '}
-                    <strong>{((10000 - splitPreview.totalBps) / 100).toFixed(2)}%</strong>.
-                    Recipients can share at most 90% in total.
+                    collaborators
+                    {traderRewardEnabled && traderRewardPreview.bps > 0 && (
+                      <> and <strong>{(traderRewardPreview.bps / 100).toFixed(2)}%</strong> to top traders</>
+                    )}{' '}
+                    and keep{' '}
+                    <strong>{((10000 - splitPreview.totalBps - (traderRewardEnabled ? traderRewardPreview.bps : 0)) / 100).toFixed(2)}%</strong>.
+                    Payouts can share at most 90% in total.
                   </>
-                )}
-              </p>
-            </section>
-
-            {/* ---- Trader rewards: pay your top net buyers ---- */}
-            <section
-              className="sc-builder-section"
-              aria-labelledby="sc-trader-rewards-heading"
-            >
-              <div className="sc-builder-section-head">
-                <span className="sc-section-glyph">🏆</span>
-                <div>
-                  <h2 id="sc-trader-rewards-heading">Trader rewards</h2>
-                  <p>
-                    Reserve a share of your creator fees for your biggest
-                    supporters. The top net buyers at graduation split the
-                    reward automatically in the normal claim flow. Locked at
-                    launch and public forever.
-                  </p>
-                </div>
-              </div>
-              <div className="flex flex-wrap items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => setTraderRewardEnabled((v) => !v)}
-                  aria-pressed={traderRewardEnabled}
-                  className={cn(
-                    'rounded-full border px-5 py-2.5 text-sm font-semibold transition-colors',
-                    traderRewardEnabled
-                      ? 'border-[#32f27b]/60 bg-[#32f27b]/10 text-[#32f27b]'
-                      : 'border-neutral-800 bg-neutral-950 text-neutral-300 hover:border-neutral-600'
-                  )}
-                >
-                  {traderRewardEnabled ? 'On' : 'Off'}
-                </button>
-                {traderRewardEnabled && (
-                  <>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm text-neutral-400">Winners</span>
-                      <div className="flex gap-1.5">
-                        {(['1', '2', '3', '4', '5'] as const).map((v) => (
-                          <button
-                            key={v}
-                            type="button"
-                            onClick={() => setTraderRewardCount(v)}
-                            aria-pressed={traderRewardCount === v}
-                            aria-label={`${v} winners`}
-                            className={cn(
-                              'h-9 w-9 rounded-lg border text-sm font-semibold transition-colors',
-                              traderRewardCount === v
-                                ? 'border-[#32f27b]/60 bg-[#32f27b]/10 text-[#32f27b]'
-                                : 'border-neutral-800 bg-neutral-950 text-neutral-300 hover:border-neutral-600'
-                            )}
-                          >
-                            {v}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <label htmlFor="trader-reward-pct" className="text-sm text-neutral-400 shrink-0">
-                        Share
-                      </label>
-                      <input
-                        id="trader-reward-pct"
-                        inputMode="decimal"
-                        value={traderRewardPct}
-                        onChange={(e) => {
-                          const v = e.target.value.replace(/[^0-9.]/g, '');
-                          const n = parseFloat(v);
-                          if (v === '' || (Number.isFinite(n) && n >= 0 && n <= 90)) {
-                            setTraderRewardPct(v);
-                          }
-                        }}
-                        placeholder="5"
-                        className="w-20 rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm font-semibold text-neutral-100 outline-none focus:border-[#32f27b]/50"
-                      />
-                      <span className="text-sm text-neutral-500">% of creator fees</span>
-                    </div>
-                  </>
-                )}
-              </div>
-              <p className="sc-split-summary">
-                {traderRewardPreview.error ? (
-                  <span className="sc-form-error">{traderRewardPreview.error}</span>
-                ) : !traderRewardEnabled ? (
-                  'Trader rewards are off.'
-                ) : traderRewardPreview.bps > 0 ? (
-                  <>
-                    Top <strong>{traderRewardPreview.count}</strong> net{' '}
-                    {traderRewardPreview.count === 1 ? 'buyer' : 'buyers'} split{' '}
-                    <strong>{(traderRewardPreview.bps / 100).toFixed(2)}%</strong>{' '}
-                    of creator fees at graduation.
-                  </>
-                ) : (
-                  'Set a reward share to enable trader rewards.'
                 )}
               </p>
             </section>
