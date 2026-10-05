@@ -13,7 +13,14 @@ export default function Footer() {
       </span>
       <div className="sc-footer-socials" aria-label="curv social channels">
         <span>Follow curv</span>
-        <b>X</b>
+        <a
+          href="https://x.com/Curvpad"
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label="curv on X"
+        >
+          <b>X</b>
+        </a>
         <b>Discord</b>
         <b>Telegram</b>
       </div>
