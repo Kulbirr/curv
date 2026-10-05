@@ -33,6 +33,9 @@ import {
 import { getMintDecimalsCached } from '@/components/Pool/useOnChainPool';
 import type { OnChainPool } from '@/components/Pool/useOnChainPool';
 import type { PoolStateResponse } from '@/components/Pool';
+import BountyCountdown from '@/components/Bounty/BountyCountdown';
+import CreateBountyWizard from '@/components/Bounty/CreateBountyWizard';
+import { formatRawAmount } from '@/components/Bounty/amounts';
 
 /** Bonding curve progress toward the migration threshold. */
 function GraduationCard({ state }: { state: PoolStateResponse }) {
@@ -207,7 +210,7 @@ function PositionCard({
   );
 }
 
-type ActivityTab = 'Trades' | 'Holders' | 'Info';
+type ActivityTab = 'Trades' | 'Holders' | 'Bounties' | 'Info';
 
 const EMPTY_TAB_STYLE: CSSProperties = {
   margin: 0,
@@ -218,21 +221,176 @@ const EMPTY_TAB_STYLE: CSSProperties = {
 };
 
 /**
+ * Shill to Earn rounds for this pool. Creators fund and launch rounds
+ * from their fee share; everyone else can enter and climb the board.
+ */
+function BountiesTab({
+  poolAddress,
+  state,
+}: {
+  poolAddress: string;
+  state: PoolStateResponse;
+}) {
+  const { publicKey, connected } = useWallet();
+  const [bounties, setBounties] = useState<
+    Array<{
+      id: number;
+      title: string;
+      hashtag: string;
+      prizeBudgetRaw: string;
+      winnerCount: number;
+      startsAt: number;
+      endsAt: number;
+      status: string;
+      entryCount: number;
+      fundedRaw: string;
+      creatorWallet: string;
+    }>
+  >([]);
+  const [creatorWallet, setCreatorWallet] = useState<string | null>(null);
+  const [quoteMint, setQuoteMint] = useState('');
+  const [showWizard, setShowWizard] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  const load = async () => {
+    try {
+      const res = await fetch(`/api/pools/${poolAddress}/bounties`);
+      const j = (await res.json()) as {
+        bounties?: Array<{
+          id: number;
+          title: string;
+          hashtag: string;
+          prizeBudgetRaw: string;
+          winnerCount: number;
+          startsAt: number;
+          endsAt: number;
+          status: string;
+          entryCount: number;
+          fundedRaw: string;
+          creatorWallet: string;
+        }>;
+      };
+      if (res.ok && j.bounties) setBounties(j.bounties);
+    } catch {
+      // stays empty
+    }
+  };
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [poolAddress]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch(`/api/pools/${poolAddress}/trust`);
+        const j = (await res.json()) as { creator?: string; quoteMint?: string };
+        if (j.creator) setCreatorWallet(j.creator);
+        if (j.quoteMint) setQuoteMint(j.quoteMint);
+      } catch {
+        // not essential
+      }
+    })();
+  }, [poolAddress]);
+
+  const isCreator = connected && publicKey && creatorWallet && publicKey.toBase58() === creatorWallet;
+  const live = bounties.filter((b) => b.status === 'active' || b.status === 'scheduled');
+  const past = bounties.filter((b) => b.status !== 'active' && b.status !== 'scheduled');
+  const fundedRaw = bounties[0]?.fundedRaw ?? '0';
+
+  return (
+    <div className="flex flex-col gap-4 p-4">
+      {notice && (
+        <p className="rounded-xl border border-[#32f27b]/30 bg-[#32f27b]/10 px-4 py-3 text-sm font-semibold text-[#32f27b]">
+          {notice}
+        </p>
+      )}
+      {isCreator && (
+        <button
+          type="button"
+          onClick={() => setShowWizard(true)}
+          className="min-h-[44px] rounded-xl bg-[#32f27b] px-6 text-sm font-bold text-black transition-opacity hover:opacity-90"
+        >
+          Create a bounty
+        </button>
+      )}
+      {live.length === 0 && past.length === 0 && (
+        <p className="text-sm leading-relaxed text-neutral-400">
+          {isCreator
+            ? 'No rounds yet. Create one to turn your fee share into posts about your token.'
+            : 'No rounds yet. The creator can launch one and turn posts about this token into prizes.'}
+        </p>
+      )}
+      {live.map((b) => (
+        <Link key={b.id} href={`/bounties/${b.id}`} className="block">
+          <div className="rounded-2xl border border-[#32f27b]/20 bg-[#32f27b]/5 p-4 transition-colors hover:border-[#32f27b]/50">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center rounded-full border border-[#32f27b]/30 bg-[#32f27b]/10 px-3 py-1 text-xs font-bold text-[#32f27b]">
+                #{b.hashtag}
+              </span>
+              <BountyCountdown endsAt={b.endsAt} startsAt={b.startsAt} />
+            </div>
+            <p className="mt-2 text-sm font-bold text-neutral-100">{b.title}</p>
+            <p className="mt-1 text-xs text-neutral-400">
+              <span className="font-bold text-[#32f27b]">
+                {formatRawAmount(b.prizeBudgetRaw, state.quoteDecimals, state.quoteSymbol)}
+              </span>{' '}
+              for the top {b.winnerCount} · {b.entryCount} {b.entryCount === 1 ? 'entry' : 'entries'}
+            </p>
+          </div>
+        </Link>
+      ))}
+      {past.length > 0 && (
+        <div className="flex flex-col gap-2">
+          <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Past rounds</p>
+          {past.map((b) => (
+            <Link key={b.id} href={`/bounties/${b.id}`} className="block">
+              <div className="flex items-center justify-between gap-2 rounded-xl border border-white/5 bg-black/30 px-4 py-3">
+                <span className="truncate text-sm text-neutral-300">{b.title}</span>
+                <span className="shrink-0 text-xs capitalize text-neutral-500">{b.status}</span>
+              </div>
+            </Link>
+          ))}
+        </div>
+      )}
+      {showWizard && isCreator && (
+        <CreateBountyWizard
+          poolAddress={poolAddress}
+          quoteSymbol={state.quoteSymbol}
+          quoteDecimals={state.quoteDecimals}
+          quoteMint={quoteMint}
+          bountyBalanceRaw={fundedRaw}
+          onCreated={(bountyId) => {
+            setShowWizard(false);
+            setNotice('Your bounty is live. Good luck to everyone posting.');
+            load();
+            window.location.href = `/bounties/${bountyId}`;
+          }}
+          onClose={() => setShowWizard(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
  * Activity card. The indexer does not record individual trades or a holder
  * list, so those tabs stay honest empty states; Info shows real pool data.
  */
 function ActivityCard({
   state,
   onChain,
+  poolAddress,
 }: {
   state: PoolStateResponse;
   onChain: OnChainPool | undefined;
+  poolAddress: string;
 }) {
   const [tab, setTab] = useState<ActivityTab>('Trades');
   return (
     <section className="sc-pool-activity-card" aria-label="Pool activity">
       <div className="sc-pool-tabs" role="tablist" aria-label="Pool activity">
-        {(['Trades', 'Holders', 'Info'] as const).map((item) => (
+        {(['Trades', 'Holders', 'Bounties', 'Info'] as const).map((item) => (
           <button
             key={item}
             type="button"
@@ -254,6 +412,7 @@ function ActivityCard({
       {tab === 'Holders' && (
         <p style={EMPTY_TAB_STYLE}>Holder data is not available for this pool yet.</p>
       )}
+      {tab === 'Bounties' && <BountiesTab poolAddress={poolAddress} state={state} />}
       {tab === 'Info' && <PoolDetails state={state} onChain={onChain} />}
     </section>
   );
@@ -443,7 +602,7 @@ function PoolPageContent({ poolAddress }: { poolAddress: string }) {
           <DevWalletRadar poolAddress={poolAddress} />
           {state.graduated && <LiquidityLock poolAddress={poolAddress} />}
           <CreatorEarnings poolAddress={poolAddress} state={state} />
-          <ActivityCard state={state} onChain={onChainQuery.data} />
+          <ActivityCard state={state} onChain={onChainQuery.data} poolAddress={poolAddress} />
         </div>
 
         <aside className="sc-pool-trade-column">

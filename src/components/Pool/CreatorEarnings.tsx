@@ -132,12 +132,30 @@ export default function CreatorEarnings({
         // One atomic claim: the transaction claims the fees and pays
         // every split recipient their published share.
         setStatus('signing');
+        // Fee commitments (buyback/bounty bps) live on the pool registry;
+        // the trust endpoint carries them. Without these the claim
+        // builder cannot divert the slices to the vaults.
+        let buybackBps = 0;
+        let bountyBps = 0;
+        try {
+          const tr = await fetch(`/api/pools/${poolAddress}/trust`);
+          if (tr.ok) {
+            const tj = (await tr.json()) as { buybackBps?: number; bountyBps?: number };
+            buybackBps = Math.max(0, Math.min(10000, Math.floor(Number(tj.buybackBps) || 0)));
+            bountyBps = Math.max(0, Math.min(10000, Math.floor(Number(tj.bountyBps) || 0)));
+          }
+        } catch {
+          // Trust data unavailable: claim proceeds without diversions;
+          // the slices stay accrued until the next claim.
+        }
         const tracked = {
           poolAddress,
           configAddress: splitsQuery.data.configAddress,
           baseMint: splitsQuery.data.baseMint,
           quoteMint: splitsQuery.data.quoteMint,
           creator: publicKey.toBase58(),
+          buybackBps,
+          bountyBps,
         } as TrackedPool;
         // Trader-reward winners, if decided: fetched lazily, paid
         // atomically in the same claim transaction.
@@ -159,7 +177,7 @@ export default function CreatorEarnings({
           // Winners unavailable: claim proceeds without them; their
           // share stays accrued until the next claim.
         }
-        const { signatures, buyback } = await claimAndSplitFlow({
+        const { signatures, buyback, bounty } = await claimAndSplitFlow({
           connection: getConnection(),
           signTransaction,
           signAllTransactions: signAllTransactions ?? undefined,
@@ -179,6 +197,19 @@ export default function CreatorEarnings({
         try {
           if (buyback && signatures[0]) {
             await fetch(`/api/pools/${poolAddress}/buyback-deposits`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ txSignature: signatures[0] }),
+            });
+          }
+        } catch {
+          // Deposit recording failure never fails the claim.
+        }
+        // Record the bounty deposit the same way: the server verifies
+        // the transfer on-chain from the claim transaction.
+        try {
+          if (bounty && signatures[0]) {
+            await fetch(`/api/pools/${poolAddress}/bounty-deposits`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ txSignature: signatures[0] }),

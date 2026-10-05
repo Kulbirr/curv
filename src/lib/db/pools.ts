@@ -62,6 +62,12 @@ export interface TrackedPool {
    * immutable after. 0 = feature off.
    */
   buybackBps?: number;
+  /**
+   * Shill-to-Earn bounty commitment: basis points (0-10000) of the creator
+   * fee share committed to bounty prize funding. Set once at launch,
+   * immutable after. buybackBps + bountyBps <= 10000. 0 = feature off.
+   */
+  bountyBps?: number;
   traderReward?: TraderReward;
   /**
    * True only when every submitted field (config, creator, baseMint,
@@ -91,6 +97,7 @@ interface PoolRow {
   verified: number;
   dev_buy_lamports: number | null;
   buyback_bps: number | null;
+  bounty_bps: number | null;
   trader_reward: string | null;
 }
 
@@ -113,6 +120,7 @@ function rowToPool(r: PoolRow): TrackedPool {
     verified: r.verified === 1,
     devBuyLamports: r.dev_buy_lamports ?? undefined,
     buybackBps: r.buyback_bps ?? 0,
+    bountyBps: r.bounty_bps ?? 0,
     traderReward: parseTraderReward(r.trader_reward),
   };
 }
@@ -202,6 +210,13 @@ export async function insertPool(input: RegisterPoolInput): Promise<TrackedPool>
       input.buybackBps <= 10000
         ? input.buybackBps
         : 0,
+    bountyBps:
+      typeof input.bountyBps === 'number' &&
+      Number.isInteger(input.bountyBps) &&
+      input.bountyBps >= 0 &&
+      input.bountyBps <= 10000
+        ? input.bountyBps
+        : 0,
     traderReward: parseTraderReward(input.traderReward),
   };
   if (!entry.baseSymbol) throw new Error('baseSymbol is required');
@@ -217,8 +232,8 @@ export async function insertPool(input: RegisterPoolInput): Promise<TrackedPool>
       `INSERT INTO pools
        (pool_address, config_address, base_mint, quote_mint, base_symbol, base_name,
         quote_symbol, description, image_url, website, twitter, creator,
-        created_at, launched_at, verified, dev_buy_lamports, buyback_bps, trader_reward)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)`,
+        created_at, launched_at, verified, dev_buy_lamports, buyback_bps, bounty_bps, trader_reward)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`,
       [
         entry.poolAddress,
         entry.configAddress,
@@ -237,6 +252,7 @@ export async function insertPool(input: RegisterPoolInput): Promise<TrackedPool>
         entry.verified ? 1 : 0,
         entry.devBuyLamports ?? null,
         entry.buybackBps ?? 0,
+        entry.bountyBps ?? 0,
         entry.traderReward ? JSON.stringify(entry.traderReward) : null,
       ],
     );

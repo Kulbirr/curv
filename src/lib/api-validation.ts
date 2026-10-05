@@ -109,6 +109,12 @@ export interface RegistrationInput {
    */
   buybackBps?: number;
   /**
+   * Shill-to-Earn bounty commitment: basis points (0-10000) of the creator
+   * fee share committed to bounty prize funding. Bound into the signed
+   * registration message. buybackBps + bountyBps <= 10000. Immutable.
+   */
+  bountyBps?: number;
+  /**
    * Trader rewards: top N net buyers split bps of the creator fee,
    * winners decided at graduation. Bound into the signed registration
    * message. Immutable after launch.
@@ -202,6 +208,21 @@ export function validateRegistrationBody(body: unknown): ValidationResult<Regist
       buybackBps = n;
     }
 
+    // Bounty bps is bound into the signed registration message, so a
+    // forged value fails signature verification. It draws from the same
+    // creator remainder as buyback, so the two together cap at 10000.
+    let bountyBps = 0;
+    if (b.bountyBps !== undefined && b.bountyBps !== null) {
+      const n = Number(b.bountyBps);
+      if (!Number.isInteger(n) || n < 0 || n > 10000) {
+        return fail('bountyBps must be an integer between 0 and 10000');
+      }
+      bountyBps = n;
+    }
+    if (buybackBps + bountyBps > 10000) {
+      return fail('buybackBps and bountyBps together can use at most 10000');
+    }
+
     // Trader rewards: {count, bps}, reserved for top net buyers.
     // Bound into the signed message like fee splits. The bps counts
     // toward the 90% recipient cap together with fee splits.
@@ -244,6 +265,7 @@ export function validateRegistrationBody(body: unknown): ValidationResult<Regist
         feeSplits,
         devBuyLamports,
         buybackBps,
+        bountyBps,
         traderReward: traderReward ? { ...traderReward, rule: 'top_net_buyers' as const } : undefined,
       },
     };

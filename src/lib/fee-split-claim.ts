@@ -163,6 +163,63 @@ export function resolveBuybackVault(): PublicKey | null {
   return platformFeeWallet();
 }
 
+export interface BountyPlan {
+  /** Basis points of the creator remainder committed to bounties, 0 when off. */
+  bps: number;
+  baseRaw: string;
+  quoteRaw: string;
+  /** Vault wallet the bounty slice is forwarded to. */
+  vault: string;
+}
+
+/**
+ * Pure bounty plan: the bounty slice of a claim.
+ *
+ * Semantics mirror buyback exactly: recipients take their bps of the
+ * GROSS accrued fee, untouched. The bounty_bps the creator committed
+ * at launch applies to the creator's REMAINDER (gross minus recipient
+ * shares), never to the gross, so recipient math is unaffected and the
+ * parts can never exceed the whole. The creator nets the remainder
+ * minus the buyback and bounty slices.
+ */
+export function planBounty(
+  accruedBaseRaw: string | null | undefined,
+  accruedQuoteRaw: string | null | undefined,
+  creatorBps: number,
+  bountyBps: number,
+  vault: string,
+): BountyPlan | null {
+  const bps = Math.max(0, Math.min(10_000, Math.floor(bountyBps)));
+  if (bps <= 0 || creatorBps <= 0) return null;
+  const remainderBase = splitShareRaw(accruedBaseRaw, creatorBps);
+  const remainderQuote = splitShareRaw(accruedQuoteRaw, creatorBps);
+  const baseRaw = splitShareRaw(remainderBase, bps);
+  const quoteRaw = splitShareRaw(remainderQuote, bps);
+  if (baseRaw === '0' && quoteRaw === '0') return null;
+  return { bps, baseRaw, quoteRaw, vault };
+}
+
+/**
+ * The wallet that collects bounty slices. The vault address is public
+ * (it only receives funds), so it may come from a NEXT_PUBLIC_ var for
+ * the client claim flow; the server keeper uses the same address.
+ * Falls back to the platform fee wallet when no dedicated vault is set.
+ */
+export function resolveBountyVault(): PublicKey | null {
+  const raw =
+    process.env.NEXT_PUBLIC_BOUNTY_VAULT_WALLET?.trim() ||
+    process.env.BOUNTY_VAULT_WALLET?.trim() ||
+    '';
+  if (raw) {
+    try {
+      return new PublicKey(raw);
+    } catch {
+      // Fall through to the fee wallet below.
+    }
+  }
+  return platformFeeWallet();
+}
+
 const TX_SIZE_BUDGET = 1200; // legacy transactions cap at 1232 bytes
 
 function txSize(tx: Transaction): number {
@@ -174,6 +231,8 @@ export interface ClaimAndSplitBuild {
   distribution: SplitPayout[];
   /** The buyback slice forwarded to the vault, null when the pool has none. */
   buyback: BuybackPlan | null;
+  /** The bounty slice forwarded to the bounty vault, null when the pool has none. */
+  bounty: BountyPlan | null;
   accruedBaseRaw: string | null;
   accruedQuoteRaw: string | null;
 }
@@ -245,6 +304,20 @@ export async function buildClaimAndSplitTransactions(args: {
     buyback = planBuyback(accruedBase, accruedQuote, creatorBps, buybackBps, vault.toBase58());
   }
 
+  // Bounty diversion: same pattern as buyback. When the creator
+  // committed bounty_bps at launch, that share of the creator remainder
+  // is forwarded to the bounty vault in the same atomic flow. The
+  // keeper later pays bounty winners from it.
+  const bountyBps = Math.max(0, Math.min(10_000, Math.floor(tracked.bountyBps ?? 0)));
+  let bounty: BountyPlan | null = null;
+  if (bountyBps > 0 && creatorBps > 0) {
+    const vault = resolveBountyVault();
+    if (!vault) {
+      throw new Error('Bounties are enabled for this pool but no bounty vault is configured');
+    }
+    bounty = planBounty(accruedBase, accruedQuote, creatorBps, bountyBps, vault.toBase58());
+  }
+
   const claimTx = await buildClaimCreatorFeesTx({
     poolAddress: tracked.poolAddress,
     creator: tracked.creator,
@@ -267,7 +340,8 @@ export async function buildClaimAndSplitTransactions(args: {
   const owesSolPayouts =
     quoteMintPk.equals(NATIVE_MINT) &&
     (distribution.some((p) => BigInt(p.quoteRaw) > BigInt(0)) ||
-      (buyback !== null && BigInt(buyback.quoteRaw) > BigInt(0)));
+      (buyback !== null && BigInt(buyback.quoteRaw) > BigInt(0)) ||
+      (bounty !== null && BigInt(bounty.quoteRaw) > BigInt(0)));
   const claimInstructions = owesSolPayouts
     ? claimTx.instructions.filter(
         (ix) => !isWsolUnwrapOf(ix, getAssociatedTokenAddressSync(NATIVE_MINT, creator)),
@@ -330,10 +404,33 @@ export async function buildClaimAndSplitTransactions(args: {
     }
   }
 
+  // Bounty diversion, packed like the buyback slice: the creator's
+  // committed bounty share goes to the bounty vault in the same atomic
+  // flow. The keeper later pays bounty winners from it.
+  if (bounty) {
+    const vault = new PublicKey(bounty.vault);
+    const legs: Array<{ mint: PublicKey; raw: string }> = [
+      { mint: baseMint, raw: bounty.baseRaw },
+      { mint: quoteMint, raw: bounty.quoteRaw },
+    ];
+    for (const leg of legs) {
+      const amount = BigInt(leg.raw);
+      if (amount <= BigInt(0)) continue;
+      const source = getAssociatedTokenAddressSync(leg.mint, creator);
+      const dest = getAssociatedTokenAddressSync(leg.mint, vault);
+      const destInfo = await connection.getAccountInfo(dest);
+      if (!destInfo) {
+        pushIx(createAssociatedTokenAccountInstruction(creator, dest, vault, leg.mint));
+      }
+      pushIx(createTransferInstruction(source, dest, creator, amount));
+    }
+  }
+
   return {
     transactions,
     distribution,
     buyback,
+    bounty,
     accruedBaseRaw: live.creatorBaseFeeRaw,
     accruedQuoteRaw: live.creatorQuoteFeeRaw,
   };
@@ -353,7 +450,7 @@ export async function claimAndSplitFlow(args: {
   bindings?: FeeSplitBinding[];
   traderRewardWinners?: Array<{ wallet: string; rank: number }>;
   traderRewardBps?: number;
-}): Promise<{ signatures: string[]; distribution: SplitPayout[]; buyback: BuybackPlan | null }> {
+}): Promise<{ signatures: string[]; distribution: SplitPayout[]; buyback: BuybackPlan | null; bounty: BountyPlan | null }> {
   const build = await buildClaimAndSplitTransactions({
     connection: args.connection,
     tracked: args.tracked,
@@ -387,5 +484,5 @@ export async function claimAndSplitFlow(args: {
     signatures.push(signature);
   }
 
-  return { signatures, distribution: build.distribution, buyback: build.buyback };
+  return { signatures, distribution: build.distribution, buyback: build.buyback, bounty: build.bounty };
 }

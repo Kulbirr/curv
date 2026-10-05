@@ -221,6 +221,42 @@ export async function verifyTweetForEntry(
   return { ok: true, tweet, wallet };
 }
 
+/**
+ * Engagement counts for a tweet, from X's free embed infrastructure.
+ * No API key, no credits.
+ */
+export interface TweetEngagement {
+  likes: number;
+  retweets: number;
+  replies: number;
+  views: number;
+}
+
+/**
+ * Fetch engagement for a tweet via the fxtwitter community API.
+ * Syndication and oEmbed do not expose counts, so engagement uses
+ * fxtwitter only. Returns null on any failure (deleted, protected,
+ * or network). Verified live against a real post.
+ */
+export async function fetchTweetEngagement(tweetId: string): Promise<TweetEngagement | null> {
+  const j = await fetchJson(`https://api.fxtwitter.com/i/status/${tweetId}`);
+  if (!j || typeof j !== 'object') return null;
+  const o = j as Record<string, unknown>;
+  if (o.code !== 200) return null;
+  const tweet = o.tweet as Record<string, unknown> | undefined;
+  if (!tweet) return null;
+  const num = (v: unknown): number => {
+    const n = typeof v === 'number' ? Math.floor(v) : 0;
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  };
+  return {
+    likes: num(tweet.likes),
+    retweets: num(tweet.retweets),
+    replies: num(tweet.replies),
+    views: num(tweet.views),
+  };
+}
+
 /** Suggested tweet text, pre-filled through x.com/intent/post. */
 export function tweetIntentUrl(code: string): string {
   const text =

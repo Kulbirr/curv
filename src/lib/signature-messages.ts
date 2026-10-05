@@ -39,6 +39,7 @@ export function buildRegistrationMessage(
   feeSplits?: FeeSplitRecipient[],
   devBuyLamports?: number | null,
   buybackBps?: number | null,
+  bountyBps?: number | null,
   traderReward?: { count: number; bps: number } | null,
 ): string {
   const lines = [
@@ -56,6 +57,9 @@ export function buildRegistrationMessage(
   // The buyback and burn commitment. Bound into the signature so it is
   // immutable and publicly verifiable from launch.
   if (buybackBps) lines.push(`buyback: ${buybackBps} bps`);
+  // The bounty funding commitment. Bound into the signature so it is
+  // immutable and publicly verifiable from launch.
+  if (bountyBps) lines.push(`bounty: ${bountyBps} bps`);
   // The trader rewards commitment: top N net buyers split bps of the
   // creator fee, winners decided at graduation. Bound into the
   // signature so the rule is immutable and publicly verifiable.
@@ -63,6 +67,27 @@ export function buildRegistrationMessage(
     lines.push(`trader rewards: top ${traderReward.count} net buyers split ${traderReward.bps} bps`);
   }
   return lines.join('\n');
+}
+
+/**
+ * Creator-signed bounty actions (create, finalize, cancel). The message
+ * names the pool, the action, and a timestamp, so the signature proves
+ * the pool creator authorized this exact action and cannot be replayed
+ * for another one.
+ */
+export function buildBountyActionMessage(
+  poolAddress: string,
+  action: 'create' | 'finalize' | 'cancel',
+  bountyId: number | null,
+  timestamp: number,
+): string {
+  return [
+    'Curv bounty action',
+    `pool: ${poolAddress}`,
+    `action: ${action}`,
+    `bounty: ${bountyId === null ? 'new' : bountyId}`,
+    `timestamp: ${timestamp}`,
+  ].join('\n');
 }
 
 /**

@@ -310,6 +310,7 @@ export default function CreatePool() {
   >([])
   const [devBuy, setDevBuy] = useState('')
   const [buybackPct, setBuybackPct] = useState('0')
+  const [bountyPct, setBountyPct] = useState('0')
   const [traderRewardEnabled, setTraderRewardEnabled] = useState(false)
   const [traderRewardCount, setTraderRewardCount] = useState('3')
   const [traderRewardPct, setTraderRewardPct] = useState('')
@@ -1135,6 +1136,10 @@ export default function CreatePool() {
         }
       }
       const buybackBps = Math.round(parseFloat(buybackPct || '0') * 100) || 0
+      const bountyBps = Math.round(parseFloat(bountyPct || '0') * 100) || 0
+      if (buybackBps + bountyBps > 10000) {
+        throw new Error('Buyback and bounties together cannot exceed 100% of your fee share')
+      }
       let traderReward: { count: number; bps: number } | undefined
       if (traderRewardPreview.error) {
         throw new Error(`Trader rewards are invalid: ${traderRewardPreview.error}`)
@@ -1152,6 +1157,7 @@ export default function CreatePool() {
         normalizedSplits,
         devBuyLamports,
         buybackBps || undefined,
+        bountyBps || undefined,
         traderReward ?? undefined
       )
       if (!signMessage) throw new Error('Connected wallet cannot sign messages')
@@ -1189,6 +1195,7 @@ export default function CreatePool() {
           feeSplits: normalizedSplits ?? undefined,
           devBuyLamports: devBuyLamports ?? undefined,
           buybackBps: Math.round(parseFloat(buybackPct || '0') * 100) || 0,
+          bountyBps: Math.round(parseFloat(bountyPct || '0') * 100) || 0,
           traderReward: traderReward ?? undefined,
         }),
       })
@@ -2764,6 +2771,74 @@ export default function CreatePool() {
                     <strong>{buybackPct}%</strong> of your creator fee share
                     automatically buys back and burns the token. Every trade
                     makes the remaining supply scarcer.
+                  </>
+                )}
+              </p>
+            </section>
+
+            {/* ---- Shill-to-Earn bounties: fund prize pools from fee share ---- */}
+            <section
+              className="sc-builder-section"
+              aria-labelledby="sc-bounty-heading"
+            >
+              <div className="sc-builder-section-head">
+                <span className="sc-section-glyph">◈</span>
+                <div>
+                  <h2 id="sc-bounty-heading">Shill to Earn bounties</h2>
+                  <p>
+                    Commit a share of your creator fees to fund prize
+                    pools. Anyone who posts about your token on X can
+                    win, paid to their handle. Locked at launch and
+                    public forever.
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {(['0', '10', '25', '50'] as const).map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => setBountyPct(v)}
+                    aria-pressed={bountyPct === v}
+                    className={cn(
+                      'rounded-full border px-5 py-2.5 text-sm font-semibold transition-colors',
+                      bountyPct === v
+                        ? 'border-[#32f27b]/60 bg-[#32f27b]/10 text-[#32f27b]'
+                        : 'border-neutral-800 bg-neutral-950 text-neutral-300 hover:border-neutral-600'
+                    )}
+                  >
+                    {v === '0' ? 'Off' : `${v}%`}
+                  </button>
+                ))}
+              </div>
+              <div className="mt-3 flex items-center gap-3">
+                <label htmlFor="bounty-custom" className="text-sm text-neutral-400 shrink-0">
+                  Custom
+                </label>
+                <input
+                  id="bounty-custom"
+                  inputMode="decimal"
+                  value={bountyPct}
+                  onChange={(e) => {
+                    const v = e.target.value.replace(/[^0-9.]/g, '');
+                    const n = parseFloat(v);
+                    if (v === '' || (Number.isFinite(n) && n >= 0 && n <= 100)) {
+                      setBountyPct(v);
+                    }
+                  }}
+                  placeholder="10"
+                  className="w-24 rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm font-semibold text-neutral-100 outline-none focus:border-[#32f27b]/50"
+                />
+                <span className="text-sm text-neutral-500">% of your fee share</span>
+              </div>
+              <p className="sc-split-summary">
+                {bountyPct === '0' ? (
+                  'Bounties are off. You keep your full creator fee share.'
+                ) : (
+                  <>
+                    <strong>{bountyPct}%</strong> of your creator fee share
+                    funds bounty prize pools. Combined with buyback it
+                    cannot exceed 100% of your share.
                   </>
                 )}
               </p>

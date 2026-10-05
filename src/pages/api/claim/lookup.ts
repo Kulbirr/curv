@@ -1,5 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { query } from '@/lib/db';
+import { getBounty, getUnclaimedWinnings } from '@/lib/db/bounties';
 
 /**
  * GET /api/claim/lookup?platform=x|twitch|reddit&handle=...
@@ -94,5 +95,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     });
   }
 
-  return res.status(200).json({ platform, handle, claims });
+  // Bounty winnings: unclaimed prizes for this handle across all rounds.
+  const rawWinnings = platform === 'x' ? await getUnclaimedWinnings(handle) : [];
+  const bountyWinnings = [];
+  for (const w of rawWinnings) {
+    const bounty = await getBounty(w.bountyId);
+    if (!bounty) continue;
+    bountyWinnings.push({
+      bountyId: w.bountyId,
+      bountyTitle: bounty.title,
+      poolAddress: bounty.poolAddress,
+      rank: w.rank,
+      winnerCount: bounty.winnerCount,
+      prizeRaw: w.prizeRaw,
+      prizeMint: w.prizeMint,
+      bound: w.bound,
+      claimUrl: `/bounties/${w.bountyId}`,
+    });
+  }
+
+  return res.status(200).json({ platform, handle, claims, bountyWinnings });
 }

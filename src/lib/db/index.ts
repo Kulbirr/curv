@@ -369,6 +369,111 @@ CREATE TABLE IF NOT EXISTS ops_alerts (
   resolved_at BIGINT
 );
 CREATE INDEX IF NOT EXISTS idx_ops_alerts_kind ON ops_alerts (kind, resolved_at, created_at DESC);
+
+-- Shill-to-Earn bounties: creators fund prize pools from their fee
+-- share; anyone posts about the token on X with a hashtag, gets ranked
+-- by engagement, and winners are paid to their X handle. One row per
+-- bounty round.
+CREATE TABLE IF NOT EXISTS bounties (
+  id SERIAL PRIMARY KEY,
+  pool_address TEXT NOT NULL,
+  creator_wallet TEXT NOT NULL,
+  title TEXT NOT NULL,
+  description TEXT,
+  hashtag TEXT NOT NULL,
+  keyword TEXT,
+  prize_budget_raw TEXT NOT NULL,
+  prize_mint TEXT NOT NULL,
+  winner_count INTEGER NOT NULL,
+  prize_splits TEXT NOT NULL,
+  weight_likes INTEGER NOT NULL DEFAULT 1,
+  weight_retweets INTEGER NOT NULL DEFAULT 3,
+  weight_replies INTEGER NOT NULL DEFAULT 2,
+  weight_views INTEGER NOT NULL DEFAULT 0,
+  starts_at BIGINT NOT NULL,
+  ends_at BIGINT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'active',
+  created_at BIGINT NOT NULL,
+  finalized_at BIGINT,
+  CONSTRAINT chk_bounty_winner_count CHECK (winner_count BETWEEN 1 AND 20),
+  CONSTRAINT chk_bounty_status CHECK (status IN ('active','finalizing','finalized','cancelled'))
+);
+CREATE INDEX IF NOT EXISTS idx_bounties_pool ON bounties (pool_address, status);
+CREATE INDEX IF NOT EXISTS idx_bounties_ends ON bounties (ends_at) WHERE status = 'active';
+
+-- Bounty entries: one row per submitted tweet. The author handle is
+-- server-verified from the tweet itself, never from user input. One
+-- entry per handle per round: a second tweet from the same handle
+-- replaces the first (keeps earliest submitted_at).
+CREATE TABLE IF NOT EXISTS bounty_entries (
+  id SERIAL PRIMARY KEY,
+  bounty_id INTEGER NOT NULL REFERENCES bounties(id),
+  tweet_id TEXT NOT NULL,
+  author_handle TEXT NOT NULL,
+  author_handle_display TEXT NOT NULL,
+  tweet_text TEXT NOT NULL,
+  submitted_at BIGINT NOT NULL,
+  disqualified BOOLEAN NOT NULL DEFAULT FALSE,
+  disqualify_reason TEXT,
+  UNIQUE (bounty_id, tweet_id),
+  UNIQUE (bounty_id, author_handle)
+);
+CREATE INDEX IF NOT EXISTS idx_bounty_entries_bounty ON bounty_entries (bounty_id, disqualified);
+
+-- Engagement snapshots, append-only. The keeper takes them on a
+-- cadence; the leaderboard reads the latest per entry. History makes
+-- the ranking auditable and sudden spikes visible.
+CREATE TABLE IF NOT EXISTS bounty_snapshots (
+  id SERIAL PRIMARY KEY,
+  entry_id INTEGER NOT NULL REFERENCES bounty_entries(id),
+  likes INTEGER NOT NULL,
+  retweets INTEGER NOT NULL,
+  replies INTEGER NOT NULL,
+  views INTEGER NOT NULL,
+  score NUMERIC NOT NULL,
+  taken_at BIGINT NOT NULL,
+  source TEXT NOT NULL DEFAULT 'fxtwitter'
+);
+CREATE INDEX IF NOT EXISTS idx_bounty_snapshots_entry ON bounty_snapshots (entry_id, taken_at DESC);
+
+-- Bounty winners: immutable once written. bound_wallet is set when the
+-- winner binds via tweet verification; claimed_at when the keeper pays.
+CREATE TABLE IF NOT EXISTS bounty_winners (
+  id SERIAL PRIMARY KEY,
+  bounty_id INTEGER NOT NULL REFERENCES bounties(id),
+  entry_id INTEGER NOT NULL REFERENCES bounty_entries(id) UNIQUE,
+  author_handle TEXT NOT NULL,
+  rank INTEGER NOT NULL,
+  prize_raw TEXT NOT NULL,
+  bound_wallet TEXT,
+  claimed_at BIGINT,
+  payout_tx TEXT,
+  UNIQUE (bounty_id, rank)
+);
+CREATE INDEX IF NOT EXISTS idx_bounty_winners_handle ON bounty_winners (author_handle) WHERE claimed_at IS NULL;
+
+-- Bounty vault funding ledger. Append-only: one row per verified bounty
+-- slice that landed in the vault from a creator claim. Mirrors
+-- buyback_deposits: the vault is shared across pools, so per-pool
+-- attribution lives here, verified on-chain by the deposit API.
+CREATE TABLE IF NOT EXISTS bounty_deposits (
+  id SERIAL PRIMARY KEY,
+  pool_address TEXT NOT NULL,
+  quote_mint TEXT NOT NULL,
+  amount_raw TEXT NOT NULL,
+  tx_signature TEXT NOT NULL UNIQUE,
+  created_at BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_bounty_deposits_pool ON bounty_deposits (pool_address);
+
+-- Bounty payout ledger, append-only: one row per paid winner.
+CREATE TABLE IF NOT EXISTS bounty_payouts (
+  id SERIAL PRIMARY KEY,
+  winner_id INTEGER NOT NULL REFERENCES bounty_winners(id) UNIQUE,
+  amount_raw TEXT NOT NULL,
+  tx_signature TEXT NOT NULL UNIQUE,
+  paid_at BIGINT NOT NULL
+);
 `;
 
 // pg returns BIGINT (int8) columns as strings by default. Unix-ms
@@ -775,6 +880,10 @@ export function ensureSchema(db?: DbClient): Promise<void> {
       // Buyback and burn: basis points (0-10000) of the creator fee share
       // committed to automatic buyback and burn at launch. Immutable.
       await client.query('ALTER TABLE pools ADD COLUMN IF NOT EXISTS buyback_bps INTEGER NOT NULL DEFAULT 0');
+      // Shill-to-Earn bounties: basis points (0-10000) of the creator fee
+      // share committed to bounty prize funding at launch. Immutable.
+      // buyback_bps + bounty_bps <= 10000 is enforced at registration.
+      await client.query('ALTER TABLE pools ADD COLUMN IF NOT EXISTS bounty_bps INTEGER NOT NULL DEFAULT 0');
       // Trader rewards: JSON {count, bps, rule} reserving a share of
       // creator fees for the top net buyers, decided at graduation.
       // Immutable once set at launch. Null = feature off.
