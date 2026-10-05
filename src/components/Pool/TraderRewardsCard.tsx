@@ -30,7 +30,7 @@ export default function TraderRewardsCard({ poolAddress }: { poolAddress: string
   const perWinner = winners.length > 0 ? reward.bps / winners.length / 100 : 0;
 
   return (
-    <div className="mb-3 rounded-2xl border border-[#32f27b]/25 bg-[#32f27b]/[0.04] p-5">
+    <div className="mb-3 rounded-2xl border border-[#32f27b]/25 bg-[#32f27b]/[0.04] p-5" data-version="2">
       <div className="flex items-center gap-2.5">
         <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#32f27b]/10 text-lg" aria-hidden="true">
           🏆
