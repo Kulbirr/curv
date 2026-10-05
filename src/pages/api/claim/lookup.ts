@@ -17,7 +17,7 @@ export const config = {
   api: { bodyParser: { sizeLimit: '4kb' } },
 };
 
-const PLATFORMS = new Set(['x', 'twitch', 'reddit']);
+const PLATFORMS = new Set(['x', 'twitch']);
 
 function normalizeHandle(platform: string, raw: string): string {
   let h = raw.trim();
@@ -34,7 +34,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const platform = String(req.query.platform ?? '').toLowerCase();
   const handle = normalizeHandle(platform, String(req.query.handle ?? ''));
   if (!PLATFORMS.has(platform)) {
-    return res.status(400).json({ error: 'platform must be x, twitch, or reddit' });
+    return res.status(400).json({ error: 'platform must be x or twitch' });
   }
   if (handle.length < 1 || handle.length > 30) {
     return res.status(400).json({ error: 'handle is required' });

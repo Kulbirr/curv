@@ -3,7 +3,7 @@ import Link from 'next/link';
 import Page from '@/components/ui/Page/Page';
 import { cn } from '@/lib/utils';
 
-type Platform = 'x' | 'twitch' | 'reddit';
+type Platform = 'x' | 'twitch';
 
 interface Claim {
   poolAddress: string;
@@ -16,13 +16,11 @@ interface Claim {
 const PLATFORM_LABEL: Record<Platform, string> = {
   x: 'X',
   twitch: 'Twitch',
-  reddit: 'Reddit',
 };
 
 const PLATFORM_PLACEHOLDER: Record<Platform, string> = {
   x: 'username (without @)',
   twitch: 'twitch username',
-  reddit: 'username (without u/)',
 };
 
 function shortPool(p: string): string {
@@ -110,7 +108,7 @@ export default function ClaimLookupPage() {
             </div>
 
             <form
-              className="mt-3 flex gap-2"
+              className="mt-3 flex flex-col gap-2 sm:flex-row"
               onSubmit={(e) => {
                 e.preventDefault();
                 search();
@@ -128,7 +126,7 @@ export default function ClaimLookupPage() {
               <button
                 type="submit"
                 disabled={loading || !handle.trim()}
-                className="inline-flex h-12 items-center justify-center rounded-full bg-[#32f27b] px-6 text-sm font-bold text-[#04120a] transition hover:bg-[#4bf78f] disabled:opacity-60"
+                className="inline-flex h-12 items-center justify-center rounded-full bg-[#32f27b] px-6 text-sm font-bold text-[#04120a] transition hover:bg-[#4bf78f] disabled:opacity-60 sm:w-auto w-full"
               >
                 {loading ? 'Looking…' : 'Find'}
               </button>
@@ -203,7 +201,7 @@ export default function ClaimLookupPage() {
 
             <p className="mt-6 text-[11px] leading-relaxed text-neutral-600">
               Claiming still asks you to prove the account is yours: a public post for X,
-              a quick login for Twitch or Reddit. Then you bind the wallet that gets paid.
+              a quick login for Twitch. Then you bind the wallet that gets paid.
             </p>
           </div>
         </section>
