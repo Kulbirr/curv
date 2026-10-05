@@ -48,8 +48,8 @@ export default function TraderRewardsCard({ poolAddress }: { poolAddress: string
         </div>
 
         {/* Headline */}
-        <div className="shrink-0">
-          <p className="text-xl font-bold leading-tight text-neutral-50 md:text-2xl">
+        <div className="shrink-0 md:max-w-[200px]">
+          <p className="text-xl font-bold leading-tight text-neutral-50">
             Top {reward.count} buyers split{' '}
             <span className="text-[#32f27b]">{(reward.bps / 100).toFixed(0)}%</span>
           </p>
