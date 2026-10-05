@@ -62,15 +62,18 @@ interface UniverseView {
 
 function useAdminSecret() {
   const [secret, setSecret] = useState('');
+  const [draft, setDraft] = useState('');
   useEffect(() => {
-    setSecret(sessionStorage.getItem(SECRET_KEY) ?? '');
+    const saved = sessionStorage.getItem(SECRET_KEY) ?? '';
+    setSecret(saved);
+    setDraft(saved);
   }, []);
   const save = useCallback((v: string) => {
     setSecret(v);
     if (v) sessionStorage.setItem(SECRET_KEY, v);
     else sessionStorage.removeItem(SECRET_KEY);
   }, []);
-  return { secret, save };
+  return { secret, draft, setDraft, save };
 }
 
 function useAdminApi(secret: string) {
@@ -124,7 +127,7 @@ function StatusPill({ status }: { status: CandidateView['status'] }) {
 }
 
 export default function StrategiesAdmin() {
-  const { secret, save } = useAdminSecret();
+  const { secret, draft, setDraft, save } = useAdminSecret();
   const api = useAdminApi(secret);
   const [universe, setUniverse] = useState<UniverseView[]>([]);
   const [candidates, setCandidates] = useState<CandidateView[]>([]);
@@ -392,12 +395,22 @@ export default function StrategiesAdmin() {
           <input
             id="admin-secret"
             type="password"
-            value={secret}
-            onChange={(e) => save(e.target.value)}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') save(draft);
+            }}
             placeholder="STRATEGIES_ADMIN_SECRET"
             className={inputCls}
             autoComplete="off"
           />
+          <button
+            type="button"
+            onClick={() => save(draft)}
+            className="mt-3 inline-flex h-10 items-center justify-center rounded-full bg-[#32f27b] px-6 text-sm font-bold text-[#04120a] transition hover:bg-[#4bf78f]"
+          >
+            Unlock
+          </button>
           <p className="mt-2 text-xs text-neutral-500">
             Kept only in this tab session. The API rejects everything without it.
           </p>
