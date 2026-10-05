@@ -64,7 +64,7 @@ export default function TraderRewardsCard({ poolAddress }: { poolAddress: string
 
         {/* Winners */}
         {winners.length > 0 && (
-          <div className="flex shrink-0 flex-col gap-2 md:w-[280px]">
+          <div className="-mx-5 flex w-[calc(100%+40px)] shrink-0 flex-col gap-2 px-5 md:mx-0 md:w-[280px] md:px-0">
             {winners.map((w) => (
               <div
                 key={w.wallet}
