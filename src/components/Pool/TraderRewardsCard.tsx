@@ -32,8 +32,8 @@ export default function TraderRewardsCard({ poolAddress }: { poolAddress: string
   const winners = q.data?.winners ?? [];
   const perWinner = winners.length > 0 ? reward.bps / winners.length / 100 : 0;
   const description = winners.length > 0
-    ? 'Decided at graduation, paid on claims.'
-    : 'Decided at graduation, locked at launch.';
+    ? 'Decided at graduation. Paid on creator claims.'
+    : 'Decided at graduation. Locked at launch.';
 
   return (
     <div className="mb-3 rounded-2xl border border-[#32f27b]/25 bg-[#32f27b]/[0.04] p-5">
@@ -48,8 +48,8 @@ export default function TraderRewardsCard({ poolAddress }: { poolAddress: string
         </div>
 
         {/* Headline */}
-        <div className="shrink-0">
-          <p className="text-xl font-bold leading-tight text-neutral-50 md:text-2xl md:whitespace-nowrap">
+        <div className="shrink-0 md:max-w-[220px]">
+          <p className="text-xl font-bold leading-tight text-neutral-50 md:text-2xl">
             Top {reward.count} buyers split{' '}
             <span className="text-[#32f27b]">{(reward.bps / 100).toFixed(0)}%</span>
           </p>
@@ -62,11 +62,11 @@ export default function TraderRewardsCard({ poolAddress }: { poolAddress: string
 
         {/* Winners */}
         {winners.length > 0 && (
-          <div className="flex w-full shrink-0 flex-col gap-2 md:w-[300px]">
+          <div className="flex shrink-0 flex-col gap-2 md:w-[280px]">
             {winners.map((w) => (
               <div
                 key={w.wallet}
-                className="flex w-full items-center justify-between gap-3 rounded-xl bg-black/30 px-4 py-3"
+                className="flex items-center justify-between gap-3 rounded-xl bg-black/30 px-4 py-2.5"
               >
                 <span className="flex min-w-0 items-center gap-3">
                   <span className="shrink-0 text-sm font-bold text-neutral-300">#{w.rank}</span>
