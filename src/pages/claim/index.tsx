@@ -121,12 +121,12 @@ export default function ClaimLookupPage() {
                 spellCheck={false}
                 autoComplete="off"
                 aria-label="Social handle"
-                className="h-12 flex-1 rounded-xl border border-white/10 bg-black/40 px-4 text-sm text-neutral-100 placeholder:text-neutral-600 focus:border-[#32f27b]/50 focus:outline-none"
+                className="h-14 w-full rounded-2xl border border-white/10 bg-black/40 px-5 text-base text-neutral-100 placeholder:text-neutral-600 focus:border-[#32f27b]/50 focus:outline-none sm:h-12 sm:flex-1 sm:text-sm"
               />
               <button
                 type="submit"
                 disabled={loading || !handle.trim()}
-                className="inline-flex h-12 items-center justify-center rounded-full bg-[#32f27b] px-6 text-sm font-bold text-[#04120a] transition hover:bg-[#4bf78f] disabled:opacity-60 sm:w-auto w-full"
+                className="inline-flex h-14 w-full items-center justify-center rounded-2xl bg-[#32f27b] px-6 text-base font-bold text-[#04120a] transition hover:bg-[#4bf78f] disabled:opacity-60 sm:h-12 sm:w-auto sm:rounded-full sm:text-sm"
               >
                 {loading ? 'Looking…' : 'Find'}
               </button>
