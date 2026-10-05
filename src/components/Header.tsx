@@ -26,6 +26,7 @@ const NAV_LINKS = [
   { label: 'Signals', href: '/strategies' },
   { label: 'Presets', href: '/presets' },
   { label: 'Portfolio', href: '/portfolio' },
+  { label: 'Claim', href: '/claim' },
   { label: 'FAQs', href: '/faqs' },
 ];
 
@@ -34,6 +35,7 @@ function activeForPath(pathname: string): string {
   if (pathname === '/strategies') return 'Signals';
   if (pathname === '/presets') return 'Presets';
   if (pathname === '/portfolio') return 'Portfolio';
+  if (pathname === '/claim') return 'Claim';
   if (pathname === '/faqs') return 'FAQs';
   return 'Discover';
 }

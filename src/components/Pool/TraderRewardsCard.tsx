@@ -27,34 +27,41 @@ export default function TraderRewardsCard({ poolAddress }: { poolAddress: string
   const reward = q.data?.traderReward;
   if (!reward) return null;
   const winners = q.data?.winners ?? [];
+  const perWinner = winners.length > 0 ? reward.bps / winners.length / 100 : 0;
 
   return (
-    <div className="mb-3 rounded-lg border border-[#32f27b]/40 bg-[#32f27b]/5 p-4">
-      <div className="flex items-center gap-2">
-        <span className="sc-section-glyph" aria-hidden="true">
+    <div className="mb-3 rounded-2xl border border-[#32f27b]/25 bg-[#32f27b]/[0.04] p-5">
+      <div className="flex items-center gap-2.5">
+        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#32f27b]/10 text-lg" aria-hidden="true">
           🏆
         </span>
-        <span className="text-xs font-semibold uppercase tracking-wide text-neutral-400">
+        <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-neutral-400">
           Trader rewards
         </span>
       </div>
-      <p className="mt-2 text-xl font-bold text-[#32f27b]">
-        Top {reward.count} net buyer{reward.count === 1 ? '' : 's'} split {(reward.bps / 100).toFixed(0)}% of creator fees
+
+      <p className="mt-3 text-lg font-bold leading-snug text-neutral-50">
+        Top {reward.count} net buyer{reward.count === 1 ? '' : 's'} split{' '}
+        <span className="text-[#32f27b]">{(reward.bps / 100).toFixed(0)}%</span> of creator fees
       </p>
-      <p className="mt-1 text-xs leading-relaxed text-neutral-500">
+      <p className="mt-1.5 text-xs leading-relaxed text-neutral-500">
         {winners.length > 0
           ? 'Winners decided at graduation from on-chain trade history. Paid automatically on creator claims.'
           : 'Winners are decided at graduation from on-chain buy volume. Locked at launch, the rule cannot change.'}
       </p>
+
       {winners.length > 0 && (
-        <div className="mt-2 space-y-1">
+        <div className="mt-4 space-y-2 border-t border-white/5 pt-4">
           {winners.map((w) => (
-            <div key={w.wallet} className="flex items-center justify-between text-xs">
-              <span className="text-neutral-400">
-                #{w.rank} <span className="sc-mono">{shortAddress(w.wallet)}</span>
+            <div key={w.wallet} className="flex items-center justify-between gap-3">
+              <span className="flex min-w-0 items-center gap-2 text-sm">
+                <span className="shrink-0 font-bold text-neutral-300">#{w.rank}</span>
+                <span className="truncate font-mono text-xs text-neutral-500">
+                  {shortAddress(w.wallet)}
+                </span>
               </span>
-              <span className="font-semibold text-[#32f27b]">
-                {(reward.bps / winners.length / 100).toFixed(1)}%
+              <span className="shrink-0 text-sm font-bold text-[#32f27b]">
+                {perWinner.toFixed(1)}%
               </span>
             </div>
           ))}
