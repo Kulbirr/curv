@@ -27,7 +27,7 @@
 export const LAUNCH_FEE_CONFIG = {
   /** Pool creation fee baked into Curv's DBC config (SOL).
    *  90% goes to Curv as fee claimer. */
-  poolCreationFeeSol: 0.01,
+  poolCreationFeeSol: 0.02,
   /** Estimated SOL locked as rent exempt deposits for the accounts a
    *  createConfigAndPool launch creates (config, pool, base and quote
    *  vaults, mint, metadata). Measured on devnet Oct 2026: the pool

@@ -1955,7 +1955,7 @@ export default function CreatePool() {
                     you keep compared to anywhere else.
                   </li>
                   <li>
-                    <strong>0.01 SOL</strong> pool creation fee. Solana also
+                    <strong>0.02 SOL</strong> pool creation fee. Solana also
                     locks about <strong>0.03 SOL</strong> as refundable
                     deposits for the new onchain accounts, so launching costs
                     about <strong>0.04 SOL</strong> in total, plus tiny
@@ -2439,7 +2439,7 @@ export default function CreatePool() {
                 <p className="mt-3 text-xs text-neutral-500">
                   Locked: you keep ~{lockedCreatorSharePct.toFixed(2)}% of every
                   bonding-curve trade and 50% of the migration fee. Launching
-                  costs 0.01 SOL plus about 0.03 SOL in rent-exempt account
+                  costs 0.02 SOL plus about 0.03 SOL in rent-exempt account
                   funding, plus Solana network fees.
                 </p>
               </section>
@@ -3114,7 +3114,7 @@ export default function CreatePool() {
               <div>
                 <span>EST. DEPLOY COST</span>
                 <strong
-                  title={`Includes the ${feeRows.length > 0 ? feeRows[0].value : '0.01 SOL'} creation fee plus about ${LAUNCH_FEE_CONFIG.estimatedLaunchRentSol} SOL in refundable Solana account deposits. Network fees on top.`}
+                  title={`Includes the ${feeRows.length > 0 ? feeRows[0].value : '0.02 SOL'} creation fee plus about ${LAUNCH_FEE_CONFIG.estimatedLaunchRentSol} SOL in refundable Solana account deposits. Network fees on top.`}
                 >
                   {deployTotalLabel} + network fees
                 </strong>
@@ -3244,10 +3244,10 @@ export default function CreatePool() {
               </div>
               <div className="sc-fee-cost-line">
                 <span>Cost to launch</span>
-                <strong>0.01 SOL + network fees</strong>
+                <strong>0.02 SOL + network fees</strong>
               </div>
               <p className="mt-2 text-xs text-neutral-500">
-                0.01 SOL pool creation fee. About 0.03 SOL in refundable
+                0.02 SOL pool creation fee. About 0.03 SOL in refundable
                 Solana rent deposits is also locked for the new pool accounts.
               </p>
               <dl className="sc-fee-rows">

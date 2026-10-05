@@ -24,7 +24,7 @@ const FAQS: { q: string; a: string }[] = [
   },
   {
     q: 'What does it cost to launch?',
-    a: 'Launching costs a 0.01 SOL pool creation fee plus ordinary Solana network fees for the launch transaction.',
+    a: 'Launching costs a 0.02 SOL pool creation fee plus ordinary Solana network fees for the launch transaction.',
   },
   {
     q: 'What do creators earn?',
@@ -48,7 +48,7 @@ const FAQS: { q: string; a: string }[] = [
   },
   {
     q: 'Quick launch or Pro designer?',
-    a: 'Quick launch uses battle tested defaults: 1B supply, an exponential curve starting near $5k valuation (scaled to your quote asset, graduating near 74 SOL on SOL pairs), a flat 1.19% trading fee, a 0.01 SOL creation fee, and automatic graduation. The Pro designer gives you full control over the curve shape, fee schedule, and graduation settings.',
+    a: 'Quick launch uses battle tested defaults: 1B supply, an exponential curve starting near $5k valuation (scaled to your quote asset, graduating near 74 SOL on SOL pairs), a flat 1.19% trading fee, a 0.02 SOL creation fee, and automatic graduation. The Pro designer gives you full control over the curve shape, fee schedule, and graduation settings.',
   },
   {
     q: 'What is a vanity mint?',
