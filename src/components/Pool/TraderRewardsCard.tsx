@@ -14,8 +14,8 @@ function shortAddress(a: string): string {
  * and, after graduation, the decided winners. Self-contained: fetches
  * its own data so the trust pipeline stays untouched.
  *
- * Mobile: clean vertical stack. Desktop: horizontal three-section layout
- * (label | headline | description | winners).
+ * Mobile: 2-col grid (label full width, headline + description side by
+ * side, winners full width). Desktop: 4 sections on one row.
  */
 export default function TraderRewardsCard({ poolAddress }: { poolAddress: string }) {
   const q = useQuery({
@@ -37,32 +37,31 @@ export default function TraderRewardsCard({ poolAddress }: { poolAddress: string
 
   return (
     <div className="mb-3 rounded-2xl border border-[#32f27b]/25 bg-[#32f27b]/[0.04] p-5">
-      {/* Mobile: vertical stack / Desktop: horizontal */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:gap-8">
-        {/* Label */}
-        <div className="shrink-0">
+      <div className="grid grid-cols-2 items-center gap-4 md:grid-cols-[150px_220px_220px_minmax(0,1fr)] md:gap-6">
+        {/* label — full width on mobile */}
+        <div className="col-span-2 md:col-span-1">
           <div className="mb-1 h-0.5 w-6 bg-[#32f27b]" aria-hidden="true" />
           <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-neutral-400">
             Trader rewards
           </div>
         </div>
 
-        {/* Headline */}
-        <div className="shrink-0 md:max-w-[200px]">
+        {/* headline */}
+        <div>
           <p className="text-xl font-bold leading-tight text-neutral-50">
             Top {reward.count} buyers split{' '}
             <span className="text-[#32f27b]">{(reward.bps / 100).toFixed(0)}%</span>
           </p>
         </div>
 
-        {/* Description */}
-        <div className="min-w-0 flex-1 md:min-w-[180px]">
+        {/* description */}
+        <div>
           <p className="text-xs leading-relaxed text-neutral-500">{description}</p>
         </div>
 
-        {/* Winners */}
+        {/* winners — full width on mobile */}
         {winners.length > 0 && (
-          <div className="-mx-5 flex w-[calc(100%+40px)] shrink-0 flex-col gap-2 px-5 md:mx-0 md:w-[280px] md:px-0">
+          <div className="col-span-2 flex flex-col gap-2 md:col-span-1">
             {winners.map((w) => (
               <div
                 key={w.wallet}
