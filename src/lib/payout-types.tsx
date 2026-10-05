@@ -1,9 +1,8 @@
 import type { ComponentType } from 'react';
 import XIcon from '@/icons/XIcon';
 import TwitchIcon from '@/icons/TwitchIcon';
-import RedditIcon from '@/icons/RedditIcon';
 
-export type PayoutTypeId = 'wallet' | 'x' | 'twitch' | 'reddit' | 'traders';
+export type PayoutTypeId = 'wallet' | 'x' | 'twitch' | 'traders';
 
 export interface PayoutTypeDef {
   id: PayoutTypeId;
@@ -49,14 +48,6 @@ export const PAYOUT_TYPES: PayoutTypeDef[] = [
     howItWorks:
       'Name their Twitch username. They log in with Twitch to prove the account is theirs, then connect the wallet that should be paid and sign once to bind it.',
     Icon: TwitchIcon,
-  },
-  {
-    id: 'reddit',
-    label: 'Reddit',
-    tagline: 'They log in with Reddit to claim',
-    howItWorks:
-      'Name their Reddit username. They log in with Reddit to prove the account is theirs, then connect the wallet that should be paid and sign once to bind it.',
-    Icon: RedditIcon,
   },
   {
     id: 'traders',

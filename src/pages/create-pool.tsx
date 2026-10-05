@@ -306,7 +306,7 @@ export default function CreatePool() {
   const [status, setStatus] = useState<LaunchStatus>('idle')
   const [mode, setMode] = useState<'quick' | 'pro'>('quick')
   const [splitRows, setSplitRows] = useState<
-    Array<{ wallet: string; percent: string; handle: string; platform: 'x' | 'twitch' | 'reddit'; payoutType: 'wallet' | 'x' | 'twitch' | 'reddit' }>
+    Array<{ wallet: string; percent: string; handle: string; platform: 'x' | 'twitch' | 'reddit'; payoutType: 'wallet' | 'x' | 'twitch' }>
   >([])
   const [devBuy, setDevBuy] = useState('')
   const [buybackPct, setBuybackPct] = useState('0')
@@ -2489,8 +2489,8 @@ export default function CreatePool() {
                                   wallet: '',
                                   percent: '',
                                   handle: '',
-                                  platform: t.id as 'x' | 'twitch' | 'reddit',
-                                  payoutType: t.id as 'wallet' | 'x' | 'twitch' | 'reddit',
+                                  platform: t.id as 'x' | 'twitch',
+                                  payoutType: t.id as 'wallet' | 'x' | 'twitch',
                                 },
                               ]);
                             }
@@ -2575,7 +2575,7 @@ export default function CreatePool() {
                           </Field>
                         ) : (
                           <Field
-                            label={`${def.label} ${row.payoutType === 'reddit' ? '(without u/)' : '(without @)'}`}
+                            label={`${def.label} (without @)`}
                             className="sm:col-span-2"
                           >
                             <input
