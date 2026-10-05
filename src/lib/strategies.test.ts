@@ -107,6 +107,16 @@ describe('validateSignalInput', () => {
       expect(r.input.side).toBe('buy');
     }
   });
+  it('fills ETH decimals from the known map', () => {
+    const body = validBody();
+    body.baseMint = '7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs';
+    body.baseSymbol = 'ETH';
+    const r = validateSignalInput(body, NOW);
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.input.baseDecimals).toBe(8);
+    }
+  });
   it('rejects bad mints and identical mints', () => {
     expect(validateSignalInput({ ...validBody(), baseMint: 'nope' }, NOW).ok).toBe(false);
     const same = validBody();

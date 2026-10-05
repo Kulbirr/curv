@@ -85,6 +85,8 @@ export interface StrategySubscription {
 export const KNOWN_MINT_DECIMALS: Record<string, number> = {
   So11111111111111111111111111111111111111112: 9,
   EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v: 6,
+  '7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs': 8,
+  cbbtcf3aa214zXHbiAZQwf4122FBYbraNdFqgw4iMij: 8,
 };
 
 /** Local logo assets for well known mints, used by the signal cards. */
