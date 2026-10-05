@@ -1563,28 +1563,6 @@ export default function CreatePool() {
           </p>
         </section>
 
-        {/* Network banner, never hardcode mainnet */}
-        <div
-          className={cn(
-            'rounded-lg border p-3 text-sm',
-            isDevnet()
-              ? 'border-amber-500/40 bg-amber-500/10 text-amber-200'
-              : 'border-rose-500/50 bg-rose-500/10 text-rose-200'
-          )}
-          style={{ margin: '18px 0 0' }}
-        >
-          {isDevnet() ? (
-            <>
-              You are launching on <strong>devnet</strong> ({SOLANA_NETWORK}).
-              No real funds are involved; tokens and prices are play money.
-            </>
-          ) : (
-            <>
-              You are launching on <strong>MAINNET</strong>. This is real money
-             , review every parameter before signing.
-            </>
-          )}
-        </div>
         {/* ---- Wizard steps ---- */}
         <div className="sc-wizard-steps" role="tablist" aria-label="Launch steps">
           {(

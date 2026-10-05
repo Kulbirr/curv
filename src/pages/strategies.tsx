@@ -732,7 +732,7 @@ function TrackRecord() {
       <section
         aria-label="Track record"
         aria-busy="true"
-        className="mt-8 rounded-2xl border border-white/10 bg-[#141110]"
+        className="mt-8 rounded-2xl border border-white/10 bg-[#0e1112]"
       >
         <div className="flex items-center justify-between px-6 pt-5 md:px-8">
           <div className="h-3 w-32 animate-pulse rounded-full bg-white/10" />
@@ -763,7 +763,7 @@ function TrackRecord() {
   return (
     <section
       aria-label="Track record"
-      className="mt-8 rounded-2xl border border-white/10 bg-[#141110]"
+      className="mt-8 rounded-2xl border border-white/10 bg-[#0e1112]"
     >
       <div className="flex items-center justify-between gap-4 px-6 pt-5 md:px-8">
         <p className="text-[11px] font-bold tracking-[0.25em] text-[#d08a5f]">TRACK RECORD</p>
@@ -821,7 +821,7 @@ function TrackRecord() {
                 >
                   {h.outcome === 'win' ? 'WON' : h.outcome === 'loss' ? 'LOST' : 'EXPIRED'}
                 </span>
-                <p className="text-sm font-bold text-neutral-100">
+                <p className="whitespace-nowrap text-sm font-bold text-neutral-100">
                   {h.baseSymbol} / {h.quoteSymbol}
                 </p>
               </div>
