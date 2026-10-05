@@ -131,6 +131,7 @@ export default function StrategiesAdmin() {
   const [filter, setFilter] = useState<'all' | CandidateView['status']>('all');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [authorized, setAuthorized] = useState(false);
 
   const [form, setForm] = useState({
     baseMint: '',
@@ -149,13 +150,17 @@ export default function StrategiesAdmin() {
   const [notice, setNotice] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    if (!secret) return;
+    if (!secret) {
+      setAuthorized(false);
+      return;
+    }
     setError(null);
     try {
       const [u, c] = await Promise.all([
         api('/api/strategies/universe'),
         api(`/api/strategies/candidates${filter === 'all' ? '' : `?status=${filter}`}`),
       ]);
+      setAuthorized(true);
       setUniverse((u.universe ?? []) as UniverseView[]);
       setCandidates((c.candidates ?? []) as CandidateView[]);
       setForm((f) => ({
@@ -163,6 +168,7 @@ export default function StrategiesAdmin() {
         baseMint: f.baseMint || ((u.universe ?? []) as UniverseView[])[0]?.baseMint || '',
       }));
     } catch (e) {
+      setAuthorized(false);
       setError(e instanceof Error ? e.message : 'Could not load admin data');
     }
   }, [api, secret, filter]);
@@ -409,7 +415,7 @@ export default function StrategiesAdmin() {
           </div>
         )}
 
-        {secret && (
+        {authorized && (
           <>
             <section className="mt-8">
               <h2 className="text-lg font-bold text-neutral-50">Universe</h2>
