@@ -215,6 +215,21 @@ CREATE TABLE IF NOT EXISTS trade_indexer_state (
   updated_at BIGINT NOT NULL
 );
 
+-- Dev wallet balance snapshots. Catches off-curve transfers: the trades
+-- table only records swaps through the curve, so a dev who sends tokens
+-- directly to another wallet is invisible to trade-watching but visible
+-- as a balance delta between snapshots. Written by the trade indexer,
+-- throttled to one row per (pool, wallet) per 5 minutes.
+CREATE TABLE IF NOT EXISTS dev_wallet_snapshots (
+  pool_address TEXT NOT NULL,
+  wallet TEXT NOT NULL,
+  balance_raw TEXT NOT NULL,
+  taken_at BIGINT NOT NULL,
+  PRIMARY KEY (pool_address, wallet, taken_at)
+);
+CREATE INDEX IF NOT EXISTS idx_dev_snapshots_lookup
+  ON dev_wallet_snapshots (pool_address, wallet, taken_at DESC);
+
 -- Trader reward winners. One row per pool, written once at graduation:
 -- the top N net buyers by quote volume, immutable after. The rule
 -- (count, bps) was locked at launch in pools.trader_reward; this table

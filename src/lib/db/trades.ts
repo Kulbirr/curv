@@ -209,6 +209,40 @@ export async function getLastSignature(poolAddress: string): Promise<string | nu
   return rows[0]?.last_signature ?? null;
 }
 
+export interface DevActivity {
+  buys: number;
+  sells: number;
+  netQuoteRaw: string; // signed: buys minus sells, in quote raw units
+}
+
+/**
+ * Buy/sell counts and net quote flow for one wallet on one pool since a
+ * cutoff (ms epoch). Backs the Dev Wallet Radar activity strip.
+ */
+export async function getDevActivity(
+  poolAddress: string,
+  wallet: string,
+  sinceMs: number,
+): Promise<DevActivity> {
+  const rows = await query<{
+    buys: string;
+    sells: string;
+    net_quote: string | null;
+  }>(
+    `SELECT COUNT(*) FILTER (WHERE side = 'buy') AS buys,
+            COUNT(*) FILTER (WHERE side = 'sell') AS sells,
+            SUM(CASE WHEN side = 'buy' THEN quote_amount_raw::numeric ELSE -quote_amount_raw::numeric END) AS net_quote
+     FROM trades WHERE pool_address = $1 AND wallet = $2 AND traded_at > $3`,
+    [poolAddress, wallet, sinceMs],
+  );
+  const r = rows[0];
+  return {
+    buys: Number(r?.buys ?? 0),
+    sells: Number(r?.sells ?? 0),
+    netQuoteRaw: r?.net_quote ? BigInt(r.net_quote).toString() : '0',
+  };
+}
+
 export async function setLastSignature(poolAddress: string, signature: string): Promise<void> {
   await execute(
     `INSERT INTO trade_indexer_state (pool_address, last_signature, updated_at)

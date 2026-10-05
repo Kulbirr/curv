@@ -5,6 +5,7 @@ export { default as TradeStats } from './TradeStats';
 export { default as PoolDetails } from './PoolDetails';
 export { default as CreatorEarnings } from './CreatorEarnings';
 export { default as TrustPanel } from './TrustPanel';
+export { default as DevWalletRadar } from './DevWalletRadar';
 export { default as LiquidityLock } from './LiquidityLock';
 export { usePoolState, usePoolHistory, changeFromHistory } from './usePoolData';
 export { usePoolStatePush } from './usePoolStatePush';

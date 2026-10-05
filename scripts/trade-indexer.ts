@@ -29,6 +29,7 @@
  */
 
 import { Connection, PublicKey } from '@solana/web3.js';
+import { getAssociatedTokenAddressSync } from '@solana/spl-token';
 import { Pool as PgPool } from 'pg';
 import { createFailoverConnection } from '../src/lib/rpc-failover.ts';
 
@@ -255,6 +256,47 @@ async function indexPool(
   return { found: sigs.length, recorded };
 }
 
+const SNAPSHOT_THROTTLE_MS = 5 * 60 * 1000;
+
+/**
+ * Dev-wallet balance snapshot for the off-curve transfer backstop.
+ * Throttled to one write per (pool, creator) per 5 minutes. Skips
+ * silently on RPC failure: snapshots are best-effort, the radar
+ * treats missing snapshots as unknown, never as zero.
+ */
+async function snapshotDevWallet(
+  connection: Connection,
+  db: PgPool,
+  pool: { poolAddress: string; baseMint: string; creator: string },
+): Promise<void> {
+  const tag = pool.poolAddress.slice(0, 8);
+  try {
+    const r = await db.query(
+      `SELECT taken_at FROM dev_wallet_snapshots
+       WHERE pool_address = $1 AND wallet = $2 ORDER BY taken_at DESC LIMIT 1`,
+      [pool.poolAddress, pool.creator],
+    );
+    const last = r.rows[0]?.taken_at as number | undefined;
+    if (last !== undefined && Date.now() - last < SNAPSHOT_THROTTLE_MS) return;
+
+    const ata = getAssociatedTokenAddressSync(
+      new PublicKey(pool.baseMint),
+      new PublicKey(pool.creator),
+    );
+    const info = await connection.getAccountInfo(ata);
+    const balanceRaw = info
+      ? (await connection.getTokenAccountBalance(ata)).value.amount
+      : '0';
+    await db.query(
+      `INSERT INTO dev_wallet_snapshots (pool_address, wallet, balance_raw, taken_at)
+       VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`,
+      [pool.poolAddress, pool.creator, balanceRaw, Date.now()],
+    );
+  } catch (e) {
+    warn(`${tag}: dev snapshot skipped: ${e instanceof Error ? e.message : String(e)}`);
+  }
+}
+
 async function main(): Promise<void> {
   const backfillLimit = Number(env('TRADE_INDEXER_BACKFILL', '1000')) || 1000;
   // Shared failover connection: Helius primary, Alchemy fallback when
@@ -276,12 +318,18 @@ async function main(): Promise<void> {
       await setup.query('CREATE INDEX IF NOT EXISTS idx_trades_wallet_time ON trades (wallet, traded_at DESC)');
       await setup.query(`CREATE TABLE IF NOT EXISTS trade_indexer_state (
         pool_address TEXT PRIMARY KEY, last_signature TEXT NOT NULL, updated_at BIGINT NOT NULL)`);
+      await setup.query(`CREATE TABLE IF NOT EXISTS dev_wallet_snapshots (
+        pool_address TEXT NOT NULL, wallet TEXT NOT NULL, balance_raw TEXT NOT NULL,
+        taken_at BIGINT NOT NULL, PRIMARY KEY (pool_address, wallet, taken_at))`);
+      await setup.query(`CREATE INDEX IF NOT EXISTS idx_dev_snapshots_lookup
+        ON dev_wallet_snapshots (pool_address, wallet, taken_at DESC)`);
     } finally {
       setup.release();
     }
 
     const { rows } = await db.query(
-      `SELECT pool_address AS "poolAddress", base_mint AS "baseMint", quote_mint AS "quoteMint"
+      `SELECT pool_address AS "poolAddress", base_mint AS "baseMint", quote_mint AS "quoteMint",
+              creator AS "creator"
        FROM pools`,
     );
     log(`${rows.length} pool(s) to index`);
@@ -303,12 +351,13 @@ async function main(): Promise<void> {
     };
     let totalFound = 0;
     let totalRecorded = 0;
-    for (const pool of rows as Array<{ poolAddress: string; baseMint: string; quoteMint: string }>) {
+    for (const pool of rows as Array<{ poolAddress: string; baseMint: string; quoteMint: string; creator: string }>) {
       try {
         const [bd, qd] = await Promise.all([getDecimals(pool.baseMint), getDecimals(pool.quoteMint)]);
         const r = await indexPool(connection, db, { ...pool, baseDecimals: bd, quoteDecimals: qd }, backfillLimit);
         totalFound += r.found;
         totalRecorded += r.recorded;
+        await snapshotDevWallet(connection, db, pool);
       } catch (e) {
         warn(`${pool.poolAddress.slice(0, 8)}: ${e instanceof Error ? e.message : String(e)}`);
       }

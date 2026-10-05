@@ -18,6 +18,7 @@ import {
 import { formatTokenCompact } from '@/components/Pool/chartFormat';
 import {
   CreatorEarnings,
+  DevWalletRadar,
   LiquidityLock,
   PoolDetails,
   PoolHeader,
@@ -439,6 +440,7 @@ function PoolPageContent({ poolAddress }: { poolAddress: string }) {
           />
           <GraduationCard state={state} />
           <TrustPanel poolAddress={poolAddress} />
+          <DevWalletRadar poolAddress={poolAddress} />
           {state.graduated && <LiquidityLock poolAddress={poolAddress} />}
           <CreatorEarnings poolAddress={poolAddress} state={state} />
           <ActivityCard state={state} onChain={onChainQuery.data} />
