@@ -17,6 +17,8 @@ export interface PoolStateResponse {
   baseName: string;
   /** Base token mint, from the pool registry (no RPC needed). */
   baseMint: string;
+  /** Quote token mint, from the pool registry (no RPC needed). */
+  quoteMint: string;
   quoteSymbol: string;
   baseDecimals: number;
   quoteDecimals: number;

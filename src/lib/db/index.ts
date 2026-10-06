@@ -207,6 +207,10 @@ CREATE INDEX IF NOT EXISTS idx_trades_pool_time ON trades (pool_address, traded_
 CREATE INDEX IF NOT EXISTS idx_trades_wallet_time ON trades (wallet, traded_at DESC);
 CREATE INDEX IF NOT EXISTS idx_trades_wallet_pool ON trades (wallet, pool_address, id DESC);
 
+-- Trade origin: 'dbc' = bonding curve indexer, 'jupiter' = post graduation
+-- verified record. Additive; existing rows default to 'dbc'.
+ALTER TABLE trades ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'dbc';
+
 -- Trade indexer cursor: the last processed signature per pool, so each
 -- run only fetches new transactions.
 CREATE TABLE IF NOT EXISTS trade_indexer_state (

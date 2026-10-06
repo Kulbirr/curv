@@ -27,6 +27,7 @@ export async function buildBroadcastState(
     baseSymbol: pool.baseSymbol,
     baseName: pool.baseName,
     baseMint: pool.baseMint,
+    quoteMint: pool.quoteMint,
     quoteSymbol: pool.quoteSymbol,
     baseDecimals: sample.baseDecimals,
     quoteDecimals: sample.quoteDecimals,

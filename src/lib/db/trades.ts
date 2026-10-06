@@ -13,6 +13,8 @@ export interface Trade {
   tradedAt: number;
   baseDecimals: number | null;
   quoteDecimals: number | null;
+  /** 'dbc' = bonding curve indexer, 'jupiter' = post graduation verified record. */
+  source: 'dbc' | 'jupiter';
 }
 
 /**
@@ -33,13 +35,15 @@ export async function recordTrade(args: {
   tradedAt: number;
   baseDecimals?: number | null;
   quoteDecimals?: number | null;
+  /** 'dbc' = bonding curve indexer, 'jupiter' = post graduation verified record. */
+  source?: 'dbc' | 'jupiter';
 }): Promise<boolean> {
   if (args.side !== 'buy' && args.side !== 'sell') {
     throw new Error('trade side must be buy or sell');
   }
   const rowCount = await execute(
-    `INSERT INTO trades (pool_address, wallet, side, base_amount_raw, quote_amount_raw, price, tx_signature, slot, traded_at, base_decimals, quote_decimals)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) ON CONFLICT (tx_signature, wallet) DO NOTHING`,
+    `INSERT INTO trades (pool_address, wallet, side, base_amount_raw, quote_amount_raw, price, tx_signature, slot, traded_at, base_decimals, quote_decimals, source)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) ON CONFLICT (tx_signature, wallet) DO NOTHING`,
     [
       args.poolAddress,
       args.wallet,
@@ -52,6 +56,7 @@ export async function recordTrade(args: {
       args.tradedAt,
       args.baseDecimals ?? null,
       args.quoteDecimals ?? null,
+      args.source ?? 'dbc',
     ],
   );
   return rowCount === 1;
@@ -70,6 +75,7 @@ function toTrade(r: {
   traded_at: number;
   base_decimals: number | null;
   quote_decimals: number | null;
+  source: string | null;
 }): Trade {
   return {
     id: r.id,
@@ -84,11 +90,12 @@ function toTrade(r: {
     tradedAt: r.traded_at,
     baseDecimals: r.base_decimals,
     quoteDecimals: r.quote_decimals,
+    source: r.source === 'jupiter' ? 'jupiter' : 'dbc',
   };
 }
 
 const TRADE_COLS =
-  'id, pool_address, wallet, side, base_amount_raw, quote_amount_raw, price, tx_signature, slot, traded_at, base_decimals, quote_decimals';
+  'id, pool_address, wallet, side, base_amount_raw, quote_amount_raw, price, tx_signature, slot, traded_at, base_decimals, quote_decimals, source';
 
 /** A wallet's trades, newest first, paginated. */
 export async function getTradesForWallet(

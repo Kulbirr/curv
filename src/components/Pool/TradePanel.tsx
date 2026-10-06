@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BN } from '@coral-xyz/anchor';
 import { parseUiAmountToRaw, priceImpactPct, rawToUi } from '@/lib/swap-math';
-import { PublicKey } from '@solana/web3.js';
+import { PublicKey, VersionedTransaction } from '@solana/web3.js';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useUnifiedWalletContext } from '@jup-ag/wallet-adapter';
 import { useQueryClient } from '@tanstack/react-query';
@@ -13,6 +13,21 @@ import { NATIVE_SOL_MINT, type PoolStateResponse } from './types';
 import { getMintDecimalsCached, useOnChainPool, type OnChainPool } from './useOnChainPool';
 import { formatTokenCompact } from './chartFormat';
 import { UsdRef } from '@/components/UsdRef';
+import {
+  fetchJupiterQuote,
+  fetchJupiterSwapTransaction,
+  getVersionedTxFeePayer,
+  jupiterReferralFeeAccount,
+  validateJupiterQuoteAmounts,
+  JupiterError,
+  type JupiterQuote,
+} from '@/lib/jupiter';
+import {
+  deriveTradeMode,
+  formatFeeLabel,
+  jupiterDeepLink,
+  resolveJupiterFeeBps,
+} from './tradeMode';
 import {
   isSignTimeout,
   signingTimeoutMessage,
@@ -101,15 +116,33 @@ export default function TradePanel({ poolAddress, state }: Props) {
   const executingRef = useRef(false);
 
   const graduated = state?.graduated === true;
+  /** Trading mode comes from exactly one boolean. Never from quote results. */
+  const jupiterMode = deriveTradeMode(state?.graduated) === 'jupiter';
+
+  // Jupiter mode state. Untouched in DBC mode.
+  const [jupQuote, setJupQuote] = useState<JupiterQuote | null>(null);
+  const [venueLabel, setVenueLabel] = useState<string | null>(null);
+  const [feeBpsUsed, setFeeBpsUsed] = useState<number>(25);
+  const [feeWaived, setFeeWaived] = useState(false);
+  const [jupIssue, setJupIssue] = useState<null | 'devnet' | 'noroute' | 'down'>(null);
+  const [quoteNonce, setQuoteNonce] = useState(0);
 
   const inputMint = useMemo(() => {
+    if (jupiterMode) {
+      if (!state) return null;
+      return side === 'buy' ? state.quoteMint : state.baseMint;
+    }
     if (!onChain) return null;
     return side === 'buy' ? onChain.quoteMint : onChain.baseMint;
-  }, [onChain, side]);
+  }, [onChain, side, jupiterMode, state]);
   const outputMint = useMemo(() => {
+    if (jupiterMode) {
+      if (!state) return null;
+      return side === 'buy' ? state.baseMint : state.quoteMint;
+    }
     if (!onChain) return null;
     return side === 'buy' ? onChain.baseMint : onChain.quoteMint;
-  }, [onChain, side]);
+  }, [onChain, side, jupiterMode, state]);
   const inputSymbol = side === 'buy' ? state?.quoteSymbol : state?.baseSymbol;
   const outputSymbol = side === 'buy' ? state?.baseSymbol : state?.quoteSymbol;
 
@@ -168,11 +201,80 @@ export default function TradePanel({ poolAddress, state }: Props) {
     [side, slippageBps, state?.price]
   );
 
-  // Debounced quoting.
+  /**
+   * Jupiter quote for graduated pools. Returns the display quote plus the
+   * raw Jupiter quote needed to build the swap. Falls back to a 0 bps
+   * referral fee and retries once if the fee'd quote fails, so a fee
+   * plumbing problem never blocks trading.
+   */
+  const requestJupiterQuote = useCallback(
+    async (amountRaw: BN, inDecimals: number, outDecimals: number) => {
+      if (!state || !inputMint || !outputMint) throw new Error('Pool state missing');
+      const feeAccount = jupiterReferralFeeAccount();
+      let feeBps = resolveJupiterFeeBps(feeAccount);
+      let jup: JupiterQuote;
+      try {
+        jup = await fetchJupiterQuote({
+          inputMint,
+          outputMint,
+          amountRaw: amountRaw.toString(),
+          slippageBps,
+          platformFeeBps: feeBps,
+        });
+      } catch (e) {
+        if (feeBps > 0 && e instanceof JupiterError) {
+          jup = await fetchJupiterQuote({
+            inputMint,
+            outputMint,
+            amountRaw: amountRaw.toString(),
+            slippageBps,
+            platformFeeBps: 0,
+          });
+          feeBps = 0;
+          setFeeWaived(true);
+        } else {
+          throw e;
+        }
+      }
+      const outputRaw = new BN(jup.outAmount);
+      const minOutRaw = jup.otherAmountThreshold ? new BN(jup.otherAmountThreshold) : outputRaw;
+      const display: Quote = {
+        outputRaw,
+        minOutRaw,
+        outputUi: rawToUi(outputRaw, outDecimals),
+        outDecimals,
+        priceImpactPct: jup.priceImpactPct,
+      };
+      return { display, jup, feeBps };
+    },
+    [state, inputMint, outputMint, slippageBps]
+  );
+
+  // Debounced quoting. In Jupiter mode the mints and decimals come from
+  // pool state (no RPC needed); in DBC mode they come from the on chain pool.
   useEffect(() => {
     if (quoteTimer.current) clearTimeout(quoteTimer.current);
     setQuote(null);
-    if (!onChain || !inputMint || !outputMint || graduated) {
+    setJupQuote(null);
+    setVenueLabel(null);
+    setJupIssue(null);
+    setFeeWaived(false);
+    if (jupiterMode) {
+      if (isDevnet()) {
+        if (!amountStr.trim()) {
+          setStatus('idle');
+          return;
+        }
+        setJupIssue('devnet');
+        setError('Post graduation trading is mainnet only');
+        setStatus('failed');
+        return;
+      }
+      if (!state || !inputMint || !outputMint) {
+        setStatus('idle');
+        return;
+      }
+    } else if (!onChain || !inputMint || !outputMint) {
       setStatus('idle');
       return;
     }
@@ -183,18 +285,44 @@ export default function TradePanel({ poolAddress, state }: Props) {
     let cancelled = false;
     const run = async () => {
       try {
-        const inDecimals = inputMint === NATIVE_SOL_MINT ? 9 : await getMintDecimalsCached(inputMint);
-        const outDecimals = outputMint === NATIVE_SOL_MINT ? 9 : await getMintDecimalsCached(outputMint);
+        const inDecimals = jupiterMode
+          ? side === 'buy'
+            ? (state?.quoteDecimals ?? 9)
+            : (state?.baseDecimals ?? 9)
+          : inputMint === NATIVE_SOL_MINT
+            ? 9
+            : await getMintDecimalsCached(inputMint as string);
+        const outDecimals = jupiterMode
+          ? side === 'buy'
+            ? (state?.baseDecimals ?? 9)
+            : (state?.quoteDecimals ?? 9)
+          : outputMint === NATIVE_SOL_MINT
+            ? 9
+            : await getMintDecimalsCached(outputMint as string);
         const amountRaw = parseUiAmountToRaw(amountStr, inDecimals);
         if (!amountRaw || cancelled) return;
         setStatus('quoting');
-        const q = await doQuote(onChain, amountRaw, inDecimals, outDecimals);
-        if (cancelled) return;
-        setQuote(q);
+        if (jupiterMode) {
+          const { display, jup, feeBps } = await requestJupiterQuote(amountRaw, inDecimals, outDecimals);
+          if (cancelled) return;
+          setQuote(display);
+          setJupQuote(jup);
+          setVenueLabel(jup.venueLabel);
+          setFeeBpsUsed(feeBps);
+        } else {
+          const q = await doQuote(onChain as OnChainPool, amountRaw, inDecimals, outDecimals);
+          if (cancelled) return;
+          setQuote(q);
+        }
         setStatus('ready');
       } catch (e) {
         if (cancelled) return;
-        setError(e instanceof Error ? e.message : 'Quote failed');
+        if (jupiterMode && e instanceof JupiterError) {
+          setJupIssue(e.friendly === 'No route for this pair right now' ? 'noroute' : 'down');
+          setError(e.friendly);
+        } else {
+          setError(e instanceof Error ? e.message : 'Quote failed');
+        }
         setStatus('failed');
       }
     };
@@ -204,9 +332,18 @@ export default function TradePanel({ poolAddress, state }: Props) {
       if (quoteTimer.current) clearTimeout(quoteTimer.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [amountStr, side, slippageBps, onChain, inputMint, outputMint, graduated]);
+  }, [amountStr, side, slippageBps, onChain, inputMint, outputMint, jupiterMode, state, quoteNonce]);
 
   const validationError = useMemo(() => {
+    if (jupiterMode) {
+      // No graduation ahead anymore; Jupiter's own slippage and price
+      // impact cover sizing. Only balance checks apply.
+      if (!state || !amountStr.trim()) return null;
+      const raw = parseUiAmountToRaw(amountStr, balance?.decimals ?? 9);
+      if (!raw) return 'Enter a valid amount greater than zero';
+      if (balance && raw.gt(balance.raw)) return `Insufficient ${inputSymbol} balance`;
+      return null;
+    }
     if (!onChain || graduated) return null;
     if (!amountStr.trim()) return null;
     const raw = parseUiAmountToRaw(amountStr, balance?.decimals ?? 9);
@@ -234,7 +371,7 @@ export default function TradePanel({ poolAddress, state }: Props) {
       }
     }
     return null;
-  }, [amountStr, balance, inputSymbol, onChain, graduated, side, state]);
+  }, [amountStr, balance, inputSymbol, onChain, graduated, jupiterMode, side, state]);
 
   const setMax = () => {
     if (!balance) return;
@@ -278,7 +415,109 @@ export default function TradePanel({ poolAddress, state }: Props) {
     setAmountStr(rawToUi(raw, balance.decimals));
   };
 
+  /**
+   * Jupiter mode swap for graduated pools. Mirrors the DBC flow's state
+   * machine (quoting -> signing -> sending -> confirming -> confirmed)
+   * and adds the mandatory pre-sign validation: fee payer match, amount
+   * drift check, and pre-sign simulation.
+   */
+  const executeJupiter = async () => {
+    if (!publicKey || !signTransaction || !state || !inputMint || !outputMint) return;
+    setError(null);
+    setTxSig(null);
+    executingRef.current = true;
+    try {
+      const connection = getConnection();
+      const inDecimals = side === 'buy' ? state.quoteDecimals : state.baseDecimals;
+      const outDecimals = side === 'buy' ? state.baseDecimals : state.quoteDecimals;
+      const amountRaw = parseUiAmountToRaw(amountStr, inDecimals);
+      if (!amountRaw) throw new Error('Invalid amount');
+
+      // Re-quote immediately before building so the swap matches fresh bounds.
+      setStatus('quoting');
+      const { display, jup, feeBps } = await requestJupiterQuote(amountRaw, inDecimals, outDecimals);
+      setQuote(display);
+      setJupQuote(jup);
+      setVenueLabel(jup.venueLabel);
+      setFeeBpsUsed(feeBps);
+
+      setStatus('signing');
+      const feeAccount = jupiterReferralFeeAccount();
+      const swapB64 = await fetchJupiterSwapTransaction(
+        jup,
+        publicKey.toBase58(),
+        feeAccount ? { feeAccount } : {}
+      );
+      const vtx = VersionedTransaction.deserialize(
+        Uint8Array.from(atob(swapB64), (c) => c.charCodeAt(0))
+      );
+
+      // Mandatory pre-sign validation.
+      const payer = getVersionedTxFeePayer(vtx);
+      if (payer !== publicKey.toBase58()) {
+        throw new Error('Transaction fee payer does not match your wallet');
+      }
+      const amountsOk = validateJupiterQuoteAmounts(jup, amountRaw.toString(), slippageBps);
+      if (!amountsOk.ok) {
+        throw new Error(amountsOk.error ?? 'The quote changed, please try again');
+      }
+      const sim = await connection.simulateTransaction(vtx);
+      if (sim.value.err) {
+        console.warn('[trade] jupiter simulation failed:', JSON.stringify(sim.value.err));
+        throw new Error('The transaction failed. Please try again.');
+      }
+
+      const signed = await withSignTimeout(signTransaction(vtx));
+      setStatus('sending');
+      const sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: false });
+      setTxSig(sig);
+      setStatus('confirming');
+      await pollSignatureStatus(sig);
+      setStatus('confirmed');
+      setAmountStr('');
+      setQuote(null);
+      setJupQuote(null);
+      // Refresh balances and market data.
+      if (inputMint && publicKey) {
+        fetchBalance(publicKey, inputMint).then(setBalance).catch(() => {});
+      }
+      queryClient.invalidateQueries({ queryKey: ['pool-state', poolAddress] });
+      queryClient.invalidateQueries({ queryKey: ['pool-history', poolAddress] });
+      // Record the swap for trade history and the dev radar. Fire and
+      // forget: the server verifies the signature on chain before inserting.
+      fetch(`/api/pools/${poolAddress}/trades/record`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ txSignature: sig, wallet: publicKey.toBase58() }),
+      }).catch(() => {});
+    } catch (e) {
+      const rawMsg = e instanceof Error ? e.message : 'Transaction failed';
+      let msg: string;
+      if (e instanceof JupiterError) {
+        msg = e.friendly;
+      } else if (/6002|0x1772|ExceededSlippage|slippage tolerance/i.test(rawMsg)) {
+        msg = 'The price moved before your swap could go through. Try again or raise your slippage tolerance.';
+      } else if (isSignTimeout(e)) {
+        msg = signingTimeoutMessage();
+      } else if (/User rejected|rejected the request/i.test(rawMsg)) {
+        msg = 'You cancelled the transaction in your wallet.';
+      } else if (/fee payer does not match/i.test(rawMsg)) {
+        msg = 'Transaction fee payer does not match your wallet. Swap cancelled for your safety.';
+      } else {
+        msg = rawMsg;
+      }
+      setError(msg);
+      setStatus('failed');
+    } finally {
+      executingRef.current = false;
+    }
+  };
+
   const execute = async () => {
+    if (jupiterMode) {
+      await executeJupiter();
+      return;
+    }
     if (!publicKey || !signTransaction || !onChain || !inputMint || !quote) return;
     setError(null);
     setTxSig(null);
@@ -361,8 +600,15 @@ export default function TradePanel({ poolAddress, state }: Props) {
     : null;
 
   const busy = status === 'quoting' || status === 'signing' || status === 'sending' || status === 'confirming';
-  const canTrade =
-    connected && !!publicKey && !!onChain && !graduated && status === 'ready' && !validationError && !!quote;
+  const canTrade = jupiterMode
+    ? connected &&
+      !!publicKey &&
+      !!state &&
+      status === 'ready' &&
+      !validationError &&
+      !!quote &&
+      !jupIssue
+    : connected && !!publicKey && !!onChain && !graduated && status === 'ready' && !validationError && !!quote;
 
   return (
     <section className="sc-trade-panel" aria-label="Trade">
@@ -388,6 +634,19 @@ export default function TradePanel({ poolAddress, state }: Props) {
         ))}
       </div>
 
+      {jupiterMode && (
+        <div className="sc-trade-jup-head">
+          <span className="sc-trade-badge">Post graduation</span>
+          <span className="sc-trade-venue">
+            {venueLabel
+              ? venueLabel === 'Meteora DAMM v2'
+                ? 'Trading on DAMM v2 via Jupiter'
+                : 'Best route via Jupiter'
+              : 'Trading via Jupiter'}
+          </span>
+        </div>
+      )}
+
       {!connected ? (
         <div
           style={{
@@ -409,26 +668,11 @@ export default function TradePanel({ poolAddress, state }: Props) {
             Connect wallet
           </button>
         </div>
-      ) : graduated ? (
-        <p
-          style={{
-            margin: '14px 0 0',
-            padding: 12,
-            borderRadius: 6,
-            border: '1px solid #242b29',
-            background: '#0d1110',
-            fontSize: 12,
-            color: '#8c968d',
-            textAlign: 'center',
-          }}
-        >
-          This pool has graduated and migrated to DAMM. Trading here is closed.
-        </p>
-      ) : onChainLoading ? (
+      ) : !jupiterMode && onChainLoading ? (
         <div style={{ display: 'flex', justifyContent: 'center', padding: '28px 0' }}>
           <CurvyLoader size={36} />
         </div>
-      ) : onChainError || !onChain ? (
+      ) : !jupiterMode && (onChainError || !onChain) ? (
         <p
           style={{
             margin: '14px 0 0',
@@ -620,7 +864,7 @@ export default function TradePanel({ poolAddress, state }: Props) {
                 }}
               />
             </div>
-            <span>Creator fee 0.3%</span>
+            <span>{jupiterMode ? (feeWaived ? 'Curv fee waived for this quote' : formatFeeLabel(feeBpsUsed)) : 'Creator fee 0.3%'}</span>
           </div>
 
           {validationError && <p className="sc-trade-message">{validationError}</p>}
@@ -628,6 +872,32 @@ export default function TradePanel({ poolAddress, state }: Props) {
             <p className="sc-trade-message" role="alert">
               {error}
             </p>
+          )}
+          {jupiterMode && jupIssue && jupIssue !== 'devnet' && status === 'failed' && inputMint && outputMint && (
+            <div className="sc-trade-fallback">
+              <p>
+                {jupIssue === 'noroute'
+                  ? 'No route for this pair right now.'
+                  : 'Live quotes are unreachable right now.'}
+              </p>
+              <div className="sc-trade-fallback-actions">
+                <button
+                  type="button"
+                  className="sc-button sc-button-secondary"
+                  onClick={() => setQuoteNonce((n) => n + 1)}
+                >
+                  Try again
+                </button>
+                <a
+                  className="sc-button sc-button-secondary"
+                  href={jupiterDeepLink(inputMint, outputMint)}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Trade on Jupiter
+                </a>
+              </div>
+            </div>
           )}
           {status === 'confirmed' && txSig && (
             <p
@@ -681,8 +951,9 @@ export default function TradePanel({ poolAddress, state }: Props) {
               lineHeight: 1.6,
             }}
           >
-            Swaps execute on-chain via Meteora DBC. You sign every transaction in
-            your wallet.
+            {jupiterMode
+              ? 'Swaps route through Jupiter across Solana venues. You sign every transaction in your wallet.'
+              : 'Swaps execute on-chain via Meteora DBC. You sign every transaction in your wallet.'}
           </p>
         </>
       )}

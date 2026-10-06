@@ -40,6 +40,7 @@ function stateFor(poolAddress: string): PoolStateResponse {
     baseSymbol: 'TEST',
     baseName: 'Test',
     baseMint: 'Mint111111111111111111111111111111111111111',
+    quoteMint: 'So11111111111111111111111111111111111111112',
     quoteSymbol: 'SOL',
     baseDecimals: 9,
     quoteDecimals: 9,
