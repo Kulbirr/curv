@@ -220,7 +220,6 @@ function FinishedDuelBody({ duel }: { duel: Duel }) {
 function NoDuelEntry({ poolAddress }: { poolAddress: string }) {
   const { connected } = useWallet();
   const [wizardOpen, setWizardOpen] = useState(false);
-  if (!connected) return null;
   return (
     <CardShell>
       <div className="flex flex-col items-center gap-3 py-2 text-center sm:flex-row sm:text-left">
@@ -234,12 +233,14 @@ function NoDuelEntry({ poolAddress }: { poolAddress: string }) {
         <button
           type="button"
           onClick={() => setWizardOpen(true)}
-          className="inline-flex h-11 w-full shrink-0 items-center justify-center rounded-xl bg-[#32f27b] px-6 text-sm font-bold text-[#04120a] transition hover:bg-[#4bf78f] sm:w-auto"
+          disabled={!connected}
+          title={connected ? undefined : 'Connect your wallet to challenge'}
+          className="inline-flex h-11 w-full shrink-0 items-center justify-center rounded-xl bg-[#32f27b] px-6 text-sm font-bold text-[#04120a] transition hover:bg-[#4bf78f] disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto"
         >
-          Challenge this coin
+          {connected ? 'Challenge this coin' : 'Connect to challenge'}
         </button>
       </div>
-      {wizardOpen && (
+      {wizardOpen && connected && (
         <ChallengeWizard
           poolB={poolAddress}
           onClose={() => setWizardOpen(false)}
