@@ -3244,6 +3244,16 @@ select {
   font-weight: 500;
 }
 
+/* Dev Wallet Radar manages its own layout; undo the generic
+   flex-row rule above for its structural divs. */
+.sc-dev-radar > div:not(.sc-trade-card-label) {
+  display: block;
+  min-height: 0;
+  align-items: normal;
+  justify-content: normal;
+  gap: 0;
+}
+
 
 .sc-pool-demo-note {
   display: flex;

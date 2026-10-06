@@ -203,14 +203,14 @@ export default function DevWalletRadar({ poolAddress }: { poolAddress: string })
       )}
 
       {(d.activity1h || d.activity24h || net24) && (
-        <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 md:grid-cols-3">
+        <div className="mt-4 grid grid-cols-3 gap-x-3 gap-y-3">
           {d.activity1h && (
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
                 Last 1h
               </p>
-              <p className="sc-number mt-1 text-sm text-neutral-200">
-                {d.activity1h.buys} buys · {d.activity1h.sells} sells
+              <p className="sc-number mt-1 text-sm leading-snug text-neutral-200">
+                {d.activity1h.buys} buys<br />{d.activity1h.sells} sells
               </p>
             </div>
           )}
@@ -219,17 +219,17 @@ export default function DevWalletRadar({ poolAddress }: { poolAddress: string })
               <p className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
                 Last 24h
               </p>
-              <p className="sc-number mt-1 text-sm text-neutral-200">
-                {d.activity24h.buys} buys · {d.activity24h.sells} sells
+              <p className="sc-number mt-1 text-sm leading-snug text-neutral-200">
+                {d.activity24h.buys} buys<br />{d.activity24h.sells} sells
               </p>
             </div>
           )}
           {net24 && (
-            <div className="col-span-2 md:col-span-1">
+            <div>
               <p className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
                 Net 24h
               </p>
-              <p className="sc-number mt-1 text-sm text-neutral-200">
+              <p className="sc-number mt-1 text-sm leading-snug text-neutral-200">
                 {net24.netQuoteUi} {d.quoteSymbol}
               </p>
             </div>
