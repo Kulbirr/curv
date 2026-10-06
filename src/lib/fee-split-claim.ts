@@ -19,6 +19,11 @@ import { BPS_TOTAL } from './fee-split-terms';
 import type { EffectiveFeeSplitRecipient, FeeSplitBinding, FeeSplitRecipient } from './fee-split-terms';
 import { resolveEffectiveRecipients } from './fee-split-terms';
 import { platformFeeWallet } from './launch';
+import {
+  forfeitApplies,
+  forfeitWinnerWallet,
+  getSettledDuelForPool,
+} from './db/duels';
 
 /**
  * The DBC SDK appends an unwrap (CloseAccount) of the creator's wSOL ATA
@@ -220,6 +225,63 @@ export function resolveBountyVault(): PublicKey | null {
   return platformFeeWallet();
 }
 
+export interface DuelForfeitPlan {
+  /** The duel this forfeit belongs to. */
+  duelId: number;
+  /** Winner wallet receiving the redirected remainder. */
+  winnerWallet: string;
+  /** Unix ms when the forfeit window ends. */
+  forfeitEndsAt: number;
+  baseRaw: string;
+  quoteRaw: string;
+}
+
+/**
+ * Pure duel forfeit plan: the loser's creator remainder, redirected.
+ *
+ * Semantics mirror buyback/bounty: recipients take their bps of the
+ * GROSS accrued fee, untouched. The forfeit applies to the creator's
+ * REMAINDER after the buyback and bounty slices are deducted (those
+ * were committed at launch, before any duel). The loser nets zero from
+ * the remainder; the whole rest goes to the winner's wallet in the
+ * same atomic transaction.
+ *
+ * The forfeit only exists when forfeitApplies() is true for this pool
+ * right now (settled duel, this pool lost, window open). Returns null
+ * otherwise, or when the remainder after the other slices is zero.
+ */
+export function planDuelForfeit(
+  accruedBaseRaw: string | null | undefined,
+  accruedQuoteRaw: string | null | undefined,
+  creatorBps: number,
+  buyback: BuybackPlan | null,
+  bounty: BountyPlan | null,
+  duelId: number,
+  winnerWallet: string,
+  forfeitEndsAt: number,
+): DuelForfeitPlan | null {
+  if (creatorBps <= 0) return null;
+  const remainderBase = BigInt(splitShareRaw(accruedBaseRaw, creatorBps));
+  const remainderQuote = BigInt(splitShareRaw(accruedQuoteRaw, creatorBps));
+  const baseRaw = (
+    remainderBase -
+    BigInt(buyback?.baseRaw ?? '0') -
+    BigInt(bounty?.baseRaw ?? '0')
+  ).toString();
+  const quoteRaw = (
+    remainderQuote -
+    BigInt(buyback?.quoteRaw ?? '0') -
+    BigInt(bounty?.quoteRaw ?? '0')
+  ).toString();
+  // Clamp: the slices are computed from the same remainder, so this
+  // cannot go negative unless the inputs are inconsistent; never
+  // redirect a negative amount.
+  const safeBase = BigInt(baseRaw) < BigInt(0) ? '0' : baseRaw;
+  const safeQuote = BigInt(quoteRaw) < BigInt(0) ? '0' : quoteRaw;
+  if (safeBase === '0' && safeQuote === '0') return null;
+  return { duelId, winnerWallet, forfeitEndsAt, baseRaw: safeBase, quoteRaw: safeQuote };
+}
+
 const TX_SIZE_BUDGET = 1200; // legacy transactions cap at 1232 bytes
 
 function txSize(tx: Transaction): number {
@@ -233,6 +295,8 @@ export interface ClaimAndSplitBuild {
   buyback: BuybackPlan | null;
   /** The bounty slice forwarded to the bounty vault, null when the pool has none. */
   bounty: BountyPlan | null;
+  /** The duel forfeit redirected to the winner, null when none applies. */
+  forfeit: DuelForfeitPlan | null;
   accruedBaseRaw: string | null;
   accruedQuoteRaw: string | null;
 }
@@ -318,6 +382,34 @@ export async function buildClaimAndSplitTransactions(args: {
     bounty = planBounty(accruedBase, accruedQuote, creatorBps, bountyBps, vault.toBase58());
   }
 
+  // Duel forfeit diversion: when this pool lost a settled duel and the
+  // forfeit window is open, the creator remainder (after buyback and
+  // bounty slices) is redirected to the duel winner's wallet in the
+  // same atomic flow. Recipients, buyback, and bounty are unaffected.
+  let forfeit: DuelForfeitPlan | null = null;
+  try {
+    const settled = await getSettledDuelForPool(tracked.poolAddress);
+    if (settled && forfeitApplies(tracked.poolAddress, settled, Date.now())) {
+      const winner = forfeitWinnerWallet(settled);
+      if (winner && settled.forfeitEndsAt != null) {
+        forfeit = planDuelForfeit(
+          accruedBase,
+          accruedQuote,
+          creatorBps,
+          buyback,
+          bounty,
+          settled.id,
+          winner,
+          settled.forfeitEndsAt,
+        );
+      }
+    }
+  } catch {
+    // Forfeit lookup is best-effort: a DB hiccup must never block a
+    // creator's claim. The forfeit simply does not apply this time.
+    forfeit = null;
+  }
+
   const claimTx = await buildClaimCreatorFeesTx({
     poolAddress: tracked.poolAddress,
     creator: tracked.creator,
@@ -341,7 +433,8 @@ export async function buildClaimAndSplitTransactions(args: {
     quoteMintPk.equals(NATIVE_MINT) &&
     (distribution.some((p) => BigInt(p.quoteRaw) > BigInt(0)) ||
       (buyback !== null && BigInt(buyback.quoteRaw) > BigInt(0)) ||
-      (bounty !== null && BigInt(bounty.quoteRaw) > BigInt(0)));
+      (bounty !== null && BigInt(bounty.quoteRaw) > BigInt(0)) ||
+      (forfeit !== null && BigInt(forfeit.quoteRaw) > BigInt(0)));
   const claimInstructions = owesSolPayouts
     ? claimTx.instructions.filter(
         (ix) => !isWsolUnwrapOf(ix, getAssociatedTokenAddressSync(NATIVE_MINT, creator)),
@@ -426,11 +519,35 @@ export async function buildClaimAndSplitTransactions(args: {
     }
   }
 
+  // Duel forfeit, packed like the other diversions: the loser's creator
+  // remainder goes to the duel winner's wallet in the same atomic flow.
+  // The claim preview shows this as a "Duel forfeit" row so the loser
+  // sees exactly where the money goes before signing.
+  if (forfeit) {
+    const winner = new PublicKey(forfeit.winnerWallet);
+    const legs: Array<{ mint: PublicKey; raw: string }> = [
+      { mint: baseMint, raw: forfeit.baseRaw },
+      { mint: quoteMint, raw: forfeit.quoteRaw },
+    ];
+    for (const leg of legs) {
+      const amount = BigInt(leg.raw);
+      if (amount <= BigInt(0)) continue;
+      const source = getAssociatedTokenAddressSync(leg.mint, creator);
+      const dest = getAssociatedTokenAddressSync(leg.mint, winner);
+      const destInfo = await connection.getAccountInfo(dest);
+      if (!destInfo) {
+        pushIx(createAssociatedTokenAccountInstruction(creator, dest, winner, leg.mint));
+      }
+      pushIx(createTransferInstruction(source, dest, creator, amount));
+    }
+  }
+
   return {
     transactions,
     distribution,
     buyback,
     bounty,
+    forfeit,
     accruedBaseRaw: live.creatorBaseFeeRaw,
     accruedQuoteRaw: live.creatorQuoteFeeRaw,
   };
@@ -450,7 +567,7 @@ export async function claimAndSplitFlow(args: {
   bindings?: FeeSplitBinding[];
   traderRewardWinners?: Array<{ wallet: string; rank: number }>;
   traderRewardBps?: number;
-}): Promise<{ signatures: string[]; distribution: SplitPayout[]; buyback: BuybackPlan | null; bounty: BountyPlan | null }> {
+}): Promise<{ signatures: string[]; distribution: SplitPayout[]; buyback: BuybackPlan | null; bounty: BountyPlan | null; forfeit: DuelForfeitPlan | null }> {
   const build = await buildClaimAndSplitTransactions({
     connection: args.connection,
     tracked: args.tracked,
@@ -484,5 +601,5 @@ export async function claimAndSplitFlow(args: {
     signatures.push(signature);
   }
 
-  return { signatures, distribution: build.distribution, buyback: build.buyback, bounty: build.bounty };
+  return { signatures, distribution: build.distribution, buyback: build.buyback, bounty: build.bounty, forfeit: build.forfeit };
 }

@@ -474,6 +474,60 @@ CREATE TABLE IF NOT EXISTS bounty_payouts (
   tx_signature TEXT NOT NULL UNIQUE,
   paid_at BIGINT NOT NULL
 );
+
+-- Coin duels: head to head graduation races. Terms are locked at
+-- accept time and immutable after. One active or challenged duel per
+-- pool at a time, enforced by the application (checked before
+-- insert; a partial unique index cannot express the state filter
+-- cleanly across six statuses, so the check lives in createDuel).
+CREATE TABLE IF NOT EXISTS duels (
+  id SERIAL PRIMARY KEY,
+  pool_a TEXT NOT NULL,
+  pool_b TEXT NOT NULL,
+  challenger_wallet TEXT NOT NULL,
+  challenged_wallet TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'challenged',
+  forfeit_scope TEXT NOT NULL DEFAULT 'creator_remainder_window',
+  forfeit_days INTEGER NOT NULL DEFAULT 90,
+  created_at BIGINT NOT NULL,
+  activated_at BIGINT,
+  expires_at BIGINT,
+  settled_at BIGINT,
+  forfeit_ends_at BIGINT,
+  winner_pool TEXT,
+  loser_pool TEXT,
+  CONSTRAINT chk_duel_pools CHECK (pool_a <> pool_b),
+  CONSTRAINT chk_duel_status CHECK (status IN
+    ('challenged','active','settled','expired','cancelled','drawn')),
+  CONSTRAINT chk_duel_forfeit_days CHECK (forfeit_days BETWEEN 1 AND 365)
+);
+CREATE INDEX IF NOT EXISTS idx_duels_pool_a ON duels (pool_a, status);
+CREATE INDEX IF NOT EXISTS idx_duels_pool_b ON duels (pool_b, status);
+CREATE INDEX IF NOT EXISTS idx_duels_active ON duels (status) WHERE status = 'active';
+CREATE INDEX IF NOT EXISTS idx_duels_challenged_wallet ON duels (challenged_wallet, status)
+  WHERE status = 'challenged';
+
+-- Duel forfeit payout ledger, append-only: one row per redirected
+-- claim from the losing pool. Mirrors bounty_deposits: the forfeit is
+-- realized inside the loser's claim transaction, and this table is the
+-- auditable record the duel page renders.
+CREATE TABLE IF NOT EXISTS duel_forfeit_payouts (
+  id SERIAL PRIMARY KEY,
+  duel_id INTEGER NOT NULL REFERENCES duels(id),
+  pool_address TEXT NOT NULL,
+  winner_wallet TEXT NOT NULL,
+  base_amount_raw TEXT NOT NULL,
+  quote_amount_raw TEXT NOT NULL,
+  quote_mint TEXT NOT NULL,
+  tx_signature TEXT NOT NULL UNIQUE,
+  paid_at BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_duel_forfeit_duel ON duel_forfeit_payouts (duel_id, paid_at DESC);
+
+-- First-seen graduation timestamp per pool, written by the pool state
+-- indexer the first time it records graduated = 1. Lets the duel
+-- keeper answer "who graduated first" from the DB alone.
+ALTER TABLE pool_states ADD COLUMN IF NOT EXISTS graduated_at BIGINT;
 `;
 
 // pg returns BIGINT (int8) columns as strings by default. Unix-ms

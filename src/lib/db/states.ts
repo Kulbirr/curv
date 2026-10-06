@@ -47,6 +47,8 @@ export interface StoredPoolState extends PoolStateSample {
   /** Unix ms of the last attempt (success or failure). */
   lastAttemptAt: number | null;
   consecutiveFailures: number;
+  /** First-seen graduation timestamp; null until the pool graduates. */
+  graduatedAt: number | null;
 }
 
 interface StateRow {
@@ -56,6 +58,7 @@ interface StateRow {
   base_reserve: number | null;
   progress: number | null;
   graduated: number;
+  graduated_at: number | null;
   has_swap: number;
   market_cap: number | null;
   base_decimals: number;
@@ -86,6 +89,7 @@ function rowToState(r: StateRow): StoredPoolState {
     sampledAt: r.sampled_at,
     lastAttemptAt: r.last_attempt_at,
     consecutiveFailures: r.consecutive_failures,
+    graduatedAt: r.graduated_at == null ? null : Number(r.graduated_at),
   };
 }
 
@@ -140,14 +144,23 @@ export async function recordPoolSample(
        (pool_address, price, quote_reserve, base_reserve, progress, graduated,
         has_swap, market_cap, base_decimals, quote_decimals,
         migration_quote_threshold, creator_base_fee_raw, creator_quote_fee_raw,
-        sampled_at, last_attempt_at, consecutive_failures)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 0)
+        sampled_at, last_attempt_at, consecutive_failures,
+        graduated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 0,
+        CASE WHEN $6 = 1 THEN $14 ELSE NULL END)
        ON CONFLICT (pool_address) DO UPDATE SET
          price = excluded.price,
          quote_reserve = excluded.quote_reserve,
          base_reserve = excluded.base_reserve,
          progress = excluded.progress,
          graduated = excluded.graduated,
+         -- First-seen graduation timestamp: set once, never overwritten.
+         -- Lets the duel keeper answer "who graduated first" from the DB.
+         graduated_at = CASE
+           WHEN excluded.graduated = 1 AND pool_states.graduated_at IS NULL
+           THEN excluded.sampled_at
+           ELSE pool_states.graduated_at
+         END,
          has_swap = excluded.has_swap,
          market_cap = excluded.market_cap,
          base_decimals = excluded.base_decimals,

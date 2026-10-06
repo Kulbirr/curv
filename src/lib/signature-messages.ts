@@ -91,6 +91,28 @@ export function buildBountyActionMessage(
 }
 
 /**
+ * Creator-signed duel actions. The message names both pools, the action,
+ * and a timestamp, so the signature proves the signing creator
+ * authorized this exact duel action and cannot be replayed for another.
+ */
+export function buildDuelActionMessage(
+  poolA: string,
+  poolB: string,
+  action: 'challenge' | 'accept' | 'decline' | 'cancel',
+  duelId: number | null,
+  timestamp: number,
+): string {
+  return [
+    'Curv duel action',
+    `poolA: ${poolA}`,
+    `poolB: ${poolB}`,
+    `action: ${action}`,
+    `duel: ${duelId === null ? 'new' : duelId}`,
+    `timestamp: ${timestamp}`,
+  ].join('\n');
+}
+
+/**
  * Binds a metadata/R2 upload to the wallet that is about to launch the
  * token, so anonymous clients cannot use Curv's bucket as free storage.
  * Signed during the launch flow, before the on-chain transaction.
