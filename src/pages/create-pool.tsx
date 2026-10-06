@@ -3296,12 +3296,12 @@ export default function CreatePool() {
                 <span>From your config</span>
               </div>
               <div className="sc-fee-cost-line">
-                <span>Cost to launch</span>
-                <strong>0.02 SOL + network fees</strong>
+                <span>Total to launch</span>
+                <strong>≈0.05 SOL + network fees</strong>
               </div>
               <p className="mt-2 text-xs text-neutral-500">
-                0.02 SOL pool creation fee. About 0.03 SOL in refundable
-                Solana rent deposits is also locked for the new pool accounts.
+                0.02 SOL pool creation fee plus about 0.03 SOL in refundable
+                Solana rent deposits locked for the new pool accounts.
               </p>
               <dl className="sc-fee-rows">
                 {feeRows.map((r) => (
