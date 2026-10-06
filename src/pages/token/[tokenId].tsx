@@ -35,6 +35,7 @@ import type { OnChainPool } from '@/components/Pool/useOnChainPool';
 import type { PoolStateResponse } from '@/components/Pool';
 import BountyCountdown from '@/components/Bounty/BountyCountdown';
 import CreateBountyWizard from '@/components/Bounty/CreateBountyWizard';
+import DuelCard from '@/components/Duel/DuelCard';
 import { formatRawAmount } from '@/components/Bounty/amounts';
 
 /** Bonding curve progress toward the migration threshold. */
@@ -602,6 +603,7 @@ function PoolPageContent({ poolAddress }: { poolAddress: string }) {
           <DevWalletRadar poolAddress={poolAddress} />
           {state.graduated && <LiquidityLock poolAddress={poolAddress} />}
           <CreatorEarnings poolAddress={poolAddress} state={state} />
+          <DuelCard poolAddress={poolAddress} />
           <ActivityCard state={state} onChain={onChainQuery.data} poolAddress={poolAddress} />
         </div>
 

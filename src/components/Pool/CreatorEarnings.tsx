@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { getConnection, isDevnet } from '@/lib/solana';
@@ -11,7 +11,10 @@ import {
   shouldShowCreatorEarnings,
   withdrawCreatorMigrationFeeFlow,
 } from '@/lib/claim-creator-fees';
-import { claimAndSplitFlow, planDistribution } from '@/lib/fee-split-claim';
+import { claimAndSplitFlow, planBuyback, planBounty, planDistribution, planDuelForfeit } from '@/lib/fee-split-claim';
+import type { DuelForfeitPlan } from '@/lib/fee-split-claim';
+import { formatRawAmount } from '@/components/Bounty/amounts';
+import { shortWallet, type Duel } from '../Duel/duel';
 import type { EffectiveFeeSplitRecipient, FeeSplitBinding } from '@/lib/fee-split-terms';
 import type { PoolStateResponse } from './types';
 import type { TrackedPool } from '@/lib/pool-registry';
@@ -113,6 +116,95 @@ export default function CreatorEarnings({
     ? planDistribution(state.creatorBaseFeeRaw, state.creatorQuoteFeeRaw, splits)
     : [];
 
+  // Duel forfeit preview: if this pool lost a settled duel and the forfeit
+  // window is open, the creator remainder of this claim is redirected to
+  // the duel winner. The claim builder is authoritative; this mirrors its
+  // math so the loser sees exactly where the money goes before signing.
+  const duelListQuery = useQuery<{ duels: Duel[] }>({
+    queryKey: ['duels', 'list', 50],
+    queryFn: () => fetchJson<{ duels: Duel[] }>('/api/duels?limit=50'),
+    enabled: isCreator,
+    staleTime: 60_000,
+    retry: 1,
+  });
+  const lostDuel = useMemo(() => {
+    const duels = duelListQuery.data?.duels ?? [];
+    const now = Date.now();
+    return (
+      duels.find(
+        (d) =>
+          d.status === 'settled' &&
+          d.loserPool === poolAddress &&
+          (d.forfeitEndsAt ?? 0) > now,
+      ) ?? null
+    );
+  }, [duelListQuery.data, poolAddress]);
+  const trustQuery = useQuery<{ buybackBps?: number; bountyBps?: number }>({
+    queryKey: ['pool-trust', poolAddress],
+    queryFn: () =>
+      fetchJson<{ buybackBps?: number; bountyBps?: number }>(
+        `/api/pools/${poolAddress}/trust`,
+      ),
+    enabled: isCreator && lostDuel != null,
+    staleTime: 5 * 60_000,
+    retry: 1,
+  });
+  const forfeitPreview = useMemo<{
+    plan: DuelForfeitPlan;
+    winner: string;
+    duelId: number;
+  } | null>(() => {
+    if (!lostDuel || lostDuel.forfeitEndsAt == null) return null;
+    const winner =
+      lostDuel.winnerPool === lostDuel.poolA
+        ? lostDuel.challengerWallet
+        : lostDuel.challengedWallet;
+    const buybackBps = Math.max(
+      0,
+      Math.min(10000, Math.floor(Number(trustQuery.data?.buybackBps) || 0)),
+    );
+    const bountyBps = Math.max(
+      0,
+      Math.min(10000, Math.floor(Number(trustQuery.data?.bountyBps) || 0)),
+    );
+    const totalRecipientBps = splits.reduce((s, r) => s + (r.bps || 0), 0);
+    const creatorBps = 10000 - totalRecipientBps;
+    if (creatorBps <= 0) return null;
+    const buyback = planBuyback(
+      state.creatorBaseFeeRaw,
+      state.creatorQuoteFeeRaw,
+      creatorBps,
+      buybackBps,
+      'preview',
+    );
+    const bounty = planBounty(
+      state.creatorBaseFeeRaw,
+      state.creatorQuoteFeeRaw,
+      creatorBps,
+      bountyBps,
+      'preview',
+    );
+    const plan = planDuelForfeit(
+      state.creatorBaseFeeRaw,
+      state.creatorQuoteFeeRaw,
+      creatorBps,
+      buyback,
+      bounty,
+      lostDuel.id,
+      winner,
+      lostDuel.forfeitEndsAt,
+    );
+    return plan ? { plan, winner, duelId: lostDuel.id } : null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    lostDuel,
+    trustQuery.data,
+    splits,
+    state.creatorBaseFeeRaw,
+    state.creatorQuoteFeeRaw,
+    poolAddress,
+  ]);
+
   if (!isCreator) {
     return null;
   }
@@ -177,7 +269,7 @@ export default function CreatorEarnings({
           // Winners unavailable: claim proceeds without them; their
           // share stays accrued until the next claim.
         }
-        const { signatures, buyback, bounty } = await claimAndSplitFlow({
+        const { signatures, buyback, bounty, forfeit } = await claimAndSplitFlow({
           connection: getConnection(),
           signTransaction,
           signAllTransactions: signAllTransactions ?? undefined,
@@ -190,6 +282,8 @@ export default function CreatorEarnings({
         setTxSig(signatures[0] ?? null);
         setStatus('confirmed');
         queryClient.invalidateQueries({ queryKey: ['pool-state', poolAddress] });
+        queryClient.invalidateQueries({ queryKey: ['duels'] });
+        queryClient.invalidateQueries({ queryKey: ['duel'] });
         // Record the buyback deposit in the per-pool ledger so the
         // keeper can attribute vault funds to this pool. The server
         // verifies the transfer on-chain; best effort, like the
@@ -213,6 +307,20 @@ export default function CreatorEarnings({
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ txSignature: signatures[0] }),
+            });
+          }
+        } catch {
+          // Deposit recording failure never fails the claim.
+        }
+        // Record the duel forfeit payout the same way: the server verifies
+        // the transfer to the duel winner on-chain, and the duel page
+        // renders the forfeit ledger from these rows.
+        try {
+          if (forfeit && signatures[0]) {
+            await fetch(`/api/pools/${poolAddress}/duel-forfeit-deposits`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ duelId: forfeit.duelId, txSignature: signatures[0] }),
             });
           }
         } catch {
@@ -430,6 +538,37 @@ export default function CreatorEarnings({
               </div>
             );
           })}
+        </div>
+      )}
+
+      {forfeitPreview && hasSplits && !empty && !unknown && (
+        <div
+          role="alert"
+          aria-label="Duel forfeit warning"
+          style={{
+            border: '2px solid #fa6d74',
+            background: '#fa6d7414',
+            borderRadius: 12,
+            padding: '12px 14px',
+            marginTop: 12,
+          }}
+        >
+          <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: '#fa6d74', letterSpacing: '0.08em' }}>
+            DUEL FORFEIT
+          </p>
+          <p style={{ margin: '6px 0 0', fontSize: 14, fontWeight: 700, color: '#f3d9db' }}>
+            {formatRawAmount(
+              forfeitPreview.plan.quoteRaw,
+              state.quoteDecimals ?? 9,
+              state.quoteSymbol,
+            )}{' '}
+            goes to the duel winner, not you
+          </p>
+          <p style={{ margin: '6px 0 0', fontSize: 12, lineHeight: 1.6, color: '#c9a3a6' }}>
+            You lost duel #{forfeitPreview.duelId}. Your creator remainder from this
+            claim goes to {shortWallet(forfeitPreview.winner)} instead of your wallet.
+            Fee splits, buyback and bounty are paid first and are untouched.
+          </p>
         </div>
       )}
 
