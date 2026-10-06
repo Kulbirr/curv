@@ -1,5 +1,14 @@
 import { execute, query, transaction } from './index';
 
+// Pure forfeit helpers live in fee-split-claim.ts (DB-free so the
+// client-bundled claim builder can use them). Re-exported here for
+// server callers that already import from this module.
+export {
+  forfeitApplies,
+  forfeitWinnerWallet,
+  type DuelForfeitTerms,
+} from '../fee-split-claim';
+
 /**
  * Coin duels: head to head graduation races. First coin to graduate
  * wins; the winner takes the loser's creator fee remainder for the
@@ -112,26 +121,6 @@ export function decideDuelOutcome(
   const diff = Math.abs((graduatedAtA as number) - (graduatedAtB as number));
   if (diff < DUEL_DRAW_WINDOW_MS) return 'draw';
   return (graduatedAtA as number) < (graduatedAtB as number) ? 'a' : 'b';
-}
-
-/**
- * True when the forfeit redirect applies to a claim on `poolAddress`
- * right now: the duel is settled, this pool lost, and the forfeit
- * window is still open.
- */
-export function forfeitApplies(poolAddress: string, duel: Duel, now: number): boolean {
-  return (
-    duel.status === 'settled' &&
-    duel.loserPool === poolAddress &&
-    duel.forfeitEndsAt != null &&
-    now < duel.forfeitEndsAt
-  );
-}
-
-/** The wallet the forfeit redirects to for a claim on the losing pool. */
-export function forfeitWinnerWallet(duel: Duel): string | null {
-  if (duel.status !== 'settled' || !duel.winnerPool) return null;
-  return duel.winnerPool === duel.poolA ? duel.challengerWallet : duel.challengedWallet;
 }
 
 // ---------------------------------------------------------------------------

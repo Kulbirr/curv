@@ -19,11 +19,43 @@ import { BPS_TOTAL } from './fee-split-terms';
 import type { EffectiveFeeSplitRecipient, FeeSplitBinding, FeeSplitRecipient } from './fee-split-terms';
 import { resolveEffectiveRecipients } from './fee-split-terms';
 import { platformFeeWallet } from './launch';
-import {
-  forfeitApplies,
-  forfeitWinnerWallet,
-  getSettledDuelForPool,
-} from './db/duels';
+
+/** Minimal settled-duel shape the claim builder needs. No DB import. */
+export interface DuelForfeitTerms {
+  id: number;
+  status: string;
+  poolA: string;
+  poolB: string;
+  challengerWallet: string;
+  challengedWallet: string;
+  loserPool: string | null;
+  winnerPool: string | null;
+  forfeitEndsAt: number | null;
+}
+
+/**
+ * True when the forfeit redirect applies to a claim on `poolAddress`
+ * right now: the duel is settled, this pool lost, and the forfeit
+ * window is still open. Pure; the caller supplies the duel row.
+ */
+export function forfeitApplies(
+  poolAddress: string,
+  duel: DuelForfeitTerms,
+  now: number,
+): boolean {
+  return (
+    duel.status === 'settled' &&
+    duel.loserPool === poolAddress &&
+    duel.forfeitEndsAt != null &&
+    now < duel.forfeitEndsAt
+  );
+}
+
+/** The wallet the forfeit redirects to for a claim on the losing pool. */
+export function forfeitWinnerWallet(duel: DuelForfeitTerms): string | null {
+  if (duel.status !== 'settled' || !duel.winnerPool) return null;
+  return duel.winnerPool === duel.poolA ? duel.challengerWallet : duel.challengedWallet;
+}
 
 /**
  * The DBC SDK appends an unwrap (CloseAccount) of the creator's wSOL ATA
@@ -310,6 +342,8 @@ export async function buildClaimAndSplitTransactions(args: {
   traderRewardWinners?: Array<{ wallet: string; rank: number }>;
   /** Total trader-reward bps (shared equally by winners). */
   traderRewardBps?: number;
+  /** The pool's settled duel, if any. The caller fetches it; the builder stays DB-free. */
+  duel?: DuelForfeitTerms | null;
 }): Promise<ClaimAndSplitBuild> {
   const { connection, tracked, recipients } = args;
   const creator = new PublicKey(tracked.creator);
@@ -386,28 +420,24 @@ export async function buildClaimAndSplitTransactions(args: {
   // forfeit window is open, the creator remainder (after buyback and
   // bounty slices) is redirected to the duel winner's wallet in the
   // same atomic flow. Recipients, buyback, and bounty are unaffected.
+  // The duel row is passed in by the caller; the builder never touches
+  // the DB so it stays safe to bundle for the client.
   let forfeit: DuelForfeitPlan | null = null;
-  try {
-    const settled = await getSettledDuelForPool(tracked.poolAddress);
-    if (settled && forfeitApplies(tracked.poolAddress, settled, Date.now())) {
-      const winner = forfeitWinnerWallet(settled);
-      if (winner && settled.forfeitEndsAt != null) {
-        forfeit = planDuelForfeit(
-          accruedBase,
-          accruedQuote,
-          creatorBps,
-          buyback,
-          bounty,
-          settled.id,
-          winner,
-          settled.forfeitEndsAt,
-        );
-      }
+  const duel = args.duel ?? null;
+  if (duel && forfeitApplies(tracked.poolAddress, duel, Date.now())) {
+    const winner = forfeitWinnerWallet(duel);
+    if (winner && duel.forfeitEndsAt != null) {
+      forfeit = planDuelForfeit(
+        accruedBase,
+        accruedQuote,
+        creatorBps,
+        buyback,
+        bounty,
+        duel.id,
+        winner,
+        duel.forfeitEndsAt,
+      );
     }
-  } catch {
-    // Forfeit lookup is best-effort: a DB hiccup must never block a
-    // creator's claim. The forfeit simply does not apply this time.
-    forfeit = null;
   }
 
   const claimTx = await buildClaimCreatorFeesTx({
@@ -567,6 +597,8 @@ export async function claimAndSplitFlow(args: {
   bindings?: FeeSplitBinding[];
   traderRewardWinners?: Array<{ wallet: string; rank: number }>;
   traderRewardBps?: number;
+  /** The pool's settled duel, if any (caller fetches it). */
+  duel?: DuelForfeitTerms | null;
 }): Promise<{ signatures: string[]; distribution: SplitPayout[]; buyback: BuybackPlan | null; bounty: BountyPlan | null; forfeit: DuelForfeitPlan | null }> {
   const build = await buildClaimAndSplitTransactions({
     connection: args.connection,
@@ -575,6 +607,7 @@ export async function claimAndSplitFlow(args: {
     bindings: args.bindings,
     traderRewardWinners: args.traderRewardWinners,
     traderRewardBps: args.traderRewardBps,
+    duel: args.duel,
   });
 
   const signed =

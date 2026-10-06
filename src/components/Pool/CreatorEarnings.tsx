@@ -278,6 +278,7 @@ export default function CreatorEarnings({
           bindings,
           traderRewardWinners,
           traderRewardBps,
+          duel: lostDuel,
         });
         setTxSig(signatures[0] ?? null);
         setStatus('confirmed');
